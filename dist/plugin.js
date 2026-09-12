@@ -1422,7 +1422,8 @@ var eud_default = {
         read: true,
         write: true
       },
-      source: "game speed (eud-book)"
+      source: "game speed (eud-book)",
+      note: "Not confirmed: a Remastered run on 2026-09-12 read neither Fastest nor Normal here, so the address may not be mapped by Remastered's EUD layer."
     },
     {
       id: "game.triggerTimer",
@@ -1482,7 +1483,8 @@ var eud_default = {
         write: false
       },
       source: "local player id (eud-book)",
-      note: "Differs per computer: what follows runs for that player's screen only, so keep it to text, sounds and the view."
+      note: "Differs per computer: what follows runs for that player's screen only, so keep it to text, sounds and the view.",
+      verified: true
     },
     {
       id: "game.mouseX",
