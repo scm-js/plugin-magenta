@@ -19,6 +19,8 @@ const RELATIONS: { value: number; label: string; rel: Relation }[] = [
   { value: 0, label: "greater than", rel: ">" }, { value: 1, label: "at least", rel: ">=" }, { value: 2, label: "equal to", rel: "==" }, { value: 3, label: "less than", rel: "<" }, { value: 4, label: "at most", rel: "<=" },
 ];
 
+export const RELATION_WORDS: Record<Relation, string> = Object.fromEntries(RELATIONS.map((r) => [r.rel, r.label])) as Record<Relation, string>;
+
 export const counterExpansionOf = (store: Store, a: ActionRecord) =>
   store.sidecar.expansions.find((x): x is Extract<ExpansionRecord, { kind: "copy" | "add" | "subtract" }> => (x.kind === "copy" || x.kind === "add" || x.kind === "subtract") && isFlagAction(a, { cell: x.flag })) ?? null;
 

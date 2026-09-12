@@ -4172,6 +4172,7 @@ var RELATIONS = [
   { value: 3, label: "less than", rel: "<" },
   { value: 4, label: "at most", rel: "<=" }
 ];
+var RELATION_WORDS = Object.fromEntries(RELATIONS.map((r) => [r.rel, r.label]));
 var counterExpansionOf = (store, a2) => store.sidecar.expansions.find((x) => (x.kind === "copy" || x.kind === "add" || x.kind === "subtract") && isFlagAction(a2, { cell: x.flag })) ?? null;
 function compareOf(store, index, trigger2) {
   const clean2 = store.cleanIndex(index);
@@ -4479,7 +4480,11 @@ function itemInfo(deps, index, trigger2) {
   const namer = host.namer(store.sidecar);
   const extra = host.extra();
   const ci = commentIndex(trigger2);
-  const conditions = liveConditions(trigger2).map((c2) => conditionText(c2, namer, extra));
+  const cmp = compareOf(store, index, trigger2);
+  const conditions = liveConditions(trigger2).flatMap((c2, i) => {
+    if (cmp && cmp.rows.includes(i)) return i === cmp.rows[0] ? [`${cellLabel(cmp.x.a, namer)} is ${RELATION_WORDS[cmp.relation]} ${cellLabel(cmp.x.b, namer)}`] : [];
+    return [conditionText(c2, namer, extra)];
+  });
   const actions = liveActions(trigger2).filter((a2) => a2.type !== ActionType.Comment).map((a2) => {
     const x = counterExpansionOf(store, a2);
     if (!x) return actionText(a2, namer, extra);

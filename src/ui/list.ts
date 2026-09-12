@@ -9,7 +9,7 @@ import { check } from "../model/checks";
 import { isEud } from "../model/eud";
 import { commentIndex, isTriggerDisabled, liveActions, liveConditions, owners } from "../model/records";
 import { actionText, conditionText } from "./describe";
-import { cellLabel, counterExpansionOf } from "./expansionRows";
+import { cellLabel, compareOf, counterExpansionOf, RELATION_WORDS } from "./expansionRows";
 import type { Host } from "./host";
 import type { Store } from "./store";
 
@@ -42,7 +42,11 @@ export function itemInfo(deps: ListDeps, index: number, trigger: TriggerRecord):
   const namer = host.namer(store.sidecar);
   const extra = host.extra();
   const ci = commentIndex(trigger);
-  const conditions = liveConditions(trigger).map((c) => conditionText(c, namer, extra));
+  const cmp = compareOf(store, index, trigger);
+  const conditions = liveConditions(trigger).flatMap((c, i) => {
+    if (cmp && cmp.rows.includes(i)) return i === cmp.rows[0] ? [`${cellLabel(cmp.x.a, namer)} is ${RELATION_WORDS[cmp.relation]} ${cellLabel(cmp.x.b, namer)}`] : [];
+    return [conditionText(c, namer, extra)];
+  });
   const actions = liveActions(trigger).filter((a) => a.type !== ActionType.Comment).map((a) => {
     const x = counterExpansionOf(store, a);
     if (!x) return actionText(a, namer, extra);

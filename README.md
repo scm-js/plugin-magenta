@@ -148,6 +148,24 @@ archive, `magenta\magenta.json`. The map is a whole map without it: every trigge
 as the game reads it, and only the names, folders and the ability to rebuild the runs are
 lost. Save leaves the member in unless you tick the plugin members out in the Save dialog.
 
+## Test maps
+
+`maps/` holds four small maps that check the EUD and counter work in StarCraft: Remastered;
+`npm run maps` (which needs a sibling `scm-js` checkout, and its extracted jungle tileset for
+proper terrain) writes them again. Play each as **Use Map Settings**; the lobby marks them as
+EUD maps. Each says on screen what to look for.
+
+| Map | What it checks |
+| --- | --- |
+| `magenta-eud-1-units-dat.scx` | Whole-dword writes (Marine max HP, Player 1's minerals), word writes (Zealot shields), a masked byte at an odd address (Ghost armor), and on the beacon a weapon's damage and cooldown. |
+| `magenta-eud-2-bits-placed-units.scx` | The unit table by slot (the first placed marine gets 5 HP and invincibility, then Player 2 on the beacon), one bit of a dword (vision), a tech byte (Stim Packs), and a read of the slot's unit type. |
+| `magenta-eud-3-reads.scx` | Triggers every frame; reads of the local player, the game speed, the clock, the mouse crossing the middle of the screen, and the A key's states. |
+| `magenta-aplus-counters.scx` | A comparison (A > B) at start, a copy of A into B on the beacon, then B = 1234 and A = B: the generated runs, 153 triggers in all. |
+
+What a run of these settles, in the catalogue: the `verified` flag on each entry that worked,
+the placed-unit slot order (map 2), which way round the vision bit goes (map 2 with two
+players), and what the key states 1 and 2 mean (map 3). Nothing has been played yet.
+
 ## For other plugins
 
 - `magenta.open` (`{ index?: number }`) opens the panel on a trigger; the Classic editor's
