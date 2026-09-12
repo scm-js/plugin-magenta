@@ -1,0 +1,1809 @@
+{
+  "$comment": "Magenta's EUD catalogue. Addresses are StarCraft 1.16.1's, which Remastered's EUD layer maps; transcribed from Armoha's eud-book (MIT, see ATTRIBUTION.md) and the community's CUnit / dat layouts. `verified` means played and seen working in Remastered; nothing is verified until a map has been.",
+  "groups": [
+    "Units",
+    "Weapons",
+    "Players",
+    "Game",
+    "Placed units"
+  ],
+  "entries": [
+    {
+      "id": "unit.maxHp",
+      "kind": "both",
+      "group": "Units",
+      "name": "Max hit points of a unit type",
+      "aliases": [
+        "hp",
+        "health",
+        "hit points"
+      ],
+      "sentence": {
+        "action": "Set the max hit points of {unit} {mod} {value}",
+        "condition": "The max hit points of {unit} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "unit",
+          "kind": "unit",
+          "label": "Unit",
+          "max": 228
+        }
+      ],
+      "address": {
+        "base": "0x662350",
+        "terms": [
+          {
+            "arg": "unit",
+            "stride": 4
+          }
+        ]
+      },
+      "width": 4,
+      "value": {
+        "scale": 256,
+        "unit": "HP",
+        "min": 0,
+        "max": 16777215
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "units.dat hitpoints (eud-book)"
+    },
+    {
+      "id": "unit.maxShields",
+      "kind": "both",
+      "group": "Units",
+      "name": "Max shields of a unit type",
+      "aliases": [
+        "shield"
+      ],
+      "sentence": {
+        "action": "Set the max shields of {unit} {mod} {value}",
+        "condition": "The max shields of {unit} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "unit",
+          "kind": "unit",
+          "label": "Unit",
+          "max": 228
+        }
+      ],
+      "address": {
+        "base": "0x660E00",
+        "terms": [
+          {
+            "arg": "unit",
+            "stride": 2
+          }
+        ]
+      },
+      "width": 2,
+      "value": {
+        "unit": "shields",
+        "min": 0,
+        "max": 65535
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "units.dat shield points (eud-book)"
+    },
+    {
+      "id": "unit.armor",
+      "kind": "both",
+      "group": "Units",
+      "name": "Armor of a unit type",
+      "aliases": [
+        "armour",
+        "defense"
+      ],
+      "sentence": {
+        "action": "Set the armor of {unit} {mod} {value}",
+        "condition": "The armor of {unit} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "unit",
+          "kind": "unit",
+          "label": "Unit",
+          "max": 228
+        }
+      ],
+      "address": {
+        "base": "0x65FEC8",
+        "terms": [
+          {
+            "arg": "unit",
+            "stride": 1
+          }
+        ]
+      },
+      "width": 1,
+      "value": {
+        "min": 0,
+        "max": 255
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "units.dat armor (eud-book)"
+    },
+    {
+      "id": "unit.buildTime",
+      "kind": "both",
+      "group": "Units",
+      "name": "Build time of a unit type",
+      "aliases": [
+        "train time",
+        "morph time"
+      ],
+      "sentence": {
+        "action": "Set the build time of {unit} {mod} {value}",
+        "condition": "The build time of {unit} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "unit",
+          "kind": "unit",
+          "label": "Unit",
+          "max": 228
+        }
+      ],
+      "address": {
+        "base": "0x660428",
+        "terms": [
+          {
+            "arg": "unit",
+            "stride": 2
+          }
+        ]
+      },
+      "width": 2,
+      "value": {
+        "scale": 15,
+        "unit": "s",
+        "min": 0,
+        "max": 4369
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "units.dat build time (eud-book)",
+      "note": "Stored in frames at Normal speed: 15 per game second."
+    },
+    {
+      "id": "unit.mineralCost",
+      "kind": "both",
+      "group": "Units",
+      "name": "Mineral cost of a unit type",
+      "aliases": [
+        "price",
+        "ore cost"
+      ],
+      "sentence": {
+        "action": "Set the mineral cost of {unit} {mod} {value}",
+        "condition": "The mineral cost of {unit} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "unit",
+          "kind": "unit",
+          "label": "Unit",
+          "max": 228
+        }
+      ],
+      "address": {
+        "base": "0x663888",
+        "terms": [
+          {
+            "arg": "unit",
+            "stride": 2
+          }
+        ]
+      },
+      "width": 2,
+      "value": {
+        "unit": "minerals",
+        "min": 0,
+        "max": 65535
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "units.dat mineral cost (eud-book)"
+    },
+    {
+      "id": "unit.gasCost",
+      "kind": "both",
+      "group": "Units",
+      "name": "Gas cost of a unit type",
+      "aliases": [
+        "vespene"
+      ],
+      "sentence": {
+        "action": "Set the gas cost of {unit} {mod} {value}",
+        "condition": "The gas cost of {unit} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "unit",
+          "kind": "unit",
+          "label": "Unit",
+          "max": 228
+        }
+      ],
+      "address": {
+        "base": "0x65FD00",
+        "terms": [
+          {
+            "arg": "unit",
+            "stride": 2
+          }
+        ]
+      },
+      "width": 2,
+      "value": {
+        "unit": "gas",
+        "min": 0,
+        "max": 65535
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "units.dat gas cost (eud-book)"
+    },
+    {
+      "id": "unit.supplyRequired",
+      "kind": "both",
+      "group": "Units",
+      "name": "Supply used by a unit type",
+      "aliases": [
+        "food",
+        "psi",
+        "control"
+      ],
+      "sentence": {
+        "action": "Set the supply used by {unit} {mod} {value}",
+        "condition": "The supply used by {unit} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "unit",
+          "kind": "unit",
+          "label": "Unit",
+          "max": 228
+        }
+      ],
+      "address": {
+        "base": "0x663CE8",
+        "terms": [
+          {
+            "arg": "unit",
+            "stride": 1
+          }
+        ]
+      },
+      "width": 1,
+      "value": {
+        "scale": 2,
+        "unit": "supply",
+        "min": 0,
+        "max": 127
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "units.dat supply required (eud-book)",
+      "note": "Stored in halves: a Zergling is 1."
+    },
+    {
+      "id": "unit.supplyProvided",
+      "kind": "both",
+      "group": "Units",
+      "name": "Supply provided by a unit type",
+      "sentence": {
+        "action": "Set the supply provided by {unit} {mod} {value}",
+        "condition": "The supply provided by {unit} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "unit",
+          "kind": "unit",
+          "label": "Unit",
+          "max": 228
+        }
+      ],
+      "address": {
+        "base": "0x6646C8",
+        "terms": [
+          {
+            "arg": "unit",
+            "stride": 1
+          }
+        ]
+      },
+      "width": 1,
+      "value": {
+        "scale": 2,
+        "unit": "supply",
+        "min": 0,
+        "max": 127
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "units.dat supply provided (eud-book)",
+      "note": "Stored in halves."
+    },
+    {
+      "id": "unit.sightRange",
+      "kind": "both",
+      "group": "Units",
+      "name": "Sight range of a unit type",
+      "aliases": [
+        "vision range"
+      ],
+      "sentence": {
+        "action": "Set the sight range of {unit} {mod} {value}",
+        "condition": "The sight range of {unit} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "unit",
+          "kind": "unit",
+          "label": "Unit",
+          "max": 228
+        }
+      ],
+      "address": {
+        "base": "0x663238",
+        "terms": [
+          {
+            "arg": "unit",
+            "stride": 1
+          }
+        ]
+      },
+      "width": 1,
+      "value": {
+        "unit": "tiles",
+        "min": 0,
+        "max": 11
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "units.dat sight range (eud-book)",
+      "note": "The game caps sight at 11 tiles."
+    },
+    {
+      "id": "unit.seekRange",
+      "kind": "both",
+      "group": "Units",
+      "name": "Target acquisition range of a unit type",
+      "aliases": [
+        "acquire range",
+        "aggro"
+      ],
+      "sentence": {
+        "action": "Set the target acquisition range of {unit} {mod} {value}",
+        "condition": "The target acquisition range of {unit} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "unit",
+          "kind": "unit",
+          "label": "Unit",
+          "max": 228
+        }
+      ],
+      "address": {
+        "base": "0x662DB8",
+        "terms": [
+          {
+            "arg": "unit",
+            "stride": 1
+          }
+        ]
+      },
+      "width": 1,
+      "value": {
+        "unit": "tiles",
+        "min": 0,
+        "max": 255
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "units.dat target acquisition range (eud-book)"
+    },
+    {
+      "id": "unit.groundWeapon",
+      "kind": "both",
+      "group": "Units",
+      "name": "Ground weapon of a unit type",
+      "aliases": [
+        "attack"
+      ],
+      "sentence": {
+        "action": "Set the ground weapon of {unit} to {value}",
+        "condition": "The ground weapon of {unit} is {value}"
+      },
+      "args": [
+        {
+          "name": "unit",
+          "kind": "unit",
+          "label": "Unit",
+          "max": 228
+        }
+      ],
+      "address": {
+        "base": "0x6636B8",
+        "terms": [
+          {
+            "arg": "unit",
+            "stride": 1
+          }
+        ]
+      },
+      "width": 1,
+      "value": {
+        "kind": "weapon",
+        "min": 0,
+        "max": 130
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "units.dat ground weapon (eud-book)",
+      "note": "130 is no weapon."
+    },
+    {
+      "id": "unit.airWeapon",
+      "kind": "both",
+      "group": "Units",
+      "name": "Air weapon of a unit type",
+      "sentence": {
+        "action": "Set the air weapon of {unit} to {value}",
+        "condition": "The air weapon of {unit} is {value}"
+      },
+      "args": [
+        {
+          "name": "unit",
+          "kind": "unit",
+          "label": "Unit",
+          "max": 228
+        }
+      ],
+      "address": {
+        "base": "0x6616E0",
+        "terms": [
+          {
+            "arg": "unit",
+            "stride": 1
+          }
+        ]
+      },
+      "width": 1,
+      "value": {
+        "kind": "weapon",
+        "min": 0,
+        "max": 130
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "units.dat air weapon (eud-book)",
+      "note": "130 is no weapon."
+    },
+    {
+      "id": "weapon.damage",
+      "kind": "both",
+      "group": "Weapons",
+      "name": "Damage of a weapon",
+      "aliases": [
+        "attack damage",
+        "dmg"
+      ],
+      "sentence": {
+        "action": "Set the damage of {weapon} {mod} {value}",
+        "condition": "The damage of {weapon} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "weapon",
+          "kind": "weapon",
+          "label": "Weapon",
+          "max": 130
+        }
+      ],
+      "address": {
+        "base": "0x656EB0",
+        "terms": [
+          {
+            "arg": "weapon",
+            "stride": 2
+          }
+        ]
+      },
+      "width": 2,
+      "value": {
+        "min": 0,
+        "max": 65535
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "weapons.dat damage amount (eud-book)"
+    },
+    {
+      "id": "weapon.bonus",
+      "kind": "both",
+      "group": "Weapons",
+      "name": "Damage bonus per upgrade of a weapon",
+      "aliases": [
+        "upgrade bonus"
+      ],
+      "sentence": {
+        "action": "Set the damage bonus per upgrade of {weapon} {mod} {value}",
+        "condition": "The damage bonus per upgrade of {weapon} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "weapon",
+          "kind": "weapon",
+          "label": "Weapon",
+          "max": 130
+        }
+      ],
+      "address": {
+        "base": "0x657678",
+        "terms": [
+          {
+            "arg": "weapon",
+            "stride": 2
+          }
+        ]
+      },
+      "width": 2,
+      "value": {
+        "min": 0,
+        "max": 65535
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "weapons.dat damage bonus (eud-book)"
+    },
+    {
+      "id": "weapon.cooldown",
+      "kind": "both",
+      "group": "Weapons",
+      "name": "Cooldown of a weapon",
+      "aliases": [
+        "attack speed",
+        "rate of fire"
+      ],
+      "sentence": {
+        "action": "Set the cooldown of {weapon} {mod} {value}",
+        "condition": "The cooldown of {weapon} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "weapon",
+          "kind": "weapon",
+          "label": "Weapon",
+          "max": 130
+        }
+      ],
+      "address": {
+        "base": "0x656FB8",
+        "terms": [
+          {
+            "arg": "weapon",
+            "stride": 1
+          }
+        ]
+      },
+      "width": 1,
+      "value": {
+        "unit": "frames",
+        "min": 0,
+        "max": 255
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "weapons.dat cooldown (eud-book)"
+    },
+    {
+      "id": "weapon.factor",
+      "kind": "both",
+      "group": "Weapons",
+      "name": "Damage factor of a weapon",
+      "aliases": [
+        "hits per attack"
+      ],
+      "sentence": {
+        "action": "Set the damage factor of {weapon} {mod} {value}",
+        "condition": "The damage factor of {weapon} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "weapon",
+          "kind": "weapon",
+          "label": "Weapon",
+          "max": 130
+        }
+      ],
+      "address": {
+        "base": "0x6564E0",
+        "terms": [
+          {
+            "arg": "weapon",
+            "stride": 1
+          }
+        ]
+      },
+      "width": 1,
+      "value": {
+        "min": 0,
+        "max": 255
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "weapons.dat damage factor (eud-book)",
+      "note": "How many times the damage lands per attack: 2 for a Goliath's or Zealot's."
+    },
+    {
+      "id": "weapon.range",
+      "kind": "both",
+      "group": "Weapons",
+      "name": "Range of a weapon",
+      "aliases": [
+        "attack range",
+        "max range"
+      ],
+      "sentence": {
+        "action": "Set the range of {weapon} {mod} {value}",
+        "condition": "The range of {weapon} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "weapon",
+          "kind": "weapon",
+          "label": "Weapon",
+          "max": 130
+        }
+      ],
+      "address": {
+        "base": "0x657470",
+        "terms": [
+          {
+            "arg": "weapon",
+            "stride": 4
+          }
+        ]
+      },
+      "width": 4,
+      "value": {
+        "unit": "pixels",
+        "min": 0,
+        "max": 4294967295
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "weapons.dat maximum range (eud-book)",
+      "note": "In pixels: 32 per tile."
+    },
+    {
+      "id": "weapon.minRange",
+      "kind": "both",
+      "group": "Weapons",
+      "name": "Minimum range of a weapon",
+      "sentence": {
+        "action": "Set the minimum range of {weapon} {mod} {value}",
+        "condition": "The minimum range of {weapon} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "weapon",
+          "kind": "weapon",
+          "label": "Weapon",
+          "max": 130
+        }
+      ],
+      "address": {
+        "base": "0x656A18",
+        "terms": [
+          {
+            "arg": "weapon",
+            "stride": 4
+          }
+        ]
+      },
+      "width": 4,
+      "value": {
+        "unit": "pixels",
+        "min": 0,
+        "max": 4294967295
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "weapons.dat minimum range (eud-book)",
+      "note": "In pixels: 32 per tile."
+    },
+    {
+      "id": "player.minerals",
+      "kind": "both",
+      "group": "Players",
+      "name": "Minerals of a player",
+      "aliases": [
+        "ore",
+        "money"
+      ],
+      "sentence": {
+        "action": "Set the minerals of {player} {mod} {value}",
+        "condition": "The minerals of {player} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "player",
+          "kind": "player",
+          "label": "Player",
+          "max": 12
+        }
+      ],
+      "address": {
+        "base": "0x57F0F0",
+        "terms": [
+          {
+            "arg": "player",
+            "stride": 4
+          }
+        ]
+      },
+      "width": 4,
+      "value": {
+        "unit": "minerals",
+        "min": 0,
+        "max": 4294967295
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "player minerals (eud-book)",
+      "note": "The same number Set Resources changes, without the resource counter's sound."
+    },
+    {
+      "id": "player.gas",
+      "kind": "both",
+      "group": "Players",
+      "name": "Gas of a player",
+      "aliases": [
+        "vespene"
+      ],
+      "sentence": {
+        "action": "Set the gas of {player} {mod} {value}",
+        "condition": "The gas of {player} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "player",
+          "kind": "player",
+          "label": "Player",
+          "max": 12
+        }
+      ],
+      "address": {
+        "base": "0x57F120",
+        "terms": [
+          {
+            "arg": "player",
+            "stride": 4
+          }
+        ]
+      },
+      "width": 4,
+      "value": {
+        "unit": "gas",
+        "min": 0,
+        "max": 4294967295
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "player gas (eud-book)"
+    },
+    {
+      "id": "player.upgradeLevel",
+      "kind": "both",
+      "group": "Players",
+      "name": "Upgrade level of a player",
+      "aliases": [
+        "research level",
+        "armor level",
+        "weapons level"
+      ],
+      "sentence": {
+        "action": "Set the level of {upgrade} for {player} {mod} {value}",
+        "condition": "The level of {upgrade} for {player} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "player",
+          "kind": "player",
+          "label": "Player",
+          "max": 12
+        },
+        {
+          "name": "upgrade",
+          "kind": "upgrade",
+          "label": "Upgrade",
+          "max": 46
+        }
+      ],
+      "address": {
+        "base": "0x58D2B0",
+        "terms": [
+          {
+            "arg": "player",
+            "stride": 46
+          },
+          {
+            "arg": "upgrade",
+            "stride": 1
+          }
+        ]
+      },
+      "width": 1,
+      "value": {
+        "min": 0,
+        "max": 255
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "current upgrade level, the 46 original upgrades (eud-book)",
+      "note": "The Brood War upgrades (46 and up) live in a second table this entry does not reach."
+    },
+    {
+      "id": "player.techResearched",
+      "kind": "both",
+      "group": "Players",
+      "name": "Technology researched by a player",
+      "aliases": [
+        "research",
+        "tech"
+      ],
+      "sentence": {
+        "action": "Set {tech} for {player} to {value}",
+        "condition": "{tech} for {player} is {value}"
+      },
+      "args": [
+        {
+          "name": "player",
+          "kind": "player",
+          "label": "Player",
+          "max": 12
+        },
+        {
+          "name": "tech",
+          "kind": "tech",
+          "label": "Technology",
+          "max": 24
+        }
+      ],
+      "address": {
+        "base": "0x58CF44",
+        "terms": [
+          {
+            "arg": "player",
+            "stride": 24
+          },
+          {
+            "arg": "tech",
+            "stride": 1
+          }
+        ]
+      },
+      "width": 1,
+      "value": {
+        "choices": [
+          {
+            "value": 0,
+            "label": "not researched"
+          },
+          {
+            "value": 1,
+            "label": "researched"
+          }
+        ]
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "tech researched, the 24 original technologies (eud-book)",
+      "note": "The Brood War technologies (24 and up) live in a second table this entry does not reach."
+    },
+    {
+      "id": "player.alliance",
+      "kind": "both",
+      "group": "Players",
+      "name": "Alliance of a player toward another",
+      "aliases": [
+        "ally",
+        "enemy",
+        "allied victory"
+      ],
+      "sentence": {
+        "action": "Set the stance of {player} toward {other} to {value}",
+        "condition": "The stance of {player} toward {other} is {value}"
+      },
+      "args": [
+        {
+          "name": "player",
+          "kind": "player",
+          "label": "Player",
+          "max": 12
+        },
+        {
+          "name": "other",
+          "kind": "player",
+          "label": "Toward",
+          "max": 12
+        }
+      ],
+      "address": {
+        "base": "0x58D6F8",
+        "terms": [
+          {
+            "arg": "player",
+            "stride": 12
+          },
+          {
+            "arg": "other",
+            "stride": 1
+          }
+        ]
+      },
+      "width": 1,
+      "value": {
+        "choices": [
+          {
+            "value": 0,
+            "label": "enemy"
+          },
+          {
+            "value": 1,
+            "label": "ally"
+          },
+          {
+            "value": 2,
+            "label": "allied victory"
+          }
+        ]
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "player alliances (eud-book)",
+      "note": "As a condition this reads what Set Alliance Status wrote; the game has no native way to test it."
+    },
+    {
+      "id": "player.vision",
+      "kind": "both",
+      "group": "Players",
+      "name": "Shared vision between players",
+      "aliases": [
+        "share vision",
+        "map reveal"
+      ],
+      "sentence": {
+        "action": "Set vision of {player} for {other} to {value}",
+        "condition": "Vision of {player} for {other} is {value}"
+      },
+      "args": [
+        {
+          "name": "player",
+          "kind": "player",
+          "label": "Player",
+          "max": 12
+        },
+        {
+          "name": "other",
+          "kind": "player",
+          "label": "Seen by",
+          "max": 12
+        }
+      ],
+      "address": {
+        "base": "0x57F1EC",
+        "terms": [
+          {
+            "arg": "player",
+            "stride": 4
+          }
+        ]
+      },
+      "width": "bit",
+      "bit": {
+        "arg": "other"
+      },
+      "value": {
+        "choices": [
+          {
+            "value": 0,
+            "label": "off"
+          },
+          {
+            "value": 1,
+            "label": "on"
+          }
+        ]
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "player vision bits (eud-book)",
+      "note": "Which way round the two players go is not yet verified in game."
+    },
+    {
+      "id": "game.speed",
+      "kind": "both",
+      "group": "Game",
+      "name": "Game speed",
+      "sentence": {
+        "action": "Set the game speed to {value}",
+        "condition": "The game speed is {value}"
+      },
+      "args": [],
+      "address": {
+        "base": "0x6CDFD4"
+      },
+      "width": 4,
+      "value": {
+        "choices": [
+          {
+            "value": 0,
+            "label": "Slowest"
+          },
+          {
+            "value": 1,
+            "label": "Slower"
+          },
+          {
+            "value": 2,
+            "label": "Slow"
+          },
+          {
+            "value": 3,
+            "label": "Normal"
+          },
+          {
+            "value": 4,
+            "label": "Fast"
+          },
+          {
+            "value": 5,
+            "label": "Faster"
+          },
+          {
+            "value": 6,
+            "label": "Fastest"
+          }
+        ]
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "game speed (eud-book)"
+    },
+    {
+      "id": "game.elapsed",
+      "kind": "condition",
+      "group": "Game",
+      "name": "Elapsed game time in seconds",
+      "aliases": [
+        "clock",
+        "timer"
+      ],
+      "sentence": {
+        "condition": "The game clock is {cmp} {value}"
+      },
+      "args": [],
+      "address": {
+        "base": "0x58D6F4"
+      },
+      "width": 4,
+      "value": {
+        "unit": "s",
+        "min": 0,
+        "max": 4294967295
+      },
+      "remastered": {
+        "read": true,
+        "write": false
+      },
+      "source": "elapsed game seconds (eud-book)",
+      "note": "The same clock the Elapsed Time condition reads; here for arithmetic with counters."
+    },
+    {
+      "id": "game.triggerTimer",
+      "kind": "both",
+      "group": "Game",
+      "name": "Trigger timer",
+      "aliases": [
+        "every frame",
+        "turbo",
+        "trigger cycle"
+      ],
+      "sentence": {
+        "action": "Set the trigger timer {mod} {value}",
+        "condition": "The trigger timer is {cmp} {value}"
+      },
+      "args": [],
+      "address": {
+        "base": "0x6509A0"
+      },
+      "width": 4,
+      "value": {
+        "unit": "frames",
+        "min": 0,
+        "max": 4294967295
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "trigger cycle countdown (eud-book)",
+      "note": "Frames until the next trigger cycle. Setting it to 0 at the end of every cycle runs triggers every frame — the every-frame switch in the ⋯ menu does exactly that."
+    },
+    {
+      "id": "game.localPlayer",
+      "kind": "condition",
+      "group": "Game",
+      "name": "Local player",
+      "aliases": [
+        "viewing player",
+        "me"
+      ],
+      "sentence": {
+        "condition": "The player at this computer is {value}"
+      },
+      "args": [],
+      "address": {
+        "base": "0x512684"
+      },
+      "width": 4,
+      "value": {
+        "kind": "player",
+        "min": 0,
+        "max": 11
+      },
+      "remastered": {
+        "read": true,
+        "write": false
+      },
+      "source": "local player id (eud-book)",
+      "note": "Differs per computer: what follows runs for that player's screen only, so keep it to text, sounds and the view."
+    },
+    {
+      "id": "game.mouseX",
+      "kind": "condition",
+      "group": "Game",
+      "name": "Mouse X on screen",
+      "aliases": [
+        "cursor",
+        "pointer"
+      ],
+      "sentence": {
+        "condition": "The mouse's X on screen is {cmp} {value}"
+      },
+      "args": [],
+      "address": {
+        "base": "0x6CDDC4"
+      },
+      "width": 2,
+      "value": {
+        "unit": "pixels",
+        "min": 0,
+        "max": 65535
+      },
+      "remastered": {
+        "read": true,
+        "write": false
+      },
+      "source": "mouse position (eud-book)",
+      "note": "Local to each computer, like the local player."
+    },
+    {
+      "id": "game.mouseY",
+      "kind": "condition",
+      "group": "Game",
+      "name": "Mouse Y on screen",
+      "sentence": {
+        "condition": "The mouse's Y on screen is {cmp} {value}"
+      },
+      "args": [],
+      "address": {
+        "base": "0x6CDDC6"
+      },
+      "width": 2,
+      "value": {
+        "unit": "pixels",
+        "min": 0,
+        "max": 65535
+      },
+      "remastered": {
+        "read": true,
+        "write": false
+      },
+      "source": "mouse position (eud-book)",
+      "note": "Local to each computer, like the local player."
+    },
+    {
+      "id": "game.screenX",
+      "kind": "condition",
+      "group": "Game",
+      "name": "Screen X on the map",
+      "aliases": [
+        "camera",
+        "scroll"
+      ],
+      "sentence": {
+        "condition": "The screen's left edge on the map is {cmp} {value}"
+      },
+      "args": [],
+      "address": {
+        "base": "0x62848C"
+      },
+      "width": 4,
+      "value": {
+        "unit": "pixels",
+        "min": 0,
+        "max": 4294967295
+      },
+      "remastered": {
+        "read": true,
+        "write": false
+      },
+      "source": "screen position (eud-book)",
+      "note": "Local to each computer. Center View moves it natively."
+    },
+    {
+      "id": "game.screenY",
+      "kind": "condition",
+      "group": "Game",
+      "name": "Screen Y on the map",
+      "sentence": {
+        "condition": "The screen's top edge on the map is {cmp} {value}"
+      },
+      "args": [],
+      "address": {
+        "base": "0x6284A8"
+      },
+      "width": 4,
+      "value": {
+        "unit": "pixels",
+        "min": 0,
+        "max": 4294967295
+      },
+      "remastered": {
+        "read": true,
+        "write": false
+      },
+      "source": "screen position (eud-book)",
+      "note": "Local to each computer. Center View moves it natively."
+    },
+    {
+      "id": "game.key",
+      "kind": "condition",
+      "group": "Game",
+      "name": "Keyboard key state",
+      "aliases": [
+        "keyboard",
+        "key press",
+        "hotkey"
+      ],
+      "sentence": {
+        "condition": "The {key} key is {value}"
+      },
+      "args": [
+        {
+          "name": "key",
+          "kind": "key",
+          "label": "Key",
+          "max": 256
+        }
+      ],
+      "address": {
+        "base": "0x596A18",
+        "terms": [
+          {
+            "arg": "key",
+            "stride": 1
+          }
+        ]
+      },
+      "width": 1,
+      "value": {
+        "choices": [
+          {
+            "value": 0,
+            "label": "up"
+          },
+          {
+            "value": 1,
+            "label": "pressed"
+          },
+          {
+            "value": 2,
+            "label": "held"
+          },
+          {
+            "value": 3,
+            "label": "released"
+          }
+        ]
+      },
+      "remastered": {
+        "read": true,
+        "write": false
+      },
+      "source": "keyboard state array (eud-book)",
+      "note": "Local to each computer. Needs triggers running every frame to catch a press; the four states are as the community documents them and not yet verified here."
+    },
+    {
+      "id": "cunit.hp",
+      "kind": "both",
+      "group": "Placed units",
+      "name": "Hit points of a placed unit",
+      "aliases": [
+        "hp",
+        "health"
+      ],
+      "sentence": {
+        "action": "Set the hit points of placed unit {index} {mod} {value}",
+        "condition": "The hit points of placed unit {index} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "index",
+          "kind": "unitIndex",
+          "label": "Placed unit",
+          "max": 1700
+        }
+      ],
+      "address": {
+        "base": "0x59CCB0",
+        "terms": [
+          {
+            "arg": "index",
+            "stride": 336
+          }
+        ]
+      },
+      "width": 4,
+      "value": {
+        "scale": 256,
+        "unit": "HP",
+        "min": 0,
+        "max": 16777215
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "CUnit table 0x59CCA8, hitPoints at +0x08 (eud-book)",
+      "note": "Placed units take the table's slots in map order, so the unit's number in the map is its slot; that order is not yet verified in game."
+    },
+    {
+      "id": "cunit.shields",
+      "kind": "both",
+      "group": "Placed units",
+      "name": "Shields of a placed unit",
+      "sentence": {
+        "action": "Set the shields of placed unit {index} {mod} {value}",
+        "condition": "The shields of placed unit {index} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "index",
+          "kind": "unitIndex",
+          "label": "Placed unit",
+          "max": 1700
+        }
+      ],
+      "address": {
+        "base": "0x59CD08",
+        "terms": [
+          {
+            "arg": "index",
+            "stride": 336
+          }
+        ]
+      },
+      "width": 4,
+      "value": {
+        "scale": 256,
+        "unit": "shields",
+        "min": 0,
+        "max": 16777215
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "CUnit shieldPoints at +0x60 (eud-book)",
+      "note": "Slot order as for hit points."
+    },
+    {
+      "id": "cunit.energy",
+      "kind": "both",
+      "group": "Placed units",
+      "name": "Energy of a placed unit",
+      "aliases": [
+        "mana"
+      ],
+      "sentence": {
+        "action": "Set the energy of placed unit {index} {mod} {value}",
+        "condition": "The energy of placed unit {index} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "index",
+          "kind": "unitIndex",
+          "label": "Placed unit",
+          "max": 1700
+        }
+      ],
+      "address": {
+        "base": "0x59CD4A",
+        "terms": [
+          {
+            "arg": "index",
+            "stride": 336
+          }
+        ]
+      },
+      "width": 2,
+      "value": {
+        "scale": 256,
+        "unit": "energy",
+        "min": 0,
+        "max": 255
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "CUnit energy at +0xA2 (community CUnit layout)",
+      "note": "Slot order as for hit points."
+    },
+    {
+      "id": "cunit.owner",
+      "kind": "both",
+      "group": "Placed units",
+      "name": "Owner of a placed unit",
+      "aliases": [
+        "player of unit"
+      ],
+      "sentence": {
+        "action": "Set the owner of placed unit {index} to {value}",
+        "condition": "The owner of placed unit {index} is {value}"
+      },
+      "args": [
+        {
+          "name": "index",
+          "kind": "unitIndex",
+          "label": "Placed unit",
+          "max": 1700
+        }
+      ],
+      "address": {
+        "base": "0x59CCF4",
+        "terms": [
+          {
+            "arg": "index",
+            "stride": 336
+          }
+        ]
+      },
+      "width": 1,
+      "value": {
+        "kind": "player",
+        "min": 0,
+        "max": 11
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "CUnit playerID at +0x4C (eud-book)",
+      "note": "Changes the owner byte only: the unit keeps its selection and control groups. Give Units is the clean way."
+    },
+    {
+      "id": "cunit.type",
+      "kind": "condition",
+      "group": "Placed units",
+      "name": "Type of a placed unit",
+      "sentence": {
+        "condition": "Placed unit {index} is {value}"
+      },
+      "args": [
+        {
+          "name": "index",
+          "kind": "unitIndex",
+          "label": "Placed unit",
+          "max": 1700
+        }
+      ],
+      "address": {
+        "base": "0x59CD0C",
+        "terms": [
+          {
+            "arg": "index",
+            "stride": 336
+          }
+        ]
+      },
+      "width": 2,
+      "value": {
+        "kind": "unit",
+        "min": 0,
+        "max": 227
+      },
+      "remastered": {
+        "read": true,
+        "write": false
+      },
+      "source": "CUnit unitType at +0x64 (eud-book)"
+    },
+    {
+      "id": "cunit.x",
+      "kind": "condition",
+      "group": "Placed units",
+      "name": "X position of a placed unit",
+      "sentence": {
+        "condition": "The X of placed unit {index} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "index",
+          "kind": "unitIndex",
+          "label": "Placed unit",
+          "max": 1700
+        }
+      ],
+      "address": {
+        "base": "0x59CCD0",
+        "terms": [
+          {
+            "arg": "index",
+            "stride": 336
+          }
+        ]
+      },
+      "width": 2,
+      "value": {
+        "unit": "pixels",
+        "min": 0,
+        "max": 65535
+      },
+      "remastered": {
+        "read": true,
+        "write": false
+      },
+      "source": "CUnit position.x at +0x28 (eud-book)",
+      "note": "Map pixels: 32 per tile."
+    },
+    {
+      "id": "cunit.y",
+      "kind": "condition",
+      "group": "Placed units",
+      "name": "Y position of a placed unit",
+      "sentence": {
+        "condition": "The Y of placed unit {index} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "index",
+          "kind": "unitIndex",
+          "label": "Placed unit",
+          "max": 1700
+        }
+      ],
+      "address": {
+        "base": "0x59CCD2",
+        "terms": [
+          {
+            "arg": "index",
+            "stride": 336
+          }
+        ]
+      },
+      "width": 2,
+      "value": {
+        "unit": "pixels",
+        "min": 0,
+        "max": 65535
+      },
+      "remastered": {
+        "read": true,
+        "write": false
+      },
+      "source": "CUnit position.y at +0x2A (eud-book)",
+      "note": "Map pixels: 32 per tile."
+    },
+    {
+      "id": "cunit.invincible",
+      "kind": "both",
+      "group": "Placed units",
+      "name": "Invincibility of a placed unit",
+      "sentence": {
+        "action": "Set invincibility of placed unit {index} to {value}",
+        "condition": "Invincibility of placed unit {index} is {value}"
+      },
+      "args": [
+        {
+          "name": "index",
+          "kind": "unitIndex",
+          "label": "Placed unit",
+          "max": 1700
+        }
+      ],
+      "address": {
+        "base": "0x59CD84",
+        "terms": [
+          {
+            "arg": "index",
+            "stride": 336
+          }
+        ]
+      },
+      "width": "bit",
+      "bit": 26,
+      "value": {
+        "choices": [
+          {
+            "value": 0,
+            "label": "off"
+          },
+          {
+            "value": 1,
+            "label": "on"
+          }
+        ]
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "CUnit statusFlags at +0xDC, bit 26 (community CUnit layout)"
+    },
+    {
+      "id": "cunit.hallucination",
+      "kind": "both",
+      "group": "Placed units",
+      "name": "Hallucination flag of a placed unit",
+      "sentence": {
+        "action": "Set the hallucination flag of placed unit {index} to {value}",
+        "condition": "The hallucination flag of placed unit {index} is {value}"
+      },
+      "args": [
+        {
+          "name": "index",
+          "kind": "unitIndex",
+          "label": "Placed unit",
+          "max": 1700
+        }
+      ],
+      "address": {
+        "base": "0x59CD84",
+        "terms": [
+          {
+            "arg": "index",
+            "stride": 336
+          }
+        ]
+      },
+      "width": "bit",
+      "bit": 30,
+      "value": {
+        "choices": [
+          {
+            "value": 0,
+            "label": "off"
+          },
+          {
+            "value": 1,
+            "label": "on"
+          }
+        ]
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "CUnit statusFlags at +0xDC, bit 30 (community CUnit layout)",
+      "note": "A hallucinated unit takes double damage and deals none."
+    },
+    {
+      "id": "cunit.cloaked",
+      "kind": "condition",
+      "group": "Placed units",
+      "name": "Cloak state of a placed unit",
+      "sentence": {
+        "condition": "The cloak of placed unit {index} is {value}"
+      },
+      "args": [
+        {
+          "name": "index",
+          "kind": "unitIndex",
+          "label": "Placed unit",
+          "max": 1700
+        }
+      ],
+      "address": {
+        "base": "0x59CD84",
+        "terms": [
+          {
+            "arg": "index",
+            "stride": 336
+          }
+        ]
+      },
+      "width": "bit",
+      "bit": 9,
+      "value": {
+        "choices": [
+          {
+            "value": 0,
+            "label": "off"
+          },
+          {
+            "value": 1,
+            "label": "on"
+          }
+        ]
+      },
+      "remastered": {
+        "read": true,
+        "write": false
+      },
+      "source": "CUnit statusFlags at +0xDC, bit 9 (community CUnit layout)"
+    }
+  ]
+}

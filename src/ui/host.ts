@@ -1,0 +1,206 @@
+/**
+ * The seam between the panel and the editor: everything the UI asks of the map goes
+ * through here, so the rest of `ui/` knows records, names and a few verbs, not the API.
+ */
+import type { PluginApi, TriggerRecord, Rect } from "@scm-js/plugin-api";
+import { PLAYER_GROUP_COUNT } from "../../vendor/triggers";
+import type { Namer } from "../model/names";
+import { addressOf } from "../model/eud";
+import { keyLabel } from "../model/eudSentence";
+import { decodeSidecar, encodeSidecar, MEMBER, type Sidecar } from "../model/sidecar";
+
+export interface NamedItem {
+  value: number;
+  label: string;
+  hint?: string;
+}
+
+export class Host {
+  readonly api: PluginApi;
+  private sidecarCache: { bytes: Uint8Array | null; value: Sidecar } | null = null;
+
+  constructor(api: PluginApi) {
+    this.api = api;
+  }
+
+  isOpen(): boolean {
+    return this.api.document.isOpen();
+  }
+
+  /* ── Reading ── */
+
+  triggers(): TriggerRecord[] {
+    return this.api.triggers.list();
+  }
+
+  strings(): (string | null)[] {
+    return this.api.document.scenario()?.strings.strings ?? [null];
+  }
+
+  string(index: number): string | null {
+    return this.api.names.string(index);
+  }
+
+  /** The namer the sentences read through: the map's names, the game's, and the sidecar's counters. */
+  namer(sidecar: Sidecar): Namer {
+    const names = this.api.triggers.names();
+    const players = this.api.settings.players();
+    return {
+      unit: (id) => names.unit(id),
+      location: (n) => (n === 0 ? "no location" : names.location(n)),
+      switch: (i) => names.switch(i),
+      string: (i) => names.string(i),
+      player: (v) => (v >= PLAYER_GROUP_COUNT ? `memory at 0x${addressOf(v).toString(16).toUpperCase()}` : this.api.names.playerGroup(v)),
+      playerColor: (v) => (v < 12 ? players[v]?.colorHex ?? null : null),
+      aiScript: (code) => this.api.names.aiScript(code),
+      wav: (i) => (i === 0 ? "no sound" : (names.string(i) ?? `sound ${i}`).split("\\").pop() ?? `sound ${i}`),
+      choice: (kind, value) => this.api.triggers.defs.choiceLabel(kind as never, value),
+      counter: (player, unit) => sidecar.counters.find((c) => c.player === player && c.unit === unit)?.name ?? null,
+    };
+  }
+
+  extra() {
+    const w = new Map(this.api.names.weapons().map((n) => [n.value, n.label]));
+    const u = new Map(this.api.names.upgrades().map((n) => [n.value, n.label]));
+    const t = new Map(this.api.names.techs().map((n) => [n.value, n.label]));
+    return {
+      weapon: (id: number) => (id === 130 ? "no weapon" : w.get(id) ?? `weapon ${id}`),
+      upgrade: (id: number) => u.get(id) ?? `upgrade ${id}`,
+      tech: (id: number) => t.get(id) ?? `technology ${id}`,
+      key: keyLabel,
+    };
+  }
+
+  units(): NamedItem[] {
+    const names = this.api.triggers.names();
+    return this.api.names.units().map((n) => ({ value: n.value, label: names.unit(n.value), hint: n.value >= 228 ? "" : n.label !== names.unit(n.value) ? n.label : undefined }));
+  }
+
+  weapons(): NamedItem[] { return this.api.names.weapons(); }
+  upgrades(): NamedItem[] { return this.api.names.upgrades(); }
+  techs(): NamedItem[] { return this.api.names.techs(); }
+
+  playerGroups(): NamedItem[] {
+    return this.api.names.playerGroups();
+  }
+
+  /** The 12 player slots with their names, colours and kinds, for the player chip. */
+  players(): { slot: number; label: string; color: string | null; type: string }[] {
+    return this.api.settings.players().map((p) => ({ slot: p.slot, label: this.api.names.playerGroup(p.slot), color: p.colorHex, type: p.typeName }));
+  }
+
+  /** Locations that exist, by 1-based number, plus Anywhere. */
+  locations(): NamedItem[] {
+    const scn = this.api.document.scenario();
+    if (!scn) return [];
+    const names = this.api.triggers.names();
+    const out: NamedItem[] = [];
+    scn.locations.forEach((l, i) => {
+      const n = i + 1;
+      if (i === 63 || l.left !== l.right || l.top !== l.bottom) out.push({ value: n, label: names.location(n), hint: i === 63 ? "" : `${Math.floor(l.left / 32)},${Math.floor(l.top / 32)}` });
+    });
+    return out;
+  }
+
+  locationExists(n: number): boolean {
+    const scn = this.api.document.scenario();
+    if (!scn) return true;
+    const l = scn.locations[n - 1];
+    return !!l && (n === 64 || l.left !== l.right || l.top !== l.bottom);
+  }
+
+  locationRect(n: number): Rect | null {
+    const l = this.api.document.scenario()?.locations[n - 1];
+    if (!l) return null;
+    return { x0: Math.floor(Math.min(l.left, l.right) / 32), y0: Math.floor(Math.min(l.top, l.bottom) / 32), x1: Math.ceil(Math.max(l.left, l.right) / 32), y1: Math.ceil(Math.max(l.top, l.bottom) / 32) };
+  }
+
+  switches(): NamedItem[] {
+    return this.api.triggers.switchNames().map((label, value) => ({ value, label }));
+  }
+
+  sounds(): NamedItem[] {
+    return this.api.settings.sounds().map((s) => ({ value: s.stringIndex, label: s.path.split("\\").pop() ?? s.path, hint: s.present ? undefined : "missing" }));
+  }
+
+  wavPresent(index: number): boolean {
+    const row = this.api.settings.sounds().find((s) => s.stringIndex === index);
+    return !row || row.present;
+  }
+
+  stringExists(index: number): boolean {
+    return index === 0 || this.api.names.string(index) !== null;
+  }
+
+  placedUnitIds(): Set<number> {
+    return new Set((this.api.document.scenario()?.units ?? []).map((u) => u.unitId));
+  }
+
+  /** The placed units in map order, for the placed-unit chip. */
+  placedUnits(): { index: number; unitId: number; owner: number; x: number; y: number }[] {
+    return (this.api.document.scenario()?.units ?? []).map((u, index) => ({ index, unitId: u.unitId, owner: u.owner, x: u.x, y: u.y }));
+  }
+
+  claims(list?: TriggerRecord[]) {
+    return this.api.triggers.claims(list);
+  }
+
+  /* ── The map ── */
+
+  async pickLocation(prompt: string): Promise<number | null> {
+    const picked = await this.api.ui.pickObject({ kinds: ["location"], prompt });
+    return picked ? picked.index + 1 : null;
+  }
+
+  async pickUnit(prompt: string): Promise<{ index: number; unitId: number } | null> {
+    const picked = await this.api.ui.pickObject({ kinds: ["unit"], prompt });
+    if (!picked) return null;
+    const u = this.api.document.scenario()?.units[picked.index];
+    return u ? { index: picked.index, unitId: u.unitId } : null;
+  }
+
+  flashLocation(n: number): void {
+    if (n > 0 && n < 64) this.api.view.flash({ locations: [n - 1], kind: "attention" });
+  }
+
+  flashUnit(index: number): void {
+    this.api.view.flash({ units: [index], kind: "attention" });
+  }
+
+  revealLocation(n: number): void {
+    const rect = this.locationRect(n);
+    if (rect) void this.api.view.reveal(rect, { fit: true });
+  }
+
+  /* ── Writing ── */
+
+  /** Replace the trigger list, interning any strings the builder asks for first. */
+  write(build: (intern: (text: string) => number, strings: (string | null)[]) => TriggerRecord[]): void {
+    this.api.document.update("Magenta", (tx) => {
+      const list = build((text) => tx.strings.intern(text), tx.strings.list());
+      tx.triggers.set(list);
+    });
+  }
+
+  renameSwitch(index: number, name: string): void {
+    this.api.document.update("Rename switch", (tx) => { tx.switches.setName(index, name); });
+  }
+
+  /* ── The sidecar ── */
+
+  sidecar(): Sidecar {
+    const bytes = this.api.document.extras.get(MEMBER);
+    if (this.sidecarCache && this.sidecarCache.bytes === bytes) return this.sidecarCache.value;
+    const value = decodeSidecar(bytes);
+    this.sidecarCache = { bytes, value };
+    return value;
+  }
+
+  saveSidecar(sidecar: Sidecar): void {
+    const empty = sidecar.folders.length === 0 && sidecar.counters.length === 0 && sidecar.expansions.length === 0 && Object.keys(sidecar.settings).length === 0;
+    if (empty) { this.api.document.extras.remove(MEMBER); this.sidecarCache = null; return; }
+    const bytes = encodeSidecar(sidecar);
+    this.api.document.extras.set(MEMBER, bytes);
+    this.sidecarCache = { bytes: this.api.document.extras.get(MEMBER), value: sidecar };
+  }
+}

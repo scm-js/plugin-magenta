@@ -1,0 +1,95 @@
+/**
+ * The add row: an input that searches everything a trigger can hold — the native
+ * conditions or actions, and the catalogue — and inserts the pick.
+ */
+import type { PluginApi } from "@scm-js/plugin-api";
+import { ACTION_DEFS, CONDITION_DEFS } from "../../vendor/triggerDefs";
+import { ConditionType, ActionType } from "../../vendor/triggers";
+import { entriesFor, type Entry } from "../catalogue";
+import { search, type SearchItem } from "../model/search";
+import { openPopover, type PopoverHandle } from "./popover";
+
+export type Pick = { kind: "native"; type: number } | { kind: "eud"; entry: Entry } | { kind: "expansion"; what: "copy" | "add" | "subtract" | "compare" };
+
+const NATIVE_ALIASES: Record<string, string[]> = {
+  "Create Unit": ["spawn", "make"], "Kill Unit": ["destroy"], "Kill Unit At Location": ["destroy"], "Remove Unit": ["delete", "vanish"], "Remove Unit At Location": ["delete"],
+  "Give Units to Player": ["transfer", "ownership", "change owner"], "Display Text Message": ["print", "say", "message", "text"], "Set Resources": ["minerals", "gas", "money"],
+  "Set Deaths": ["counter", "variable", "death count"], "Deaths": ["counter", "variable", "death count"], "Bring": ["at location", "in area"], "Command": ["owns", "has units", "controls"],
+  "Move Unit": ["teleport"], "Move Location": ["follow", "attach"], "Set Switch": ["flag", "toggle"], "Switch": ["flag"], "Wait": ["delay", "sleep", "pause"], "Play WAV": ["sound", "audio"],
+  "Center View": ["camera", "scroll"], "Set Countdown Timer": ["clock"], "Countdown Timer": ["clock"], "Elapsed Time": ["clock", "game time"], "Set Alliance Status": ["ally", "enemy", "team"],
+  "Modify Unit Hit Points": ["hp", "health", "heal"], "Modify Unit Shield Points": ["shields"], "Modify Unit Energy": ["mana"], "Set Invincibility": ["invulnerable", "immortal"],
+  "Run AI Script": ["ai", "computer"], "Run AI Script At Location": ["ai", "computer"], "Victory": ["win"], "Defeat": ["lose"], "Preserve Trigger": ["repeat", "loop", "again"],
+  "Minimap Ping": ["alert"], "Order": ["move", "attack", "patrol", "command unit"], "Set Mission Objectives": ["objectives"], "Comment": ["title", "name", "note"],
+  "Set Doodad State": ["door", "trap"], "Accumulate": ["resources", "minerals", "gas"], "Kill": ["has killed", "kills"], "Score": ["points"], "Opponents": ["players remaining", "enemies left"],
+};
+
+export function paletteItems(kind: "condition" | "action"): SearchItem<Pick>[] {
+  const items: SearchItem<Pick>[] = [];
+  if (kind === "condition") for (const d of CONDITION_DEFS) { if (d.type !== ConditionType.Briefing) items.push({ label: d.name, aliases: NATIVE_ALIASES[d.name], priority: 1, value: { kind: "native", type: d.type } }); }
+  else for (const d of ACTION_DEFS) { if (d.type !== ActionType.None) items.push({ label: d.name, aliases: NATIVE_ALIASES[d.name], priority: 1, value: { kind: "native", type: d.type } }); }
+  for (const e of entriesFor(kind)) items.push({ label: e.name, aliases: e.aliases, group: e.group, value: { kind: "eud", entry: e } });
+  if (kind === "condition") items.push({ label: "Compare two counters", aliases: ["greater", "less", "equal", "variable"], group: "Counters", value: { kind: "expansion", what: "compare" } });
+  else {
+    items.push({ label: "Copy a counter into another", aliases: ["set variable", "assign", "transfer"], group: "Counters", value: { kind: "expansion", what: "copy" } });
+    items.push({ label: "Add a counter to another", aliases: ["sum", "plus", "variable"], group: "Counters", value: { kind: "expansion", what: "add" } });
+    items.push({ label: "Subtract a counter from another", aliases: ["minus", "difference", "variable"], group: "Counters", value: { kind: "expansion", what: "subtract" } });
+  }
+  return items;
+}
+
+/** The add row's element; `onPick` inserts. */
+export function addRow(api: PluginApi, kind: "condition" | "action", onPick: (pick: Pick) => void, options: { recent?: (pick: Pick) => number } = {}): HTMLElement {
+  const el = api.ui.el;
+  const items = paletteItems(kind);
+  const input = el("input", { className: "input", type: "text", placeholder: kind === "condition" ? api.i18n.t("Add a condition…") : api.i18n.t("Add an action…") }) as HTMLInputElement;
+  let pop: PopoverHandle | null = null;
+  let active = 0;
+  let hits: SearchItem<Pick>[] = [];
+  const close = () => { pop?.close(); pop = null; };
+  const choose = (item: SearchItem<Pick>) => { onPick(item.value); input.value = ""; close(); input.focus(); };
+  const render = () => {
+    const browsing = !input.value.trim();
+    hits = browsing ? items : search(items, input.value, { limit: 14, recent: options.recent }).map((h) => h.item);
+    if (!hits.length) { close(); return; }
+    active = 0;
+    if (!pop) {
+      pop = openPopover(input, (h) => { const list = el("div", { className: "mg-options" }); h.root.dataset.role = "hits"; return list; }, { width: Math.max(260, input.offsetWidth), returnFocus: false, onClose: () => { pop = null; } });
+    }
+    const list = pop.root.querySelector(".mg-options")!;
+    let lastGroup: string | null = null;
+    list.replaceChildren(...hits.flatMap((item, i) => {
+      const eud = item.value.kind === "eud";
+      const rows: HTMLElement[] = [];
+      if (browsing) {
+        const group = eud ? `EUD · ${item.group}` : item.value.kind === "expansion" ? api.i18n.t("Counters") : kind === "condition" ? api.i18n.t("Conditions") : api.i18n.t("Actions");
+        if (group !== lastGroup) { lastGroup = group; rows.push(el("div", { className: "mg-option group" }, group)); }
+      }
+      const row = el("button", { type: "button", className: `mg-option${i === active ? " active" : ""}`, title: eud ? (item.value as { entry: Entry }).entry.note ?? "" : "" },
+        el("span", { className: "grow" }, item.label),
+        el("span", { className: `mg-hit-group${eud ? " eud" : ""}` }, eud ? `EUD · ${item.group}` : item.value.kind === "expansion" ? api.i18n.t("Counters") : ""),
+      ) as HTMLButtonElement;
+      row.addEventListener("mousedown", (e) => e.preventDefault());
+      row.addEventListener("click", () => choose(item));
+      rows.push(row);
+      return rows;
+    }));
+  };
+  input.addEventListener("input", render);
+  input.addEventListener("focus", render);
+  input.addEventListener("click", () => { if (!pop) render(); });
+  input.addEventListener("blur", () => setTimeout(close, 120));
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      if (!pop) { render(); return; }
+      e.preventDefault();
+      active = (active + (e.key === "ArrowDown" ? 1 : hits.length - 1)) % hits.length;
+      pop.root.querySelectorAll(".mg-option:not(.group)").forEach((r, i) => r.classList.toggle("active", i === active));
+      (pop.root.querySelectorAll(".mg-option:not(.group)")[active] as HTMLElement | undefined)?.scrollIntoView({ block: "nearest" });
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (!pop) render();
+      if (hits[active]) choose(hits[active]);
+    } else if (e.key === "Escape" && pop) { e.stopPropagation(); close(); }
+  });
+  return el("div", { className: "mg-add" }, input);
+}
