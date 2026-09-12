@@ -82,6 +82,10 @@ function scaffold(name: string, description: string) {
   place(ZEALOT, 0, 15, 15);
   place(BEACON, 7, 20, 10);
   markDirty(scn, "UNIT");
+  // Player 2 is a computer, so a single-player custom game (which insists on a computer opponent) can start.
+  scn.playerTypes[1] = 5;
+  if (scn.editorPlayerTypes) scn.editorPlayerTypes[1] = 5;
+  markDirty(scn, "OWNR", "IOWN");
   // Location 1 (slot 0): the beacon's square. Written directly; the editor's addLocation only plans a change.
   scn.locations[0] = { left: 18 * T, top: 8 * T, right: 22 * T, bottom: 12 * T, nameIndex: internString(scn, "Beacon"), elevationFlags: 0 };
   markDirty(scn, "MRGN");
