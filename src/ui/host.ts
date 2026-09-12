@@ -9,6 +9,7 @@ import { addressOf } from "../model/eud";
 import { keyLabel } from "../model/eudSentence";
 import { decodeSidecar, encodeSidecar, MEMBER, type Sidecar } from "../model/sidecar";
 import { slotsOf } from "../model/slots";
+import type { ParseNames } from "../model/parse";
 
 export interface NamedItem {
   value: number;
@@ -142,6 +143,21 @@ export class Host {
     const units = this.api.document.scenario()?.units ?? [];
     const slots = slotsOf(units.map((u) => u.unitId));
     return units.map((u, index) => ({ index, slot: slots[index], unitId: u.unitId, owner: u.owner, x: u.x, y: u.y })).filter((u) => u.slot >= 0);
+  }
+
+  /** Everything the add row's parser can name. */
+  parseNames(): ParseNames {
+    const names = this.api.triggers.names();
+    const players = this.api.names.playerGroups().map((g) => ({ value: g.value, label: g.label, aliases: g.value < 12 ? [`p${g.value + 1}`] : g.value === 17 ? ["everyone", "all"] : g.value === 13 ? ["me", "current"] : undefined }));
+    return {
+      units: this.api.names.units().map((n) => ({ value: n.value, label: names.unit(n.value), aliases: n.label !== names.unit(n.value) ? [n.label] : undefined })),
+      locations: this.locations().map((l) => ({ value: l.value, label: l.label })),
+      switches: this.switches(),
+      weapons: this.weapons(),
+      upgrades: this.upgrades(),
+      techs: this.techs(),
+      players,
+    };
   }
 
   claims(list?: TriggerRecord[]) {

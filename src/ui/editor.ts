@@ -12,7 +12,8 @@ import { lowerAction, lowerCondition } from "../model/eud";
 import { commentIndex, liveActions, liveConditions, owners, setActionDisabled, setConditionDisabled, setOwners } from "../model/records";
 import { cellKey, playerSlots } from "../model/counters";
 import type { Host } from "./host";
-import { addRow, type Pick } from "./palette";
+import { addRow, type Pick, type Picked } from "./palette";
+import { fillAction, fillCondition, fillEud, type Entity } from "../model/parse";
 import { pickChoice } from "./chips";
 import { renderRow, type RowContext } from "./rows";
 import { compareOf, counterExpansionOf, newCompare, newCounterStep, renderCompare, renderCounterExpansion } from "./expansionRows";
@@ -126,7 +127,7 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
       onToggle: () => writeConditions(t("Toggle condition"), conditions.map((x, j) => (j === i ? setConditionDisabled(x, !(x.flags & 2)) : x))),
     }));
   });
-  if (conditions.length < MAX_CONDITIONS) condSection.append(addRow(api, "condition", (pick) => {
+  if (conditions.length < MAX_CONDITIONS) condSection.append(addRow(api, "condition", ({ pick, entities, query }: Picked) => {
     if (pick.kind === "expansion") {
       if (cmp) { api.ui.toast({ kind: "info", title: t("One comparison per trigger"), detail: t("Put a second comparison in another trigger.") }); return; }
       const made = newCompare(store, host, index, trigger);
@@ -134,8 +135,8 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
       store.commit(t("Add comparison"), () => store.list.map((tr, j) => (j !== index ? tr : { ...tr, conditions: [...conditions, ...made.conditions] })), { sidecar: { expansions: [...store.sidecar.expansions, made.expansion] } });
       return;
     }
-    writeConditions(t("Add condition"), [...conditions, newCondition(api, pick)]);
-  }));
+    writeConditions(t("Add condition"), [...conditions, newCondition(api, pick, entities, query)]);
+  }, { names: () => host.parseNames() }));
   root.append(condSection);
 
   /* ── Actions ── */
@@ -168,7 +169,7 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
       onToggle: () => writeActions(t("Toggle action"), actions.map((x, j) => (j === i ? setActionDisabled(x, !(x.flags & 2)) : x))),
     }));
   }
-  if (actions.length < MAX_ACTIONS) actSection.append(addRow(api, "action", (pick) => {
+  if (actions.length < MAX_ACTIONS) actSection.append(addRow(api, "action", ({ pick, entities, query }: Picked) => {
     if (pick.kind === "expansion") {
       if (pick.what === "compare") return;
       const made = newCounterStep(store, host, pick.what);
@@ -176,25 +177,27 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
       store.commit(t("Add counter step"), () => store.list.map((tr, j) => (j !== index ? tr : { ...tr, actions: [...actions, flagAction({ cell: made.flag })] })), { sidecar: { expansions: [...store.sidecar.expansions, made.expansion] } });
       return;
     }
-    writeActions(t("Add action"), [...actions, newAction(api, pick)]);
-  }));
+    writeActions(t("Add action"), [...actions, newAction(api, pick, entities, query)]);
+  }, { names: () => host.parseNames() }));
   root.append(actSection);
 }
 
 /** A fresh condition for a pick: StarEdit's defaults for a native one, the entry's for an EUD one. */
-export function newCondition(api: PluginApi, pick: Pick): ConditionRecord {
-  if (pick.kind === "native") return api.triggers.newCondition(pick.type);
+export function newCondition(api: PluginApi, pick: Pick, entities: Entity[] = [], query = ""): ConditionRecord {
+  if (pick.kind === "native") return fillCondition(api.triggers.newCondition(pick.type), entities);
   if (pick.kind === "expansion") throw new Error("an expansion is not a record");
   const e = pick.entry;
+  if (entities.length) return lowerCondition(fillEud(e, "condition", entities, query));
   const args: Record<string, number> = {};
   for (const a of e.args) args[a.name] = 0;
   return lowerCondition({ entry: e, args, value: e.value?.choices ? e.value.choices[0].value : e.value?.min ?? 0, op: enumerated(e) ? Comparison.Exactly : Comparison.AtLeast });
 }
 
-export function newAction(api: PluginApi, pick: Pick): ActionRecord {
-  if (pick.kind === "native") return api.triggers.newAction(pick.type);
+export function newAction(api: PluginApi, pick: Pick, entities: Entity[] = [], query = ""): ActionRecord {
+  if (pick.kind === "native") return fillAction(api.triggers.newAction(pick.type), entities);
   if (pick.kind === "expansion") throw new Error("an expansion is not a record");
   const e = pick.entry;
+  if (entities.length) return lowerAction(fillEud(e, "action", entities, query));
   const args: Record<string, number> = {};
   for (const a of e.args) args[a.name] = 0;
   return lowerAction({ entry: e, args, value: e.value?.choices ? e.value.choices[0].value : e.value?.min ?? 0, op: SetModifier.SetTo });

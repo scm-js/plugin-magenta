@@ -10,6 +10,8 @@ import { clone, fingerprint as fingerprintOf, isTriggerDisabled, liveActions, se
 import type { Folder } from "../model/sidecar";
 import { setOwners } from "../model/records";
 import { DEFAULT_PLACEHOLDER, HUMAN_PLAYERS } from "../model/sync";
+import { RECIPES, recipeContext } from "../model/recipes";
+import { pickChoice } from "./chips";
 import { renderEditor } from "./editor";
 import { Host } from "./host";
 import { renderList } from "./list";
@@ -62,10 +64,11 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
     const search = el("input", { className: "input", type: "text", placeholder: t("Search triggers…") }) as HTMLInputElement;
     let filter: "all" | "problems" | "eud" = "all";
     const newButton = w.button(t("New"), { primary: true, title: t("A new trigger after the selected one (Ctrl+N)"), onClick: () => newTrigger() });
+    const recipeButton = w.button(t("Recipes…"), { title: t("Start from a whole trigger: a beacon shop, a countdown, a respawn…"), onClick: () => recipes(recipeButton) });
     const menuButton = w.button("⋯", { ghost: true, title: t("More"), onClick: () => menu(menuButton) });
     const listEl = el("div", { className: "mg-list", tabIndex: 0 });
     const editorEl = el("div", { className: "mg-editor" });
-    const root = el("div", { className: "mg" }, el("style", {}, STYLE), el("div", { className: "mg-head" }, search, newButton, menuButton), el("div", { className: "mg-split" }, listEl, editorEl));
+    const root = el("div", { className: "mg" }, el("style", {}, STYLE), el("div", { className: "mg-head" }, search, newButton, recipeButton, menuButton), el("div", { className: "mg-split" }, listEl, editorEl));
     body.append(root);
 
     const render = () => {
@@ -95,6 +98,26 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
       if (folder !== undefined) folders.set(at, folder);
       s.commit(t("New trigger"), () => [...s.list.slice(0, at), fresh, ...s.list.slice(at)], { folders, select: at });
       setTimeout(() => (editorEl.querySelector("input") as HTMLInputElement | null)?.focus(), 0);
+    }
+    /** Insert whole triggers after the selection, in its folder, and select the first. */
+    function insertTriggers(label: string, make: (intern: (text: string) => number) => TriggerRecord[]): void {
+      const at = s.selected === null ? s.list.length : s.selected + 1;
+      const folder = s.selected !== null ? s.folders.get(s.selected) : undefined;
+      // How many are coming, so the folders after the insertion point can be shifted first.
+      const count = make(() => 0).length;
+      const folders = new Map<number, string>();
+      for (const [i, f] of s.folders) folders.set(i >= at ? i + count : i, f);
+      if (folder !== undefined) for (let i = 0; i < count; i++) folders.set(at + i, folder);
+      s.commit(label, (intern) => [...s.list.slice(0, at), ...make(intern), ...s.list.slice(at)], { folders, select: at });
+    }
+    function recipes(anchor: HTMLElement): void {
+      const items = RECIPES.map((r, i) => ({ value: i, label: r.label, hint: r.everyFrame ? "EUD" : undefined }));
+      pickChoice(api, anchor, items, (i) => {
+        const r = RECIPES[i];
+        const locations = h.locations().map((l) => l.value).filter((n) => n !== 64);
+        insertTriggers(t("Add recipe"), (intern) => r.build(recipeContext(intern, locations)));
+        api.ui.toast({ kind: "info", title: r.label, detail: r.description + (r.everyFrame && !everyFrame() ? " " + t("Turn on Run triggers every frame in the ⋯ menu for this one.") : "") });
+      }, { width: 300, searchable: true, placeholder: t("Recipe…") });
     }
     function moveTrigger(from: number, to: number, folder: string | null): void {
       const list = [...s.list];

@@ -198,7 +198,7 @@ function emptyTrigger() {
 
 // src/model/records.ts
 var clone = (value) => structuredClone(value);
-function fingerprint(trigger2) {
+function fingerprint(trigger3) {
   let h = 2166136261;
   const mix = (n) => {
     for (let i = 0; i < 4; i++) {
@@ -206,7 +206,7 @@ function fingerprint(trigger2) {
       h = Math.imul(h, 16777619) >>> 0;
     }
   };
-  for (const c2 of trigger2.conditions) {
+  for (const c2 of trigger3.conditions) {
     mix(c2.type);
     mix(c2.location);
     mix(c2.player);
@@ -218,7 +218,7 @@ function fingerprint(trigger2) {
     mix(c2.mask);
   }
   mix(65535);
-  for (const a2 of trigger2.actions) {
+  for (const a2 of trigger3.actions) {
     mix(a2.type);
     mix(a2.location);
     mix(a2.text);
@@ -232,8 +232,8 @@ function fingerprint(trigger2) {
     mix(a2.mask);
   }
   mix(65534);
-  mix(trigger2.flags & ~1);
-  for (const p of trigger2.players) mix(p);
+  mix(trigger3.flags & ~1);
+  for (const p of trigger3.players) mix(p);
   return h.toString(16).padStart(8, "0");
 }
 var isConditionDisabled = (c2) => (c2.flags & ConditionFlag.Disabled) !== 0;
@@ -244,47 +244,47 @@ function setConditionDisabled(c2, disabled) {
 function setActionDisabled(a2, disabled) {
   return { ...a2, flags: disabled ? a2.flags | ActionFlag.Disabled : a2.flags & ~ActionFlag.Disabled };
 }
-function setTriggerDisabled(trigger2, disabled) {
+function setTriggerDisabled(trigger3, disabled) {
   return {
-    ...trigger2,
-    conditions: trigger2.conditions.map((c2) => c2.type === ConditionType.None ? c2 : setConditionDisabled(c2, disabled)),
-    actions: trigger2.actions.map((a2) => a2.type === ActionType.None ? a2 : setActionDisabled(a2, disabled))
+    ...trigger3,
+    conditions: trigger3.conditions.map((c2) => c2.type === ConditionType.None ? c2 : setConditionDisabled(c2, disabled)),
+    actions: trigger3.actions.map((a2) => a2.type === ActionType.None ? a2 : setActionDisabled(a2, disabled))
   };
 }
-function isTriggerDisabled(trigger2) {
-  const live = [...trigger2.conditions.filter((c2) => c2.type !== ConditionType.None).map(isConditionDisabled), ...trigger2.actions.filter((a2) => a2.type !== ActionType.None).map(isActionDisabled)];
+function isTriggerDisabled(trigger3) {
+  const live = [...trigger3.conditions.filter((c2) => c2.type !== ConditionType.None).map(isConditionDisabled), ...trigger3.actions.filter((a2) => a2.type !== ActionType.None).map(isActionDisabled)];
   return live.length > 0 && live.every(Boolean);
 }
-function commentIndex(trigger2) {
-  return trigger2.actions.findIndex((a2) => a2.type === ActionType.Comment);
+function commentIndex(trigger3) {
+  return trigger3.actions.findIndex((a2) => a2.type === ActionType.Comment);
 }
-function liveConditions(trigger2) {
+function liveConditions(trigger3) {
   const out = [];
-  for (const c2 of trigger2.conditions) {
+  for (const c2 of trigger3.conditions) {
     if (c2.type === ConditionType.None) break;
     out.push(c2);
   }
   return out;
 }
-function liveActions(trigger2) {
+function liveActions(trigger3) {
   const out = [];
-  for (const a2 of trigger2.actions) {
+  for (const a2 of trigger3.actions) {
     if (a2.type === ActionType.None) break;
     out.push(a2);
   }
   return out;
 }
-function owners(trigger2) {
+function owners(trigger3) {
   const out = [];
-  trigger2.players.forEach((on, i) => {
+  trigger3.players.forEach((on, i) => {
     if (on) out.push(i);
   });
   return out;
 }
-function setOwners(trigger2, groups) {
-  const players = trigger2.players.map(() => 0);
+function setOwners(trigger3, groups) {
+  const players = trigger3.players.map(() => 0);
   for (const g of groups) if (g >= 0 && g < players.length) players[g] = 1;
-  return { ...trigger2, players };
+  return { ...trigger3, players };
 }
 
 // src/catalogue/eud.json
@@ -2871,10 +2871,10 @@ function locateRun(list, id, text) {
   }
   return null;
 }
-function markerOf(trigger2, text) {
-  const ci = commentIndex(trigger2);
+function markerOf(trigger3, text) {
+  const ci = commentIndex(trigger3);
   if (ci < 0) return null;
-  const s = text(trigger2.actions[ci].text);
+  const s = text(trigger3.actions[ci].text);
   if (!s || !s.startsWith(MARKER_PREFIX)) return null;
   const rest = s.slice(MARKER_PREFIX.length);
   if (rest.startsWith("begin:")) return { id: rest.slice(6), edge: "begin" };
@@ -2921,10 +2921,10 @@ function folderOf(list, sidecar) {
       out.set(ref.i, folder.id);
       continue;
     }
-    const candidates = byPrint.get(ref.h)?.filter((i) => !taken.has(i));
-    if (candidates && candidates.length) {
-      taken.add(candidates[0]);
-      out.set(candidates[0], folder.id);
+    const candidates2 = byPrint.get(ref.h)?.filter((i) => !taken.has(i));
+    if (candidates2 && candidates2.length) {
+      taken.add(candidates2[0]);
+      out.set(candidates2[0], folder.id);
       continue;
     }
     fallback.push({ folder: folder.id, ref });
@@ -3110,6 +3110,20 @@ var Host = class {
     const slots = slotsOf(units.map((u) => u.unitId));
     return units.map((u, index) => ({ index, slot: slots[index], unitId: u.unitId, owner: u.owner, x: u.x, y: u.y })).filter((u) => u.slot >= 0);
   }
+  /** Everything the add row's parser can name. */
+  parseNames() {
+    const names = this.api.triggers.names();
+    const players = this.api.names.playerGroups().map((g) => ({ value: g.value, label: g.label, aliases: g.value < 12 ? [`p${g.value + 1}`] : g.value === 17 ? ["everyone", "all"] : g.value === 13 ? ["me", "current"] : void 0 }));
+    return {
+      units: this.api.names.units().map((n) => ({ value: n.value, label: names.unit(n.value), aliases: n.label !== names.unit(n.value) ? [n.label] : void 0 })),
+      locations: this.locations().map((l) => ({ value: l.value, label: l.label })),
+      switches: this.switches(),
+      weapons: this.weapons(),
+      upgrades: this.upgrades(),
+      techs: this.techs(),
+      players
+    };
+  }
   claims(list) {
     return this.api.triggers.claims(list);
   }
@@ -3256,204 +3270,161 @@ function sync(list, expansions, text, intern) {
 var HUMAN_PLAYERS = Array.from({ length: 8 }, (_, i) => i);
 var DEFAULT_PLACEHOLDER = PlayerGroup.CurrentPlayer;
 
-// src/model/counters.ts
-var PLAYER_SLOTS = 12;
-var UNIT_CLASS_FIRST = 228;
-var cellKey = (player, unit) => unit * PLAYER_SLOTS + player;
-function playerSlots(player, triggerOwners) {
-  if (player < PLAYER_SLOTS) return [player];
-  if (player >= PLAYER_GROUP_COUNT) return [];
-  if (player === PlayerGroup.None) return [];
-  if (player === PlayerGroup.CurrentPlayer) {
-    const out = /* @__PURE__ */ new Set();
-    for (const o of triggerOwners) for (const p of playerSlots(o, [])) out.add(p);
-    return [...out].sort((a2, b) => a2 - b);
+// src/model/recipes.ts
+var ANYWHERE = 64;
+var MARINE = 0;
+var C2 = ConditionType;
+var A2 = ActionType;
+var P = PlayerGroup;
+var cond = (type, patch = {}) => ({ ...emptyCondition(), type, ...patch });
+var act = (type, patch = {}) => ({ ...emptyAction(), type, ...patch });
+var always = () => cond(C2.Always);
+var preserve2 = () => act(A2.PreserveTrigger);
+var comment2 = (ctx, text) => act(A2.Comment, { text: ctx.intern(text) });
+var display = (ctx, text) => act(A2.DisplayText, { text: ctx.intern(text), flags: ActionFlag.AlwaysDisplay });
+var bring = (player, unit, location, comparison, amount) => cond(C2.Bring, { player, unitId: unit, location, comparison, amount });
+var deaths = (player, unit, comparison, amount) => cond(C2.Deaths, { player, unitId: unit, comparison, amount });
+var setDeaths2 = (player, unit, modifier, amount) => act(A2.SetDeaths, { player, unitId: unit, modifier, target: amount });
+var trigger2 = (ctx, title, owners2, conditions, actions) => setOwners({ ...emptyTrigger(), conditions, actions: [comment2(ctx, title), ...actions] }, owners2);
+var RECIPES = [
+  {
+    id: "beacon-give",
+    label: "Give units at a beacon",
+    aliases: ["shop", "buy", "hero pick", "capture"],
+    description: "A player who brings a unit to the location is given the units standing on it. Change the location, the unit and its owner.",
+    build: (ctx) => [trigger2(
+      ctx,
+      "Give units at the beacon",
+      [P.AllPlayers],
+      [bring(P.CurrentPlayer, UnitClass.Any, ctx.location, Comparison.AtLeast, 1)],
+      [act(A2.GiveUnits, { player: P.Player8, target: P.CurrentPlayer, unitId: UnitClass.Any, modifier: 0, location: ctx.location }), preserve2()]
+    )]
+  },
+  {
+    id: "countdown-end",
+    label: "Countdown that ends the game",
+    aliases: ["timer", "time limit", "survive"],
+    description: "A ten-minute countdown, then victory for everyone still in. Change the seconds, or Victory to Defeat.",
+    build: (ctx) => [
+      trigger2(ctx, "Start the countdown", [P.AllPlayers], [always()], [act(A2.SetCountdownTimer, { modifier: SetModifier.SetTo, time: 600 })]),
+      trigger2(ctx, "Countdown over", [P.AllPlayers], [cond(C2.CountdownTimer, { comparison: Comparison.AtMost, amount: 0 })], [act(A2.Victory)])
+    ]
+  },
+  {
+    id: "respawn",
+    label: "Respawn a unit when it dies",
+    aliases: ["hero", "revive", "resurrect"],
+    description: "When the player's unit dies, wait five seconds and create it again at the location. Change the unit and the location.",
+    build: (ctx) => [trigger2(
+      ctx,
+      "Respawn",
+      [P.AllPlayers],
+      [deaths(P.CurrentPlayer, MARINE, Comparison.AtLeast, 1)],
+      [act(A2.Wait, { time: 5e3 }), act(A2.CreateUnit, { player: P.CurrentPlayer, unitId: MARINE, modifier: 1, location: ctx.location2 }), setDeaths2(P.CurrentPlayer, MARINE, SetModifier.SetTo, 0), preserve2()]
+    )]
+  },
+  {
+    id: "cash-for-kills",
+    label: "Minerals for each kill",
+    aliases: ["bounty", "reward", "money per kill"],
+    description: "Every enemy unit that dies pays the players 50 minerals. Change the enemy player and the unit, or the amount.",
+    build: (ctx) => [trigger2(
+      ctx,
+      "Bounty",
+      [P.AllPlayers],
+      [deaths(P.Player8, UnitClass.Any, Comparison.AtLeast, 1)],
+      [act(A2.SetResources, { player: P.CurrentPlayer, modifier: SetModifier.Add, target: 50, unitId: 0 }), setDeaths2(P.Player8, UnitClass.Any, SetModifier.Subtract, 1), preserve2()]
+    )]
+  },
+  {
+    id: "waves",
+    label: "Reinforcements every minute",
+    aliases: ["spawn", "waves", "periodic", "timer spawn"],
+    description: "Every sixty seconds four Marines appear at the location for Player 8. Change the unit, the count, the player and the location.",
+    build: (ctx) => [
+      trigger2(ctx, "Wave timer", [P.AllPlayers], [always()], [act(A2.SetCountdownTimer, { modifier: SetModifier.SetTo, time: 60 })]),
+      trigger2(
+        ctx,
+        "Wave",
+        [P.AllPlayers],
+        [cond(C2.CountdownTimer, { comparison: Comparison.AtMost, amount: 0 })],
+        [act(A2.CreateUnit, { player: P.Player8, unitId: MARINE, modifier: 4, location: ctx.location2 }), act(A2.SetCountdownTimer, { modifier: SetModifier.SetTo, time: 60 }), preserve2()]
+      )
+    ]
+  },
+  {
+    id: "hold-to-win",
+    label: "Win by holding a location",
+    aliases: ["king of the hill", "capture point", "control"],
+    description: "A player with a unit at the location for thirty seconds wins. Uses a switch as the clock; change the location and the seconds.",
+    build: (ctx) => [
+      trigger2(
+        ctx,
+        "Holding: start the clock",
+        [P.AllPlayers],
+        [bring(P.CurrentPlayer, UnitClass.Any, ctx.location, Comparison.AtLeast, 1), cond(C2.Switch, { resource: 0, comparison: SwitchState.Cleared })],
+        [act(A2.SetCountdownTimer, { modifier: SetModifier.SetTo, time: 30 }), act(A2.SetSwitch, { target: 0, modifier: SwitchAction.Set }), preserve2()]
+      ),
+      trigger2(
+        ctx,
+        "Holding: lost it",
+        [P.AllPlayers],
+        [bring(P.CurrentPlayer, UnitClass.Any, ctx.location, Comparison.Exactly, 0), cond(C2.Switch, { resource: 0, comparison: SwitchState.Set })],
+        [act(A2.SetSwitch, { target: 0, modifier: SwitchAction.Clear }), preserve2()]
+      ),
+      trigger2(
+        ctx,
+        "Holding: won",
+        [P.AllPlayers],
+        [bring(P.CurrentPlayer, UnitClass.Any, ctx.location, Comparison.AtLeast, 1), cond(C2.CountdownTimer, { comparison: Comparison.AtMost, amount: 0 }), cond(C2.Switch, { resource: 0, comparison: SwitchState.Set })],
+        [act(A2.Victory)]
+      )
+    ]
+  },
+  {
+    id: "defeat-when-dead",
+    label: "Defeat when nothing is left",
+    aliases: ["lose", "elimination", "game over"],
+    description: "A player with no units and no buildings left is defeated.",
+    build: (ctx) => [trigger2(ctx, "Eliminated", [P.AllPlayers], [cond(C2.Command, { player: P.CurrentPlayer, unitId: UnitClass.Any, comparison: Comparison.AtMost, amount: 0 })], [act(A2.Defeat)])]
+  },
+  {
+    id: "intro",
+    label: "Message at the start",
+    aliases: ["welcome", "intro", "instructions", "text"],
+    description: "One message to everyone when the game begins. Change the text.",
+    build: (ctx) => [trigger2(ctx, "Intro", [P.AllPlayers], [always()], [display(ctx, "Welcome. Change this text.")])]
+  },
+  {
+    id: "key-minerals",
+    label: "A key gives minerals",
+    aliases: ["keyboard", "hotkey", "cheat key", "press"],
+    everyFrame: true,
+    description: "Pressing M gives the player at that computer 100 minerals. An EUD read; needs triggers every frame, and runs only on the computer where the key was pressed. Change the key.",
+    build: (ctx) => [trigger2(
+      ctx,
+      "M for minerals",
+      [P.AllPlayers],
+      [lowerCondition({ entry: entry("game.key"), args: { key: 77 }, value: 1, op: Comparison.Exactly })],
+      [act(A2.SetResources, { player: P.CurrentPlayer, modifier: SetModifier.Add, target: 100, unitId: 0 }), preserve2()]
+    )]
+  },
+  {
+    id: "buff-unit",
+    label: "Change a unit type's stats",
+    aliases: ["balance", "mod", "stats", "hp armor damage"],
+    description: "At the start, set the Marine's max hit points to 80 and its armor to 2. EUD writes; add rows for other stats.",
+    build: (ctx) => [trigger2(
+      ctx,
+      "Unit stats",
+      [P.AllPlayers],
+      [always()],
+      [lowerAction({ entry: entry("unit.maxHp"), args: { unit: MARINE }, value: 80, op: SetModifier.SetTo }), lowerAction({ entry: entry("unit.armor"), args: { unit: MARINE }, value: 2, op: SetModifier.SetTo })]
+    )]
   }
-  return Array.from({ length: PLAYER_SLOTS }, (_, i) => i);
-}
-function usage(list) {
-  const cells = /* @__PURE__ */ new Set();
-  const switches = /* @__PURE__ */ new Set();
-  for (const t of list) {
-    const own = owners(t);
-    for (const c2 of t.conditions) {
-      if (c2.type === ConditionType.Deaths && c2.unitId < UNIT_CLASS_FIRST) for (const p of playerSlots(c2.player, own)) cells.add(cellKey(p, c2.unitId));
-      if (c2.type === ConditionType.Switch) switches.add(c2.resource);
-    }
-    for (const a2 of t.actions) {
-      if (a2.type === ActionType.SetDeaths && a2.unitId < UNIT_CLASS_FIRST) for (const p of playerSlots(a2.player, own)) cells.add(cellKey(p, a2.unitId));
-      if (a2.type === ActionType.SetSwitch) switches.add(a2.target);
-    }
-  }
-  return { cells, switches };
-}
-var COUNTER_UNITS = [
-  181,
-  182,
-  179,
-  180,
-  183,
-  184,
-  185,
-  186,
-  187,
-  204,
-  91,
-  92,
-  119,
-  121,
-  145,
-  153,
-  158,
-  161,
-  191,
-  192,
-  193,
-  194,
-  195,
-  196,
-  197,
-  198,
-  199,
-  215,
-  216,
-  217,
-  219,
-  128,
-  129,
-  173,
-  101,
-  214
 ];
-function allocate(used, placedUnitIds = /* @__PURE__ */ new Set()) {
-  for (const unit of COUNTER_UNITS) {
-    if (placedUnitIds.has(unit)) continue;
-    for (let player = 0; player < PLAYER_SLOTS; player++) {
-      if (!used.has(cellKey(player, unit))) return [player, unit];
-    }
-  }
-  return null;
-}
-
-// src/model/checks.ts
-var LOCATION_ANYWHERE = 64;
-function check(trigger2, ctx = {}) {
-  const out = [];
-  const conditions = liveConditions(trigger2);
-  const actions = liveActions(trigger2);
-  const own = owners(trigger2);
-  if (own.length === 0 && !ctx.template) out.push({ level: "error", text: "No player owns this trigger, so it never runs." });
-  if (actions.length === 0) out.push({ level: "warn", text: "This trigger has no actions." });
-  if (conditions.length >= MAX_CONDITIONS) out.push({ level: "info", text: "All 16 condition slots are used." });
-  if (actions.length >= MAX_ACTIONS) out.push({ level: "info", text: "All 64 action slots are used." });
-  const enabledConditions = conditions.map((c2, index) => ({ c: c2, index })).filter(({ c: c2 }) => !isConditionDisabled(c2));
-  if (enabledConditions.some(({ c: c2 }) => c2.type === ConditionType.Never)) out.push({ level: "warn", text: "A Never condition means this trigger never fires." });
-  for (let i = 0; i < enabledConditions.length; i++) for (let j = i + 1; j < enabledConditions.length; j++) {
-    const a2 = enabledConditions[i].c, b = enabledConditions[j].c;
-    if (a2.type !== b.type || a2.player !== b.player || a2.unitId !== b.unitId || a2.location !== b.location || a2.resource !== b.resource || a2.mask !== b.mask) continue;
-    const def = conditionDef(a2.type);
-    if (!def?.args.some((x) => x.kind === "comparison")) continue;
-    const lo = a2.comparison === Comparison.AtLeast ? a2 : b.comparison === Comparison.AtLeast ? b : null;
-    const hi = a2.comparison === Comparison.AtMost ? a2 : b.comparison === Comparison.AtMost ? b : null;
-    if (lo && hi && lo.amount > hi.amount) out.push({ level: "warn", text: `Conditions ${enabledConditions[i].index + 1} and ${enabledConditions[j].index + 1} contradict each other: at least ${lo.amount} and at most ${hi.amount}.` });
-    if (a2.comparison === Comparison.Exactly && b.comparison === Comparison.Exactly && a2.amount !== b.amount) out.push({ level: "warn", text: `Conditions ${enabledConditions[i].index + 1} and ${enabledConditions[j].index + 1} contradict each other: exactly ${a2.amount} and exactly ${b.amount}.` });
-  }
-  const preserved = (trigger2.flags & TriggerFlag.Preserve) !== 0 || actions.some((a2) => a2.type === ActionType.PreserveTrigger && !isActionDisabled(a2));
-  actions.forEach((a2, index) => {
-    if (isActionDisabled(a2)) return;
-    const at = { kind: "action", index };
-    if (a2.type === ActionType.Wait || a2.type === ActionType.Transmission) {
-      if (preserved) out.push({ level: "warn", text: "A Wait in a preserved trigger holds up every other trigger of its owner while it waits, every cycle.", at });
-      if (ctx.everyFrame) out.push({ level: "warn", text: "With triggers running every frame, a Wait blocks the owner's other triggers for its whole length.", at });
-    }
-    const def = actionDef(a2.type);
-    if (def) {
-      for (const arg of def.args) {
-        const value = a2[arg.field];
-        if (arg.kind === "location") {
-          if (value === 0) out.push({ level: "warn", text: `${def.name} names no location.`, at });
-          else if (value !== LOCATION_ANYWHERE && ctx.locationExists && !ctx.locationExists(value)) out.push({ level: "error", text: `${def.name} names location ${value}, which the map no longer has.`, at });
-        }
-        if (arg.kind === "text" && value !== 0 && ctx.stringExists && !ctx.stringExists(value)) out.push({ level: "error", text: `${def.name} names string ${value}, which the map does not have.`, at });
-        if (arg.kind === "text" && value === 0 && (a2.type === ActionType.DisplayText || a2.type === ActionType.SetMissionObjectives)) out.push({ level: "warn", text: `${def.name} has no text.`, at });
-        if (arg.kind === "wav" && value !== 0 && ctx.wavPresent && !ctx.wavPresent(value)) out.push({ level: "warn", text: `The sound of ${def.name} is not in the map.`, at });
-      }
-    }
-    if (a2.type === ActionType.SetDeaths) {
-      if (isEud(a2.player)) {
-        const row = recognizeAction(a2);
-        if (!row) {
-          const access = accessOf(a2.player, a2.unitId, a2.mask, a2.location);
-          out.push({ level: "info", text: `Writes memory at 0x${access.address.toString(16).toUpperCase()}, which the catalogue does not know.`, at });
-        } else if (!row.entry.remastered.write) out.push({ level: "error", text: `Remastered does not let a trigger write ${row.entry.name.toLowerCase()}.`, at });
-      } else if (ctx.claimedCells && a2.unitId < 228) {
-        for (const p of playerSlots(a2.player, own)) if (ctx.claimedCells.has(cellKey(p, a2.unitId))) {
-          out.push({ level: "warn", text: "This death counter is used by another plugin's generated triggers.", at });
-          break;
-        }
-      }
-    }
-  });
-  conditions.forEach((c2, index) => {
-    if (isConditionDisabled(c2)) return;
-    const at = { kind: "condition", index };
-    const def = conditionDef(c2.type);
-    if (def) for (const arg of def.args) {
-      const value = c2[arg.field];
-      if (arg.kind === "location" && value !== 0 && value !== LOCATION_ANYWHERE && ctx.locationExists && !ctx.locationExists(value)) out.push({ level: "error", text: `${def.name} names location ${value}, which the map no longer has.`, at });
-      if (arg.kind === "location" && value === 0) out.push({ level: "warn", text: `${def.name} names no location.`, at });
-    }
-    if (c2.type === ConditionType.Deaths && isEud(c2.player) && !recognizeCondition(c2)) {
-      const access = accessOf(c2.player, c2.unitId, c2.mask, c2.location);
-      out.push({ level: "info", text: `Reads memory at 0x${access.address.toString(16).toUpperCase()}, which the catalogue does not know.`, at });
-    }
-    if (c2.type === ConditionType.Deaths && !isEud(c2.player) && ctx.claimedCells && c2.unitId < 228) {
-      for (const p of playerSlots(c2.player, own)) if (ctx.claimedCells.has(cellKey(p, c2.unitId))) {
-        out.push({ level: "warn", text: "This death counter is used by another plugin's generated triggers.", at });
-        break;
-      }
-    }
-  });
-  return out;
-}
-
-// src/model/search.ts
-var norm = (s) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
-function scoreText(text, query, words) {
-  const t = norm(text);
-  if (!t) return 0;
-  if (t === query) return 100;
-  if (t.startsWith(query)) return 80;
-  const tw = t.split(" ");
-  if (words.every((w) => tw.some((x) => x.startsWith(w)))) return 60 + Math.min(10, 10 * words.length / tw.length);
-  if (t.includes(query)) return 40;
-  if (words.every((w) => t.includes(w))) return 30;
-  let i = 0;
-  for (const ch of t) if (ch === query[i]) i++;
-  if (i === query.length && query.length >= 3) return 10;
-  return 0;
-}
-function search(items, query, options = {}) {
-  const q = norm(query);
-  const hits = [];
-  if (!q) {
-    return items.slice(0, options.limit ?? items.length).map((item) => ({ item, score: 0 }));
-  }
-  const words = q.split(" ");
-  for (const item of items) {
-    let score = scoreText(item.label, q, words);
-    for (const alias of item.aliases ?? []) score = Math.max(score, Math.min(66, scoreText(alias, q, words) - 2));
-    if (score < 50) {
-      const tokens = [...norm(item.label).split(" "), ...(item.aliases ?? []).flatMap((a2) => norm(a2).split(" "))];
-      if (words.every((w) => tokens.some((tk) => tk.startsWith(w)))) score = Math.max(score, 55);
-    }
-    if (item.group) score = Math.max(score, scoreText(item.group, q, words) - 30);
-    if (score <= 0) continue;
-    score += options.recent?.(item.value) ?? 0;
-    hits.push({ item, score });
-  }
-  hits.sort((a2, b) => b.score - a2.score || (b.item.priority ?? 0) - (a2.item.priority ?? 0) || a2.item.label.localeCompare(b.item.label));
-  return options.limit ? hits.slice(0, options.limit) : hits;
+function recipeContext(intern, locations) {
+  return { intern, location: locations[0] ?? ANYWHERE, location2: locations[1] ?? locations[0] ?? ANYWHERE };
 }
 
 // src/ui/popover.ts
@@ -3514,155 +3485,8 @@ function openPopover(anchor, build, options = {}) {
   return handle;
 }
 
-// src/ui/palette.ts
-var NATIVE_ALIASES = {
-  "Create Unit": ["spawn", "make"],
-  "Kill Unit": ["destroy"],
-  "Kill Unit At Location": ["destroy"],
-  "Remove Unit": ["delete", "vanish"],
-  "Remove Unit At Location": ["delete"],
-  "Give Units to Player": ["transfer", "ownership", "change owner"],
-  "Display Text Message": ["print", "say", "message", "text"],
-  "Set Resources": ["minerals", "gas", "money"],
-  "Set Deaths": ["counter", "variable", "death count"],
-  "Deaths": ["counter", "variable", "death count"],
-  "Bring": ["at location", "in area"],
-  "Command": ["owns", "has units", "controls"],
-  "Move Unit": ["teleport"],
-  "Move Location": ["follow", "attach"],
-  "Set Switch": ["flag", "toggle"],
-  "Switch": ["flag"],
-  "Wait": ["delay", "sleep", "pause"],
-  "Play WAV": ["sound", "audio"],
-  "Center View": ["camera", "scroll"],
-  "Set Countdown Timer": ["clock"],
-  "Countdown Timer": ["clock"],
-  "Elapsed Time": ["clock", "game time"],
-  "Set Alliance Status": ["ally", "enemy", "team"],
-  "Modify Unit Hit Points": ["hp", "health", "heal"],
-  "Modify Unit Shield Points": ["shields"],
-  "Modify Unit Energy": ["mana"],
-  "Set Invincibility": ["invulnerable", "immortal"],
-  "Run AI Script": ["ai", "computer"],
-  "Run AI Script At Location": ["ai", "computer"],
-  "Victory": ["win"],
-  "Defeat": ["lose"],
-  "Preserve Trigger": ["repeat", "loop", "again"],
-  "Minimap Ping": ["alert"],
-  "Order": ["move", "attack", "patrol", "command unit"],
-  "Set Mission Objectives": ["objectives"],
-  "Comment": ["title", "name", "note"],
-  "Set Doodad State": ["door", "trap"],
-  "Accumulate": ["resources", "minerals", "gas"],
-  "Kill": ["has killed", "kills"],
-  "Score": ["points"],
-  "Opponents": ["players remaining", "enemies left"]
-};
-function paletteItems(kind) {
-  const items = [];
-  if (kind === "condition") for (const d of CONDITION_DEFS) {
-    if (d.type !== ConditionType.Briefing) items.push({ label: d.name, aliases: NATIVE_ALIASES[d.name], priority: 1, value: { kind: "native", type: d.type } });
-  }
-  else for (const d of ACTION_DEFS) {
-    if (d.type !== ActionType.None) items.push({ label: d.name, aliases: NATIVE_ALIASES[d.name], priority: 1, value: { kind: "native", type: d.type } });
-  }
-  for (const e of entriesFor(kind)) items.push({ label: e.name, aliases: e.aliases, group: e.group, value: { kind: "eud", entry: e } });
-  if (kind === "condition") items.push({ label: "Compare two counters", aliases: ["greater", "less", "equal", "variable"], group: "Counters", value: { kind: "expansion", what: "compare" } });
-  else {
-    items.push({ label: "Copy a counter into another", aliases: ["set variable", "assign", "transfer"], group: "Counters", value: { kind: "expansion", what: "copy" } });
-    items.push({ label: "Add a counter to another", aliases: ["sum", "plus", "variable"], group: "Counters", value: { kind: "expansion", what: "add" } });
-    items.push({ label: "Subtract a counter from another", aliases: ["minus", "difference", "variable"], group: "Counters", value: { kind: "expansion", what: "subtract" } });
-  }
-  return items;
-}
-function addRow(api, kind, onPick, options = {}) {
-  const el = api.ui.el;
-  const items = paletteItems(kind);
-  const input = el("input", { className: "input", type: "text", placeholder: kind === "condition" ? api.i18n.t("Add a condition\u2026") : api.i18n.t("Add an action\u2026") });
-  let pop = null;
-  let active = 0;
-  let hits = [];
-  const close = () => {
-    pop?.close();
-    pop = null;
-  };
-  const choose = (item) => {
-    onPick(item.value);
-    input.value = "";
-    close();
-    input.focus();
-  };
-  const render = () => {
-    const browsing = !input.value.trim();
-    hits = browsing ? items : search(items, input.value, { limit: 14, recent: options.recent }).map((h) => h.item);
-    if (!hits.length) {
-      close();
-      return;
-    }
-    active = 0;
-    if (!pop) {
-      pop = openPopover(input, (h) => {
-        const list2 = el("div", { className: "mg-options" });
-        h.root.dataset.role = "hits";
-        return list2;
-      }, { width: Math.max(260, input.offsetWidth), returnFocus: false, onClose: () => {
-        pop = null;
-      } });
-    }
-    const list = pop.root.querySelector(".mg-options");
-    let lastGroup = null;
-    list.replaceChildren(...hits.flatMap((item, i) => {
-      const eud = item.value.kind === "eud";
-      const rows = [];
-      if (browsing) {
-        const group = eud ? `EUD \xB7 ${item.group}` : item.value.kind === "expansion" ? api.i18n.t("Counters") : kind === "condition" ? api.i18n.t("Conditions") : api.i18n.t("Actions");
-        if (group !== lastGroup) {
-          lastGroup = group;
-          rows.push(el("div", { className: "mg-option group" }, group));
-        }
-      }
-      const row = el(
-        "button",
-        { type: "button", className: `mg-option${i === active ? " active" : ""}`, title: eud ? item.value.entry.note ?? "" : "" },
-        el("span", { className: "grow" }, item.label),
-        el("span", { className: `mg-hit-group${eud ? " eud" : ""}` }, eud ? `EUD \xB7 ${item.group}` : item.value.kind === "expansion" ? api.i18n.t("Counters") : "")
-      );
-      row.addEventListener("mousedown", (e) => e.preventDefault());
-      row.addEventListener("click", () => choose(item));
-      rows.push(row);
-      return rows;
-    }));
-  };
-  input.addEventListener("input", render);
-  input.addEventListener("focus", render);
-  input.addEventListener("click", () => {
-    if (!pop) render();
-  });
-  input.addEventListener("blur", () => setTimeout(close, 120));
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-      if (!pop) {
-        render();
-        return;
-      }
-      e.preventDefault();
-      active = (active + (e.key === "ArrowDown" ? 1 : hits.length - 1)) % hits.length;
-      pop.root.querySelectorAll(".mg-option:not(.group)").forEach((r, i) => r.classList.toggle("active", i === active));
-      pop.root.querySelectorAll(".mg-option:not(.group)")[active]?.scrollIntoView({ block: "nearest" });
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      if (!pop) render();
-      if (hits[active]) choose(hits[active]);
-    } else if (e.key === "Escape" && pop) {
-      e.stopPropagation();
-      close();
-    }
-  });
-  return el("div", { className: "mg-add" }, input);
-}
-
 // src/ui/chips.ts
-var norm2 = (s) => s.toLowerCase();
+var norm = (s) => s.toLowerCase();
 function pickChoice(api, anchor, items, onPick, options = {}) {
   const el = api.ui.el;
   return openPopover(anchor, (handle) => {
@@ -3672,8 +3496,8 @@ function pickChoice(api, anchor, items, onPick, options = {}) {
     let active = -1;
     let shown = [];
     const render = () => {
-      const q = norm2(filter.value.trim());
-      shown = items.filter((i) => i.group ? !q : !q || norm2(i.label).includes(q) || (i.hint ? norm2(i.hint).includes(q) : false));
+      const q = norm(filter.value.trim());
+      shown = items.filter((i) => i.group ? !q : !q || norm(i.label).includes(q) || (i.hint ? norm(i.hint).includes(q) : false));
       list.replaceChildren();
       active = -1;
       shown.forEach((item, idx) => {
@@ -3906,6 +3730,558 @@ function pickPlacedUnit(api, host, anchor, current2, onPick) {
       });
     } }]
   });
+}
+
+// src/model/counters.ts
+var PLAYER_SLOTS = 12;
+var UNIT_CLASS_FIRST = 228;
+var cellKey = (player, unit) => unit * PLAYER_SLOTS + player;
+function playerSlots(player, triggerOwners) {
+  if (player < PLAYER_SLOTS) return [player];
+  if (player >= PLAYER_GROUP_COUNT) return [];
+  if (player === PlayerGroup.None) return [];
+  if (player === PlayerGroup.CurrentPlayer) {
+    const out = /* @__PURE__ */ new Set();
+    for (const o of triggerOwners) for (const p of playerSlots(o, [])) out.add(p);
+    return [...out].sort((a2, b) => a2 - b);
+  }
+  return Array.from({ length: PLAYER_SLOTS }, (_, i) => i);
+}
+function usage(list) {
+  const cells = /* @__PURE__ */ new Set();
+  const switches = /* @__PURE__ */ new Set();
+  for (const t of list) {
+    const own = owners(t);
+    for (const c2 of t.conditions) {
+      if (c2.type === ConditionType.Deaths && c2.unitId < UNIT_CLASS_FIRST) for (const p of playerSlots(c2.player, own)) cells.add(cellKey(p, c2.unitId));
+      if (c2.type === ConditionType.Switch) switches.add(c2.resource);
+    }
+    for (const a2 of t.actions) {
+      if (a2.type === ActionType.SetDeaths && a2.unitId < UNIT_CLASS_FIRST) for (const p of playerSlots(a2.player, own)) cells.add(cellKey(p, a2.unitId));
+      if (a2.type === ActionType.SetSwitch) switches.add(a2.target);
+    }
+  }
+  return { cells, switches };
+}
+var COUNTER_UNITS = [
+  181,
+  182,
+  179,
+  180,
+  183,
+  184,
+  185,
+  186,
+  187,
+  204,
+  91,
+  92,
+  119,
+  121,
+  145,
+  153,
+  158,
+  161,
+  191,
+  192,
+  193,
+  194,
+  195,
+  196,
+  197,
+  198,
+  199,
+  215,
+  216,
+  217,
+  219,
+  128,
+  129,
+  173,
+  101,
+  214
+];
+function allocate(used, placedUnitIds = /* @__PURE__ */ new Set()) {
+  for (const unit of COUNTER_UNITS) {
+    if (placedUnitIds.has(unit)) continue;
+    for (let player = 0; player < PLAYER_SLOTS; player++) {
+      if (!used.has(cellKey(player, unit))) return [player, unit];
+    }
+  }
+  return null;
+}
+
+// src/model/checks.ts
+var LOCATION_ANYWHERE = 64;
+function check(trigger3, ctx = {}) {
+  const out = [];
+  const conditions = liveConditions(trigger3);
+  const actions = liveActions(trigger3);
+  const own = owners(trigger3);
+  if (own.length === 0 && !ctx.template) out.push({ level: "error", text: "No player owns this trigger, so it never runs." });
+  if (actions.length === 0) out.push({ level: "warn", text: "This trigger has no actions." });
+  if (conditions.length >= MAX_CONDITIONS) out.push({ level: "info", text: "All 16 condition slots are used." });
+  if (actions.length >= MAX_ACTIONS) out.push({ level: "info", text: "All 64 action slots are used." });
+  const enabledConditions = conditions.map((c2, index) => ({ c: c2, index })).filter(({ c: c2 }) => !isConditionDisabled(c2));
+  if (enabledConditions.some(({ c: c2 }) => c2.type === ConditionType.Never)) out.push({ level: "warn", text: "A Never condition means this trigger never fires." });
+  for (let i = 0; i < enabledConditions.length; i++) for (let j = i + 1; j < enabledConditions.length; j++) {
+    const a2 = enabledConditions[i].c, b = enabledConditions[j].c;
+    if (a2.type !== b.type || a2.player !== b.player || a2.unitId !== b.unitId || a2.location !== b.location || a2.resource !== b.resource || a2.mask !== b.mask) continue;
+    const def = conditionDef(a2.type);
+    if (!def?.args.some((x) => x.kind === "comparison")) continue;
+    const lo = a2.comparison === Comparison.AtLeast ? a2 : b.comparison === Comparison.AtLeast ? b : null;
+    const hi = a2.comparison === Comparison.AtMost ? a2 : b.comparison === Comparison.AtMost ? b : null;
+    if (lo && hi && lo.amount > hi.amount) out.push({ level: "warn", text: `Conditions ${enabledConditions[i].index + 1} and ${enabledConditions[j].index + 1} contradict each other: at least ${lo.amount} and at most ${hi.amount}.` });
+    if (a2.comparison === Comparison.Exactly && b.comparison === Comparison.Exactly && a2.amount !== b.amount) out.push({ level: "warn", text: `Conditions ${enabledConditions[i].index + 1} and ${enabledConditions[j].index + 1} contradict each other: exactly ${a2.amount} and exactly ${b.amount}.` });
+  }
+  const preserved = (trigger3.flags & TriggerFlag.Preserve) !== 0 || actions.some((a2) => a2.type === ActionType.PreserveTrigger && !isActionDisabled(a2));
+  actions.forEach((a2, index) => {
+    if (isActionDisabled(a2)) return;
+    const at = { kind: "action", index };
+    if (a2.type === ActionType.Wait || a2.type === ActionType.Transmission) {
+      if (preserved) out.push({ level: "warn", text: "A Wait in a preserved trigger holds up every other trigger of its owner while it waits, every cycle.", at });
+      if (ctx.everyFrame) out.push({ level: "warn", text: "With triggers running every frame, a Wait blocks the owner's other triggers for its whole length.", at });
+    }
+    const def = actionDef(a2.type);
+    if (def) {
+      for (const arg of def.args) {
+        const value = a2[arg.field];
+        if (arg.kind === "location") {
+          if (value === 0) out.push({ level: "warn", text: `${def.name} names no location.`, at });
+          else if (value !== LOCATION_ANYWHERE && ctx.locationExists && !ctx.locationExists(value)) out.push({ level: "error", text: `${def.name} names location ${value}, which the map no longer has.`, at });
+        }
+        if (arg.kind === "text" && value !== 0 && ctx.stringExists && !ctx.stringExists(value)) out.push({ level: "error", text: `${def.name} names string ${value}, which the map does not have.`, at });
+        if (arg.kind === "text" && value === 0 && (a2.type === ActionType.DisplayText || a2.type === ActionType.SetMissionObjectives)) out.push({ level: "warn", text: `${def.name} has no text.`, at });
+        if (arg.kind === "wav" && value !== 0 && ctx.wavPresent && !ctx.wavPresent(value)) out.push({ level: "warn", text: `The sound of ${def.name} is not in the map.`, at });
+      }
+    }
+    if (a2.type === ActionType.SetDeaths) {
+      if (isEud(a2.player)) {
+        const row = recognizeAction(a2);
+        if (!row) {
+          const access = accessOf(a2.player, a2.unitId, a2.mask, a2.location);
+          out.push({ level: "info", text: `Writes memory at 0x${access.address.toString(16).toUpperCase()}, which the catalogue does not know.`, at });
+        } else if (!row.entry.remastered.write) out.push({ level: "error", text: `Remastered does not let a trigger write ${row.entry.name.toLowerCase()}.`, at });
+      } else if (ctx.claimedCells && a2.unitId < 228) {
+        for (const p of playerSlots(a2.player, own)) if (ctx.claimedCells.has(cellKey(p, a2.unitId))) {
+          out.push({ level: "warn", text: "This death counter is used by another plugin's generated triggers.", at });
+          break;
+        }
+      }
+    }
+  });
+  conditions.forEach((c2, index) => {
+    if (isConditionDisabled(c2)) return;
+    const at = { kind: "condition", index };
+    const def = conditionDef(c2.type);
+    if (def) for (const arg of def.args) {
+      const value = c2[arg.field];
+      if (arg.kind === "location" && value !== 0 && value !== LOCATION_ANYWHERE && ctx.locationExists && !ctx.locationExists(value)) out.push({ level: "error", text: `${def.name} names location ${value}, which the map no longer has.`, at });
+      if (arg.kind === "location" && value === 0) out.push({ level: "warn", text: `${def.name} names no location.`, at });
+    }
+    if (c2.type === ConditionType.Deaths && isEud(c2.player) && !recognizeCondition(c2)) {
+      const access = accessOf(c2.player, c2.unitId, c2.mask, c2.location);
+      out.push({ level: "info", text: `Reads memory at 0x${access.address.toString(16).toUpperCase()}, which the catalogue does not know.`, at });
+    }
+    if (c2.type === ConditionType.Deaths && !isEud(c2.player) && ctx.claimedCells && c2.unitId < 228) {
+      for (const p of playerSlots(c2.player, own)) if (ctx.claimedCells.has(cellKey(p, c2.unitId))) {
+        out.push({ level: "warn", text: "This death counter is used by another plugin's generated triggers.", at });
+        break;
+      }
+    }
+  });
+  return out;
+}
+
+// src/model/search.ts
+var norm2 = (s) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+var stem = (w) => w.length > 3 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w;
+var startsWord = (token, w) => token.startsWith(w) || token.startsWith(stem(w)) || stem(token).startsWith(stem(w));
+function scoreText(text, query, words) {
+  const t = norm2(text);
+  if (!t) return 0;
+  if (t === query || t === stem(query)) return 100;
+  if (t.startsWith(query) || t.startsWith(stem(query))) return 80;
+  const tw = t.split(" ");
+  if (words.every((w) => tw.some((x) => startsWord(x, w)))) return 60 + Math.min(10, 10 * words.length / tw.length);
+  if (t.includes(query)) return 40;
+  if (words.every((w) => t.includes(w))) return 30;
+  let i = 0;
+  for (const ch of t) if (ch === query[i]) i++;
+  if (i === query.length && query.length >= 3) return 10;
+  return 0;
+}
+function search(items, query, options = {}) {
+  const q = norm2(query);
+  const hits = [];
+  if (!q) {
+    return items.slice(0, options.limit ?? items.length).map((item) => ({ item, score: 0 }));
+  }
+  const words = q.split(" ");
+  for (const item of items) {
+    let score = scoreText(item.label, q, words);
+    for (const alias of item.aliases ?? []) score = Math.max(score, Math.min(66, scoreText(alias, q, words) - 2));
+    if (score < 50) {
+      const tokens = [...norm2(item.label).split(" "), ...(item.aliases ?? []).flatMap((a2) => norm2(a2).split(" "))];
+      if (words.every((w) => tokens.some((tk) => startsWord(tk, w)))) score = Math.max(score, 55);
+    }
+    if (item.group) score = Math.max(score, scoreText(item.group, q, words) - 30);
+    if (score <= 0) continue;
+    score += options.recent?.(item.value) ?? 0;
+    hits.push({ item, score });
+  }
+  hits.sort((a2, b) => b.score - a2.score || (b.item.priority ?? 0) - (a2.item.priority ?? 0) || a2.item.label.length - b.item.label.length || a2.item.label.localeCompare(b.item.label));
+  return options.limit ? hits.slice(0, options.limit) : hits;
+}
+
+// src/model/parse.ts
+var RACES = ["terran ", "zerg ", "protoss "];
+var norm3 = (s) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+function spellings(label, aliases = []) {
+  const out = /* @__PURE__ */ new Set();
+  const add = (s) => {
+    const n = norm3(s);
+    if (n) {
+      out.add(n);
+      out.add(`${n}s`);
+      if (n.endsWith("s")) out.add(n.slice(0, -1));
+    }
+  };
+  add(label);
+  for (const r of RACES) if (label.toLowerCase().startsWith(r)) add(label.slice(r.length));
+  add(label.replace(/\s*\(.*\)\s*/g, " "));
+  for (const a2 of aliases) add(a2);
+  return [...out].filter((s) => s.length >= 2);
+}
+function candidates(names) {
+  const out = [];
+  const push = (kind, list) => {
+    for (const n of list ?? []) for (const s of spellings(n.label, n.aliases)) out.push({ kind, value: n.value, spelling: s });
+  };
+  push("unit", names.units);
+  push("location", names.locations);
+  push("switch", names.switches);
+  push("weapon", names.weapons);
+  push("upgrade", names.upgrades);
+  push("tech", names.techs);
+  push("player", names.players);
+  for (const k of KEYS) {
+    out.push({ kind: "key", value: k.code, spelling: `${k.label.toLowerCase()} key` });
+    out.push({ kind: "key", value: k.code, spelling: `key ${k.label.toLowerCase()}` });
+  }
+  const rank = { location: 0, switch: 1, player: 2, weapon: 3, upgrade: 4, tech: 5, key: 6, unit: 7, number: 8, comparison: 9, modifier: 10 };
+  out.sort((a2, b) => b.spelling.length - a2.spelling.length || rank[a2.kind] - rank[b.kind]);
+  return out;
+}
+var WORDS = [
+  [/\b(at least|atleast)\b/, "comparison", Comparison.AtLeast],
+  [/\b(at most|atmost)\b/, "comparison", Comparison.AtMost],
+  [/\b(exactly|equal to|equals)\b/, "comparison", Comparison.Exactly],
+  [/\b(up by|increase|add|plus)\b/, "modifier", SetModifier.Add],
+  [/\b(down by|decrease|subtract|minus)\b/, "modifier", SetModifier.Subtract],
+  [/\b(set to|setto|to)\b/, "modifier", SetModifier.SetTo]
+];
+function parseQuery(query, names) {
+  const q = norm3(query);
+  const taken = Array.from({ length: q.length }, () => false);
+  const entities = [];
+  const claim = (start, end, kind, value) => {
+    for (let i = start; i < end; i++) if (taken[i]) return false;
+    for (let i = start; i < end; i++) taken[i] = true;
+    entities.push({ kind, value, text: q.slice(start, end), start, end });
+    return true;
+  };
+  const atWord = (start, end) => (start === 0 || q[start - 1] === " ") && (end === q.length || q[end] === " ");
+  for (const m of q.matchAll(/\b(?:player|p)\s?(\d{1,2})\b/g)) {
+    const n = Number(m[1]);
+    if (n >= 1 && n <= 12) claim(m.index, m.index + m[0].length, "player", n - 1);
+  }
+  for (const c2 of candidates(names)) {
+    let from = 0;
+    while (from <= q.length) {
+      const at = q.indexOf(c2.spelling, from);
+      if (at < 0) break;
+      const end = at + c2.spelling.length;
+      if (atWord(at, end)) claim(at, end, c2.kind, c2.value);
+      from = at + 1;
+    }
+  }
+  for (const [re, kind, value] of WORDS) {
+    const m = re.exec(q);
+    if (m && m.index !== void 0) claim(m.index, m.index + m[0].length, kind, value);
+  }
+  for (const m of q.matchAll(/\b\d+(?:\.\d+)?\b/g)) claim(m.index, m.index + m[0].length, "number", Number(m[0]));
+  entities.sort((a2, b) => a2.start - b.start);
+  for (const e of entities) {
+    const before = q.slice(0, e.start).trimEnd();
+    const m = /(?:^|\s)(owned by|to|from|for|at|in|into|of|by)$/.exec(before);
+    if (m) e.prep = m[1];
+  }
+  let rest = "";
+  for (let i = 0; i < q.length; i++) rest += taken[i] ? " " : q[i];
+  rest = rest.replace(/\b(a|an|the|of|for|at|in|on|from|with|and|is|has|to|by)\b/g, " ").replace(/\s+/g, " ").trim();
+  return { rest, entities };
+}
+function taker(entities) {
+  const used = /* @__PURE__ */ new Set();
+  return (kinds, preps = []) => {
+    const e = (preps.length ? entities.find((x) => !used.has(x) && kinds.includes(x.kind) && x.prep !== void 0 && preps.includes(x.prep)) : void 0) ?? entities.find((x) => !used.has(x) && kinds.includes(x.kind) && (!preps.length || x.prep === void 0 || !CLAIMING_PREPS.has(x.prep)));
+    if (e) used.add(e);
+    return e;
+  };
+}
+var CLAIMING_PREPS = /* @__PURE__ */ new Set(["to", "from", "owned by", "into"]);
+function prepsFor(label) {
+  switch (label) {
+    case "To":
+    case "Move":
+      return ["to", "into"];
+    case "From":
+      return ["from", "owned by", "of"];
+    case "Unit at":
+      return ["at"];
+    default:
+      return [];
+  }
+}
+function kindsFor(arg) {
+  switch (arg) {
+    case "player":
+      return ["player"];
+    case "unit":
+      return ["unit"];
+    case "location":
+      return ["location"];
+    case "switch":
+      return ["switch", "number"];
+    case "comparison":
+      return ["comparison"];
+    case "modifier":
+      return ["modifier"];
+    case "amount":
+    case "number":
+    case "count":
+    case "duration":
+    case "percent":
+      return ["number"];
+    default:
+      return [];
+  }
+}
+function fillCondition(record, entities) {
+  const def = conditionDef(record.type);
+  if (!def) return record;
+  const take = taker(entities);
+  const out = { ...record };
+  for (const arg of def.args) {
+    const e = take(kindsFor(arg.kind), prepsFor(arg.label));
+    if (!e) continue;
+    let value = e.value;
+    if (arg.kind === "switch" && e.kind === "number") value = Math.max(0, Math.min(255, value - 1));
+    out[arg.field] = value;
+  }
+  return out;
+}
+function fillAction(record, entities) {
+  const def = actionDef(record.type);
+  if (!def) return record;
+  const take = taker(entities);
+  const out = { ...record };
+  for (const arg of def.args) {
+    const e = take(kindsFor(arg.kind), prepsFor(arg.label));
+    if (!e) continue;
+    let value = e.value;
+    if (arg.kind === "switch" && e.kind === "number") value = Math.max(0, Math.min(255, value - 1));
+    out[arg.field] = value;
+  }
+  return out;
+}
+function fillEud(entry2, kind, entities, query) {
+  const take = taker(entities);
+  const args = {};
+  for (const a2 of entry2.args) {
+    const e = take(a2.kind === "unit" ? ["unit"] : a2.kind === "player" ? ["player"] : a2.kind === "weapon" ? ["weapon"] : a2.kind === "upgrade" ? ["upgrade"] : a2.kind === "tech" ? ["tech"] : a2.kind === "key" ? ["key"] : ["number"]);
+    args[a2.name] = e ? e.value : 0;
+  }
+  let value = entry2.value?.choices ? entry2.value.choices[0].value : entry2.value?.min ?? 0;
+  if (entry2.value?.choices) {
+    const q = norm3(query);
+    const hit = entry2.value.choices.find((c2) => new RegExp(`\\b${norm3(c2.label).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(q));
+    if (hit) value = hit.value;
+  } else if (entry2.value?.kind === "unit") {
+    const e = take(["unit"]);
+    if (e) value = e.value;
+  } else if (entry2.value?.kind === "player") {
+    const e = take(["player"]);
+    if (e) value = e.value;
+  } else if (entry2.value?.kind === "weapon") {
+    const e = take(["weapon"]);
+    if (e) value = e.value;
+  } else {
+    const e = take(["number"]);
+    if (e) value = e.value;
+  }
+  const opWord = take([kind === "condition" ? "comparison" : "modifier"]);
+  const op = enumerated(entry2) ? kind === "condition" ? Comparison.Exactly : SetModifier.SetTo : opWord ? opWord.value : kind === "condition" ? Comparison.AtLeast : SetModifier.SetTo;
+  return { entry: entry2, args, value, op };
+}
+
+// src/ui/palette.ts
+var NATIVE_ALIASES = {
+  "Create Unit": ["spawn", "make"],
+  "Kill Unit": ["destroy"],
+  "Kill Unit At Location": ["destroy"],
+  "Remove Unit": ["delete", "vanish"],
+  "Remove Unit At Location": ["delete"],
+  "Give Units to Player": ["transfer", "ownership", "change owner"],
+  "Display Text Message": ["print", "say", "message", "text"],
+  "Set Resources": ["minerals", "gas", "money"],
+  "Set Deaths": ["counter", "variable", "death count"],
+  "Deaths": ["counter", "variable", "death count"],
+  "Bring": ["at location", "in area"],
+  "Command": ["owns", "has units", "controls"],
+  "Move Unit": ["teleport"],
+  "Move Location": ["follow", "attach"],
+  "Set Switch": ["flag", "toggle"],
+  "Switch": ["flag"],
+  "Wait": ["delay", "sleep", "pause"],
+  "Play WAV": ["sound", "audio"],
+  "Center View": ["camera", "scroll"],
+  "Set Countdown Timer": ["clock"],
+  "Countdown Timer": ["clock"],
+  "Elapsed Time": ["clock", "game time"],
+  "Set Alliance Status": ["ally", "enemy", "team"],
+  "Modify Unit Hit Points": ["hp", "health", "heal"],
+  "Modify Unit Shield Points": ["shields"],
+  "Modify Unit Energy": ["mana"],
+  "Set Invincibility": ["invulnerable", "immortal"],
+  "Run AI Script": ["ai", "computer"],
+  "Run AI Script At Location": ["ai", "computer"],
+  "Victory": ["win"],
+  "Defeat": ["lose"],
+  "Preserve Trigger": ["repeat", "loop", "again"],
+  "Minimap Ping": ["alert"],
+  "Order": ["move", "attack", "patrol", "command unit"],
+  "Set Mission Objectives": ["objectives"],
+  "Comment": ["title", "name", "note"],
+  "Set Doodad State": ["door", "trap"],
+  "Accumulate": ["resources", "minerals", "gas"],
+  "Kill": ["has killed", "kills"],
+  "Score": ["points"],
+  "Opponents": ["players remaining", "enemies left"]
+};
+function paletteItems(kind) {
+  const items = [];
+  if (kind === "condition") for (const d of CONDITION_DEFS) {
+    if (d.type !== ConditionType.Briefing) items.push({ label: d.name, aliases: NATIVE_ALIASES[d.name], priority: 1, value: { kind: "native", type: d.type } });
+  }
+  else for (const d of ACTION_DEFS) {
+    if (d.type !== ActionType.None) items.push({ label: d.name, aliases: NATIVE_ALIASES[d.name], priority: 1, value: { kind: "native", type: d.type } });
+  }
+  for (const e of entriesFor(kind)) items.push({ label: e.name, aliases: e.aliases, group: e.group, value: { kind: "eud", entry: e } });
+  if (kind === "condition") items.push({ label: "Compare two counters", aliases: ["greater", "less", "equal", "variable"], group: "Counters", value: { kind: "expansion", what: "compare" } });
+  else {
+    items.push({ label: "Copy a counter into another", aliases: ["set variable", "assign", "transfer"], group: "Counters", value: { kind: "expansion", what: "copy" } });
+    items.push({ label: "Add a counter to another", aliases: ["sum", "plus", "variable"], group: "Counters", value: { kind: "expansion", what: "add" } });
+    items.push({ label: "Subtract a counter from another", aliases: ["minus", "difference", "variable"], group: "Counters", value: { kind: "expansion", what: "subtract" } });
+  }
+  return items;
+}
+function addRow(api, kind, onPick, options = {}) {
+  const el = api.ui.el;
+  const items = paletteItems(kind);
+  let entities = [];
+  const input = el("input", { className: "input", type: "text", placeholder: kind === "condition" ? api.i18n.t("Add a condition\u2026") : api.i18n.t("Add an action\u2026") });
+  let pop = null;
+  let active = 0;
+  let hits = [];
+  const close = () => {
+    pop?.close();
+    pop = null;
+  };
+  const choose = (item) => {
+    const query = input.value;
+    onPick({ pick: item.value, entities, query });
+    input.value = "";
+    entities = [];
+    close();
+    input.focus();
+  };
+  const render = () => {
+    const browsing = !input.value.trim();
+    let query = input.value;
+    entities = [];
+    if (!browsing && options.names) {
+      const parsed = parseQuery(input.value, options.names());
+      entities = parsed.entities;
+      if (parsed.rest) query = parsed.rest;
+    }
+    hits = browsing ? items : search(items, query, { limit: 14, recent: options.recent }).map((h) => h.item);
+    if (!hits.length) {
+      close();
+      return;
+    }
+    active = 0;
+    if (!pop) {
+      pop = openPopover(input, (h) => {
+        const list2 = el("div", { className: "mg-options" });
+        h.root.dataset.role = "hits";
+        return list2;
+      }, { width: Math.max(260, input.offsetWidth), returnFocus: false, onClose: () => {
+        pop = null;
+      } });
+    }
+    const list = pop.root.querySelector(".mg-options");
+    let lastGroup = null;
+    list.replaceChildren(...hits.flatMap((item, i) => {
+      const eud = item.value.kind === "eud";
+      const rows = [];
+      if (browsing) {
+        const group = eud ? `EUD \xB7 ${item.group}` : item.value.kind === "expansion" ? api.i18n.t("Counters") : kind === "condition" ? api.i18n.t("Conditions") : api.i18n.t("Actions");
+        if (group !== lastGroup) {
+          lastGroup = group;
+          rows.push(el("div", { className: "mg-option group" }, group));
+        }
+      }
+      const named = entities.length ? entities.map((e) => e.text).join(" \xB7 ") : "";
+      const row = el(
+        "button",
+        { type: "button", className: `mg-option${i === active ? " active" : ""}`, title: eud ? item.value.entry.note ?? "" : "" },
+        el("span", { className: "grow" }, item.label, named ? el("span", { className: "hint" }, `  ${named}`) : null),
+        el("span", { className: `mg-hit-group${eud ? " eud" : ""}` }, eud ? `EUD \xB7 ${item.group}` : item.value.kind === "expansion" ? api.i18n.t("Counters") : "")
+      );
+      row.addEventListener("mousedown", (e) => e.preventDefault());
+      row.addEventListener("click", () => choose(item));
+      rows.push(row);
+      return rows;
+    }));
+  };
+  input.addEventListener("input", render);
+  input.addEventListener("focus", render);
+  input.addEventListener("click", () => {
+    if (!pop) render();
+  });
+  input.addEventListener("blur", () => setTimeout(close, 120));
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      if (!pop) {
+        render();
+        return;
+      }
+      e.preventDefault();
+      active = (active + (e.key === "ArrowDown" ? 1 : hits.length - 1)) % hits.length;
+      pop.root.querySelectorAll(".mg-option:not(.group)").forEach((r, i) => r.classList.toggle("active", i === active));
+      pop.root.querySelectorAll(".mg-option:not(.group)")[active]?.scrollIntoView({ block: "nearest" });
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (!pop) render();
+      if (hits[active]) choose(hits[active]);
+    } else if (e.key === "Escape" && pop) {
+      e.stopPropagation();
+      close();
+    }
+  });
+  return el("div", { className: "mg-add" }, input);
 }
 
 // src/ui/rows.ts
@@ -4183,13 +4559,13 @@ var RELATIONS = [
 ];
 var RELATION_WORDS = Object.fromEntries(RELATIONS.map((r) => [r.rel, r.label]));
 var counterExpansionOf = (store, a2) => store.sidecar.expansions.find((x) => (x.kind === "copy" || x.kind === "add" || x.kind === "subtract") && isFlagAction(a2, { cell: x.flag })) ?? null;
-function compareOf(store, index, trigger2) {
+function compareOf(store, index, trigger3) {
   const clean2 = store.cleanIndex(index);
   const x = store.sidecar.expansions.find((e) => e.kind === "compare" && e.anchor.i === clean2);
   if (!x) return null;
   const reads = (c2, cell) => c2.type === ConditionType.Deaths && c2.player === cell[0] && c2.unitId === cell[1];
-  const rows = trigger2.conditions.map((c2, i) => reads(c2, x.scratch[0]) || reads(c2, x.scratch[1]) ? i : -1).filter((i) => i >= 0);
-  const found = rows.map((i) => trigger2.conditions[i]);
+  const rows = trigger3.conditions.map((c2, i) => reads(c2, x.scratch[0]) || reads(c2, x.scratch[1]) ? i : -1).filter((i) => i >= 0);
+  const found = rows.map((i) => trigger3.conditions[i]);
   let relation = "==";
   for (const r of RELATIONS) {
     const want = compareConditions(x, r.rel);
@@ -4260,7 +4636,7 @@ function renderCounterExpansion(api, host, store, x, into) {
   else into.append(t("Subtract "), from, t(" from "), to, " ", bits);
   into.append(api.ui.el("span", { className: "mg-tag", title: t("Done by a run of {n} generated triggers after this one, in the same cycle; they are hidden here and locked in the other editors.", { n: (x.bits ?? 32) + (x.kind === "copy" ? 2 : 1) }) }, "A+"));
 }
-function renderCompare(api, host, store, index, trigger2, cmp, into) {
+function renderCompare(api, host, store, index, trigger3, cmp, into) {
   const t = api.i18n.t;
   const namer = host.namer(store.sidecar);
   const { x } = cmp;
@@ -4272,14 +4648,14 @@ function renderCompare(api, host, store, index, trigger2, cmp, into) {
   const rel = chip(api, RELATIONS.find((r) => r.rel === cmp.relation)?.label ?? "?", "");
   rel.addEventListener("click", () => pickChoice(api, rel, RELATIONS, (v) => {
     const next = compareConditions(x, RELATIONS[v].rel);
-    const conditions = trigger2.conditions.filter((_, i) => !cmp.rows.includes(i));
+    const conditions = trigger3.conditions.filter((_, i) => !cmp.rows.includes(i));
     conditions.splice(cmp.rows[0] ?? conditions.length, 0, ...next);
-    store.replace(index, { ...trigger2, conditions }, t("Edit comparison"));
+    store.replace(index, { ...trigger3, conditions }, t("Edit comparison"));
   }, { current: RELATIONS.findIndex((r) => r.rel === cmp.relation) }));
   into.append(a2, t(" is "), rel, " ", b);
   into.append(api.ui.el("span", { className: "mg-tag", title: t("Answered by a run of generated triggers before this one, every cycle; they are hidden here and locked in the other editors.") }, "A+"));
 }
-function newCompare(store, host, index, trigger2) {
+function newCompare(store, host, index, trigger3) {
   const named = store.sidecar.counters;
   const a2 = named[0] ? [named[0].player, named[0].unit] : freeCell(store, host) ?? [0, 181];
   const b = named[1] ? [named[1].player, named[1].unit] : freeCell(store, host, [a2]) ?? [1, 181];
@@ -4287,7 +4663,7 @@ function newCompare(store, host, index, trigger2) {
   const s1 = s0 ? freeCell(store, host, [a2, b, s0]) : null;
   if (!s0 || !s1) return null;
   const x = { id: `k${Date.now().toString(36)}`, kind: "compare", a: a2, b, scratch: [s0, s1], bits: 32, anchor: { i: store.cleanIndex(index), h: "" } };
-  void trigger2;
+  void trigger3;
   return { conditions: compareConditions(x, ">"), expansion: x };
 }
 function newCounterStep(store, host, what) {
@@ -4310,7 +4686,7 @@ function renderEditor(deps, root) {
     root.append(el("div", { className: "mg-empty" }, store.list.length ? t("Pick a trigger on the left, or add one.") : t("This map has no triggers yet. Add one with New.")));
     return;
   }
-  const trigger2 = store.list[index];
+  const trigger3 = store.list[index];
   const claim = host.claims(store.list).find((c2) => index >= c2.start && index < c2.start + c2.count);
   if (claim && claim.pluginId !== api.plugin.id) {
     root.append(el(
@@ -4336,12 +4712,12 @@ function renderEditor(deps, root) {
     }
   }
   const perPlayer = store.sidecar.expansions.find((x) => x.kind === "forEachPlayer" && x.anchor.i === store.cleanIndex(index));
-  const problems = check(trigger2, { everyFrame: store.sidecar.settings.everyFrame, locationExists: (n) => host.locationExists(n), stringExists: (i) => host.stringExists(i), wavPresent: (i) => host.wavPresent(i), claimedCells, template: !!perPlayer });
+  const problems = check(trigger3, { everyFrame: store.sidecar.settings.everyFrame, locationExists: (n) => host.locationExists(n), stringExists: (i) => host.stringExists(i), wavPresent: (i) => host.wavPresent(i), claimedCells, template: !!perPlayer });
   const general = problems.filter((p) => !p.at);
   const at = (kind, i) => problems.filter((p) => p.at?.kind === kind && p.at.index === i);
   const replace = (label, next) => store.replace(index, next, label);
-  const ci = commentIndex(trigger2);
-  const titleText = ci >= 0 ? namer.string(trigger2.actions[ci].text) ?? "" : "";
+  const ci = commentIndex(trigger3);
+  const titleText = ci >= 0 ? namer.string(trigger3.actions[ci].text) ?? "" : "";
   const title = el("input", { className: "input", type: "text", placeholder: t("Untitled trigger \u2014 type a name"), value: titleText, title: t("The trigger's name, kept as its Comment action so every editor shows it") });
   const commitTitle = () => {
     const text = title.value.trim();
@@ -4361,32 +4737,32 @@ function renderEditor(deps, root) {
     }
   });
   root.append(el("div", { className: "mg-titlebar" }, title));
-  const own = owners(trigger2);
+  const own = owners(trigger3);
   const playersRow = el("div", { className: "mg-players" }, el("span", { className: "hint" }, t("Runs for")));
   const groups = host.playerGroups();
   const players = host.players();
   for (const g of own) {
     const chip2 = el("button", { type: "button", className: "mg-chip", title: t("Click to remove") }, g < 12 && players[g]?.color ? el("span", { className: "mg-dot", style: `background:${players[g].color}` }) : null, groups.find((x) => x.value === g)?.label ?? String(g));
-    chip2.addEventListener("click", () => replace(t("Change owners"), setOwners(trigger2, own.filter((x) => x !== g))));
+    chip2.addEventListener("click", () => replace(t("Change owners"), setOwners(trigger3, own.filter((x) => x !== g))));
     playersRow.append(chip2);
   }
   const addOwner = el("button", { type: "button", className: "mg-chip", title: t("Add a player or group") }, "+");
-  addOwner.addEventListener("click", () => pickChoice(api, addOwner, groups.filter((g) => !own.includes(g.value)).map((g) => ({ value: g.value, label: g.label, color: g.value < 12 ? players[g.value]?.color ?? null : void 0 })), (v) => replace(t("Change owners"), setOwners(trigger2, [...own, v])), { width: 220 }));
+  addOwner.addEventListener("click", () => pickChoice(api, addOwner, groups.filter((g) => !own.includes(g.value)).map((g) => ({ value: g.value, label: g.label, color: g.value < 12 ? players[g.value]?.color ?? null : void 0 })), (v) => replace(t("Change owners"), setOwners(trigger3, [...own, v])), { width: 220 }));
   playersRow.append(addOwner);
   if (perPlayer) {
     playersRow.replaceChildren(el("span", { className: "hint" }, t("Runs once for each of")), ...perPlayer.players.map((p) => el("span", { className: "mg-chip" }, players[p]?.color ? el("span", { className: "mg-dot", style: `background:${players[p].color}` }) : null, groups.find((x) => x.value === p)?.label ?? String(p))), el("span", { className: "hint" }, t("with {group} standing for the player", { group: groups.find((x) => x.value === perPlayer.placeholder)?.label ?? "" })));
   }
   root.append(playersRow);
   for (const p of general) root.append(el("div", { className: `mg-problem ${p.level}`, style: "padding-left:6px" }, p.text));
-  const conditions = liveConditions(trigger2);
+  const conditions = liveConditions(trigger3);
   const condSection = el("div", { className: "mg-section" }, el("div", { className: "mg-section-head" }, t("Conditions"), el("span", { className: "grow" }), el("span", { className: "hint" }, `${conditions.length}/${MAX_CONDITIONS}`)));
-  const writeConditions = (label, next) => replace(label, { ...trigger2, conditions: next });
-  const cmp = compareOf(store, index, trigger2);
+  const writeConditions = (label, next) => replace(label, { ...trigger3, conditions: next });
+  const cmp = compareOf(store, index, trigger3);
   conditions.forEach((c2, i) => {
     if (cmp && cmp.rows.includes(i)) {
       if (i !== cmp.rows[0]) return;
       const sentence = el("span", { className: "mg-sentence" });
-      renderCompare(api, host, store, index, trigger2, cmp, sentence);
+      renderCompare(api, host, store, index, trigger3, cmp, sentence);
       const remove = api.ui.widgets.button("\u2715", { ghost: true, title: t("Remove"), onClick: () => store.commit(t("Remove comparison"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, conditions: conditions.filter((_, k) => !cmp.rows.includes(k)) }), { sidecar: { expansions: store.sidecar.expansions.filter((x) => x.id !== cmp.x.id) } }) });
       condSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove))));
       return;
@@ -4405,13 +4781,13 @@ function renderEditor(deps, root) {
       onToggle: () => writeConditions(t("Toggle condition"), conditions.map((x, j) => j === i ? setConditionDisabled(x, !(x.flags & 2)) : x))
     }));
   });
-  if (conditions.length < MAX_CONDITIONS) condSection.append(addRow(api, "condition", (pick) => {
+  if (conditions.length < MAX_CONDITIONS) condSection.append(addRow(api, "condition", ({ pick, entities, query }) => {
     if (pick.kind === "expansion") {
       if (cmp) {
         api.ui.toast({ kind: "info", title: t("One comparison per trigger"), detail: t("Put a second comparison in another trigger.") });
         return;
       }
-      const made = newCompare(store, host, index, trigger2);
+      const made = newCompare(store, host, index, trigger3);
       if (!made) {
         api.ui.toast({ kind: "error", title: t("No free counter cells for the comparison") });
         return;
@@ -4419,13 +4795,13 @@ function renderEditor(deps, root) {
       store.commit(t("Add comparison"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, conditions: [...conditions, ...made.conditions] }), { sidecar: { expansions: [...store.sidecar.expansions, made.expansion] } });
       return;
     }
-    writeConditions(t("Add condition"), [...conditions, newCondition(api, pick)]);
-  }));
+    writeConditions(t("Add condition"), [...conditions, newCondition(api, pick, entities, query)]);
+  }, { names: () => host.parseNames() }));
   root.append(condSection);
-  const actions = liveActions(trigger2);
+  const actions = liveActions(trigger3);
   const shownActions = actions.map((a2, i) => ({ a: a2, i })).filter(({ a: a2 }) => a2.type !== ActionType.Comment);
   const actSection = el("div", { className: "mg-section" }, el("div", { className: "mg-section-head" }, t("Actions"), el("span", { className: "grow" }), el("span", { className: "hint" }, `${actions.length}/${MAX_ACTIONS}`)));
-  const writeActions = (label, next) => replace(label, { ...trigger2, actions: next });
+  const writeActions = (label, next) => replace(label, { ...trigger3, actions: next });
   for (const { a: a2, i } of shownActions) {
     const cx = counterExpansionOf(store, a2);
     if (cx) {
@@ -4451,7 +4827,7 @@ function renderEditor(deps, root) {
       onToggle: () => writeActions(t("Toggle action"), actions.map((x, j) => j === i ? setActionDisabled(x, !(x.flags & 2)) : x))
     }));
   }
-  if (actions.length < MAX_ACTIONS) actSection.append(addRow(api, "action", (pick) => {
+  if (actions.length < MAX_ACTIONS) actSection.append(addRow(api, "action", ({ pick, entities, query }) => {
     if (pick.kind === "expansion") {
       if (pick.what === "compare") return;
       const made = newCounterStep(store, host, pick.what);
@@ -4462,51 +4838,53 @@ function renderEditor(deps, root) {
       store.commit(t("Add counter step"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, actions: [...actions, flagAction({ cell: made.flag })] }), { sidecar: { expansions: [...store.sidecar.expansions, made.expansion] } });
       return;
     }
-    writeActions(t("Add action"), [...actions, newAction(api, pick)]);
-  }));
+    writeActions(t("Add action"), [...actions, newAction(api, pick, entities, query)]);
+  }, { names: () => host.parseNames() }));
   root.append(actSection);
 }
-function newCondition(api, pick) {
-  if (pick.kind === "native") return api.triggers.newCondition(pick.type);
+function newCondition(api, pick, entities = [], query = "") {
+  if (pick.kind === "native") return fillCondition(api.triggers.newCondition(pick.type), entities);
   if (pick.kind === "expansion") throw new Error("an expansion is not a record");
   const e = pick.entry;
+  if (entities.length) return lowerCondition(fillEud(e, "condition", entities, query));
   const args = {};
   for (const a2 of e.args) args[a2.name] = 0;
   return lowerCondition({ entry: e, args, value: e.value?.choices ? e.value.choices[0].value : e.value?.min ?? 0, op: enumerated(e) ? Comparison.Exactly : Comparison.AtLeast });
 }
-function newAction(api, pick) {
-  if (pick.kind === "native") return api.triggers.newAction(pick.type);
+function newAction(api, pick, entities = [], query = "") {
+  if (pick.kind === "native") return fillAction(api.triggers.newAction(pick.type), entities);
   if (pick.kind === "expansion") throw new Error("an expansion is not a record");
   const e = pick.entry;
+  if (entities.length) return lowerAction(fillEud(e, "action", entities, query));
   const args = {};
   for (const a2 of e.args) args[a2.name] = 0;
   return lowerAction({ entry: e, args, value: e.value?.choices ? e.value.choices[0].value : e.value?.min ?? 0, op: SetModifier.SetTo });
 }
 
 // src/ui/list.ts
-function itemInfo(deps, index, trigger2) {
+function itemInfo(deps, index, trigger3) {
   const { host, store } = deps;
   const namer = host.namer(store.sidecar);
   const extra = host.extra();
-  const ci = commentIndex(trigger2);
-  const cmp = compareOf(store, index, trigger2);
-  const conditions = liveConditions(trigger2).flatMap((c2, i) => {
+  const ci = commentIndex(trigger3);
+  const cmp = compareOf(store, index, trigger3);
+  const conditions = liveConditions(trigger3).flatMap((c2, i) => {
     if (cmp && cmp.rows.includes(i)) return i === cmp.rows[0] ? [`${cellLabel(cmp.x.a, namer)} is ${RELATION_WORDS[cmp.relation]} ${cellLabel(cmp.x.b, namer)}`] : [];
     return [conditionText(c2, namer, extra)];
   });
-  const actions = liveActions(trigger2).filter((a2) => a2.type !== ActionType.Comment).map((a2) => {
+  const actions = liveActions(trigger3).filter((a2) => a2.type !== ActionType.Comment).map((a2) => {
     const x = counterExpansionOf(store, a2);
     if (!x) return actionText(a2, namer, extra);
     return x.kind === "copy" ? `Copy ${cellLabel(x.from, namer)} into ${cellLabel(x.to, namer)}` : x.kind === "add" ? `Add ${cellLabel(x.from, namer)} to ${cellLabel(x.to, namer)}` : `Subtract ${cellLabel(x.from, namer)} from ${cellLabel(x.to, namer)}`;
   });
-  const title = ci >= 0 ? namer.string(trigger2.actions[ci].text) ?? "" : "";
+  const title = ci >= 0 ? namer.string(trigger3.actions[ci].text) ?? "" : "";
   const summary = [conditions.join(", "), actions.join(", ")].filter(Boolean).join(" \u2192 ");
-  const own = owners(trigger2);
+  const own = owners(trigger3);
   const ownersText = own.length > 4 ? deps.api.i18n.t("{n} groups", { n: own.length }) : own.map((g) => g < 12 ? `P${g + 1}` : namer.player(g)).join(", ");
-  const eud = trigger2.conditions.some((c2) => c2.type === ConditionType.Deaths && isEud(c2.player)) || trigger2.actions.some((a2) => a2.type === ActionType.SetDeaths && isEud(a2.player));
+  const eud = trigger3.conditions.some((c2) => c2.type === ConditionType.Deaths && isEud(c2.player)) || trigger3.actions.some((a2) => a2.type === ActionType.SetDeaths && isEud(a2.player));
   const claim = host.claims(store.list).find((c2) => index >= c2.start && index < c2.start + c2.count && c2.pluginId !== deps.api.plugin.id);
   const template = store.sidecar.expansions.some((x) => x.kind === "forEachPlayer" && x.anchor.i === store.cleanIndex(index));
-  const problems = check(trigger2, { everyFrame: store.sidecar.settings.everyFrame, locationExists: (n) => host.locationExists(n), stringExists: (i) => host.stringExists(i), template });
+  const problems = check(trigger3, { everyFrame: store.sidecar.settings.everyFrame, locationExists: (n) => host.locationExists(n), stringExists: (i) => host.stringExists(i), template });
   const generated = store.runs.filter((r) => r.anchor === index).reduce((n, r) => n + r.count, 0);
   return {
     generated,
@@ -4517,7 +4895,7 @@ function itemInfo(deps, index, trigger2) {
     eud,
     locked: claim?.badge ?? null,
     problems: problems.some((p) => p.level === "error") ? "error" : problems.some((p) => p.level === "warn") ? "warn" : null,
-    disabled: isTriggerDisabled(trigger2)
+    disabled: isTriggerDisabled(trigger3)
   };
 }
 function renderList(deps, root, onMove) {
@@ -4768,8 +5146,8 @@ var Store = class {
     this.notify();
   }
   /** Replace one trigger. */
-  replace(index, trigger2, label = "Edit trigger") {
-    this.commit(label, () => this.list.map((t, i) => i === index ? trigger2 : t));
+  replace(index, trigger3, label = "Edit trigger") {
+    this.commit(label, () => this.list.map((t, i) => i === index ? trigger3 : t));
   }
   /** Change the sidecar only (a counter name, a folder rename, a setting). */
   updateSidecar(label, patch) {
@@ -4931,10 +5309,11 @@ function createPanel(api, hooks = {}) {
     const search2 = el("input", { className: "input", type: "text", placeholder: t("Search triggers\u2026") });
     let filter = "all";
     const newButton = w.button(t("New"), { primary: true, title: t("A new trigger after the selected one (Ctrl+N)"), onClick: () => newTrigger() });
+    const recipeButton = w.button(t("Recipes\u2026"), { title: t("Start from a whole trigger: a beacon shop, a countdown, a respawn\u2026"), onClick: () => recipes(recipeButton) });
     const menuButton = w.button("\u22EF", { ghost: true, title: t("More"), onClick: () => menu(menuButton) });
     const listEl = el("div", { className: "mg-list", tabIndex: 0 });
     const editorEl = el("div", { className: "mg-editor" });
-    const root = el("div", { className: "mg" }, el("style", {}, STYLE), el("div", { className: "mg-head" }, search2, newButton, menuButton), el("div", { className: "mg-split" }, listEl, editorEl));
+    const root = el("div", { className: "mg" }, el("style", {}, STYLE), el("div", { className: "mg-head" }, search2, newButton, recipeButton, menuButton), el("div", { className: "mg-split" }, listEl, editorEl));
     body.append(root);
     const render = () => {
       root.classList.toggle("narrow", root.clientWidth < 560);
@@ -4966,6 +5345,24 @@ function createPanel(api, hooks = {}) {
       if (folder !== void 0) folders.set(at, folder);
       s.commit(t("New trigger"), () => [...s.list.slice(0, at), fresh, ...s.list.slice(at)], { folders, select: at });
       setTimeout(() => editorEl.querySelector("input")?.focus(), 0);
+    }
+    function insertTriggers(label, make) {
+      const at = s.selected === null ? s.list.length : s.selected + 1;
+      const folder = s.selected !== null ? s.folders.get(s.selected) : void 0;
+      const count = make(() => 0).length;
+      const folders = /* @__PURE__ */ new Map();
+      for (const [i, f] of s.folders) folders.set(i >= at ? i + count : i, f);
+      if (folder !== void 0) for (let i = 0; i < count; i++) folders.set(at + i, folder);
+      s.commit(label, (intern) => [...s.list.slice(0, at), ...make(intern), ...s.list.slice(at)], { folders, select: at });
+    }
+    function recipes(anchor) {
+      const items = RECIPES.map((r, i) => ({ value: i, label: r.label, hint: r.everyFrame ? "EUD" : void 0 }));
+      pickChoice(api, anchor, items, (i) => {
+        const r = RECIPES[i];
+        const locations = h.locations().map((l) => l.value).filter((n) => n !== 64);
+        insertTriggers(t("Add recipe"), (intern) => r.build(recipeContext(intern, locations)));
+        api.ui.toast({ kind: "info", title: r.label, detail: r.description + (r.everyFrame && !everyFrame() ? " " + t("Turn on Run triggers every frame in the \u22EF menu for this one.") : "") });
+      }, { width: 300, searchable: true, placeholder: t("Recipe\u2026") });
     }
     function moveTrigger(from, to, folder) {
       const list = [...s.list];
@@ -5253,8 +5650,8 @@ function activate(api) {
   api.commands.register({
     id: "describe",
     title: "Magenta: describe a trigger",
-    run: (trigger2) => {
-      const tr = trigger2;
+    run: (trigger3) => {
+      const tr = trigger3;
       const host = new Host(api);
       const namer = host.namer(host.sidecar());
       const extra = host.extra();

@@ -70,6 +70,19 @@ want ("give", "hp", "wait", "key") and press Enter; the list shows the native co
 actions, the EUD catalogue and the counter steps together. Click the empty box to browse all
 of them by category.
 
+The box also takes the arguments. "give 3 zealots to player 2 at beacon" inserts a Give Units
+row with the count, the unit, the player and the location already set; "marine max hp 80"
+the max-HP action for the Marine at 80; "player 1 brings at least 2 marines to beacon" the
+Bring condition filled in. Unit names, the map's location and switch names, weapons, "player
+2" or "p2", the player groups, "at least / at most / exactly", "up by / down by" and numbers
+are all recognised, and what the box recognised shows next to each hit before you press Enter.
+
+**Recipes…** next to New inserts a whole trigger, or a few, to start from: give units at a
+beacon, a countdown that ends the game, respawn a unit, minerals per kill, reinforcements
+every minute, win by holding a location, defeat when nothing is left, a message at the start,
+a key that gives minerals, a unit type's stats. Each comes titled, with its chips on sensible
+defaults (the map's first location, Current Player, a Marine) and a note saying what to change.
+
 Rows have tools on hover: disable (⊘), move up and down, remove. With a row focused, `Delete`
 removes it, `Alt+↑` / `Alt+↓` move it, `Ctrl+/` disables it, Enter opens its first chip.
 

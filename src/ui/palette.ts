@@ -7,6 +7,7 @@ import { ACTION_DEFS, CONDITION_DEFS } from "../../vendor/triggerDefs";
 import { ConditionType, ActionType } from "../../vendor/triggers";
 import { entriesFor, type Entry } from "../catalogue";
 import { search, type SearchItem } from "../model/search";
+import { parseQuery, type Entity, type ParseNames } from "../model/parse";
 import { openPopover, type PopoverHandle } from "./popover";
 
 export type Pick = { kind: "native"; type: number } | { kind: "eud"; entry: Entry } | { kind: "expansion"; what: "copy" | "add" | "subtract" | "compare" };
@@ -37,19 +38,35 @@ export function paletteItems(kind: "condition" | "action"): SearchItem<Pick>[] {
   return items;
 }
 
-/** The add row's element; `onPick` inserts. */
-export function addRow(api: PluginApi, kind: "condition" | "action", onPick: (pick: Pick) => void, options: { recent?: (pick: Pick) => number } = {}): HTMLElement {
+/** What the row hands back: the pick, and what the query named for its chips. */
+export interface Picked {
+  pick: Pick;
+  entities: Entity[];
+  query: string;
+}
+
+/** The add row's element; `onPick` inserts. `names` lets the query carry arguments ("marine hp 80"). */
+export function addRow(api: PluginApi, kind: "condition" | "action", onPick: (picked: Picked) => void, options: { recent?: (pick: Pick) => number; names?: () => ParseNames } = {}): HTMLElement {
   const el = api.ui.el;
   const items = paletteItems(kind);
+  let entities: Entity[] = [];
   const input = el("input", { className: "input", type: "text", placeholder: kind === "condition" ? api.i18n.t("Add a condition…") : api.i18n.t("Add an action…") }) as HTMLInputElement;
   let pop: PopoverHandle | null = null;
   let active = 0;
   let hits: SearchItem<Pick>[] = [];
   const close = () => { pop?.close(); pop = null; };
-  const choose = (item: SearchItem<Pick>) => { onPick(item.value); input.value = ""; close(); input.focus(); };
+  const choose = (item: SearchItem<Pick>) => { const query = input.value; onPick({ pick: item.value, entities, query }); input.value = ""; entities = []; close(); input.focus(); };
   const render = () => {
     const browsing = !input.value.trim();
-    hits = browsing ? items : search(items, input.value, { limit: 14, recent: options.recent }).map((h) => h.item);
+    let query = input.value;
+    entities = [];
+    if (!browsing && options.names) {
+      const parsed = parseQuery(input.value, options.names());
+      entities = parsed.entities;
+      // With everything named taken out, what is left finds the row; a query that is all names browses.
+      if (parsed.rest) query = parsed.rest;
+    }
+    hits = browsing ? items : search(items, query, { limit: 14, recent: options.recent }).map((h) => h.item);
     if (!hits.length) { close(); return; }
     active = 0;
     if (!pop) {
@@ -64,8 +81,9 @@ export function addRow(api: PluginApi, kind: "condition" | "action", onPick: (pi
         const group = eud ? `EUD · ${item.group}` : item.value.kind === "expansion" ? api.i18n.t("Counters") : kind === "condition" ? api.i18n.t("Conditions") : api.i18n.t("Actions");
         if (group !== lastGroup) { lastGroup = group; rows.push(el("div", { className: "mg-option group" }, group)); }
       }
+      const named = entities.length ? entities.map((e) => e.text).join(" · ") : "";
       const row = el("button", { type: "button", className: `mg-option${i === active ? " active" : ""}`, title: eud ? (item.value as { entry: Entry }).entry.note ?? "" : "" },
-        el("span", { className: "grow" }, item.label),
+        el("span", { className: "grow" }, item.label, named ? el("span", { className: "hint" }, `  ${named}`) : null),
         el("span", { className: `mg-hit-group${eud ? " eud" : ""}` }, eud ? `EUD · ${item.group}` : item.value.kind === "expansion" ? api.i18n.t("Counters") : ""),
       ) as HTMLButtonElement;
       row.addEventListener("mousedown", (e) => e.preventDefault());

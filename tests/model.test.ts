@@ -66,6 +66,8 @@ describe("search", () => {
     expect(search(items, "hp")[0].item.value).toBe(4);
     expect(search(items, "hit points").map((h) => h.item.value)).toEqual([5, 4]);
     expect(search(items, "hp").map((h) => h.item.value)).toEqual([4]);
+    expect(search([{ label: "Bring", value: 1 }, { label: "Kill", value: 2 }], "brings").map((h) => h.item.value)).toEqual([1]);
+    expect(search([{ label: "Damage bonus per upgrade of a weapon", value: 1 }, { label: "Damage of a weapon", value: 2 }], "damage")[0].item.value).toBe(2);
     expect(search(items, "remove")[0].item.value).toBe(3);
     expect(search(items, "zzz")).toEqual([]);
   });

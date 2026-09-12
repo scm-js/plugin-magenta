@@ -18,16 +18,19 @@ export interface SearchHit<T> {
 }
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+/** "brings" → "bring", "kills" → "kill": a verb typed the way a sentence reads still finds the row. */
+const stem = (w: string) => (w.length > 3 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w);
+const startsWord = (token: string, w: string) => token.startsWith(w) || token.startsWith(stem(w)) || stem(token).startsWith(stem(w));
 
 /** How well one text answers the query: 0 for no match; higher is better. */
 function scoreText(text: string, query: string, words: string[]): number {
   const t = norm(text);
   if (!t) return 0;
-  if (t === query) return 100;
-  if (t.startsWith(query)) return 80;
+  if (t === query || t === stem(query)) return 100;
+  if (t.startsWith(query) || t.startsWith(stem(query))) return 80;
   const tw = t.split(" ");
   // Every query word starts some word of the text.
-  if (words.every((w) => tw.some((x) => x.startsWith(w)))) return 60 + Math.min(10, 10 * words.length / tw.length);
+  if (words.every((w) => tw.some((x) => startsWord(x, w)))) return 60 + Math.min(10, 10 * words.length / tw.length);
   if (t.includes(query)) return 40;
   // Every query word appears somewhere.
   if (words.every((w) => t.includes(w))) return 30;
@@ -52,13 +55,14 @@ export function search<T>(items: readonly SearchItem<T>[], query: string, option
     // Every query word found somewhere across the label and the aliases ("max hp": "max" in the label, "hp" an alias).
     if (score < 50) {
       const tokens = [...norm(item.label).split(" "), ...(item.aliases ?? []).flatMap((a) => norm(a).split(" "))];
-      if (words.every((w) => tokens.some((tk) => tk.startsWith(w)))) score = Math.max(score, 55);
+      if (words.every((w) => tokens.some((tk) => startsWord(tk, w)))) score = Math.max(score, 55);
     }
     if (item.group) score = Math.max(score, scoreText(item.group, q, words) - 30);
     if (score <= 0) continue;
     score += options.recent?.(item.value) ?? 0;
     hits.push({ item, score });
   }
-  hits.sort((a, b) => b.score - a.score || (b.item.priority ?? 0) - (a.item.priority ?? 0) || a.item.label.localeCompare(b.item.label));
+  // On a tie, the shorter label is the closer match ("Damage of a weapon" over "Damage bonus per upgrade of a weapon").
+  hits.sort((a, b) => b.score - a.score || (b.item.priority ?? 0) - (a.item.priority ?? 0) || a.item.label.length - b.item.label.length || a.item.label.localeCompare(b.item.label));
   return options.limit ? hits.slice(0, options.limit) : hits;
 }
