@@ -90,7 +90,7 @@ and write it, and the entry's notes. What is there today:
 | Units | max hit points, max shields, armor, build time, mineral and gas cost, supply used and provided, sight range, target acquisition range, ground and air weapon — per unit type |
 | Weapons | damage, damage bonus per upgrade, cooldown, damage factor, range, minimum range |
 | Players | minerals, gas, an upgrade's level, whether a technology is researched, the stance toward another player, shared vision |
-| Game | game speed, the game clock, the trigger timer, the local player, the mouse's position on screen, the screen's position on the map, a keyboard key's state |
+| Game | game speed, the trigger timer, the local player, the mouse's position on screen, the screen's position on the map, a keyboard key's state |
 | Placed units | hit points, shields, energy, owner, type, position, invincibility, the hallucination flag, cloak — for the unit in a given slot of the game's unit table. The chip lists the map's units with their slots: the first placed unit takes slot 0 and every later one counts down from 1699, as seen in the game. Start locations take no slot, and a unit of a human player who is not in the game takes none either, so later slots shift when a player is missing |
 
 A few things to know:
@@ -160,12 +160,12 @@ EUD maps. Each says on screen what to look for.
 | --- | --- |
 | `magenta-eud-1-units-dat.scx` | Whole-dword writes (Marine max HP, Player 1's minerals), word writes (Zealot shields), a masked byte at an odd address (Ghost armor), and on the beacon a weapon's damage and cooldown. |
 | `magenta-eud-2-bits-placed-units.scx` | The unit table by slot (the first placed marine gets 5 HP and invincibility, then Player 2 on the beacon), one bit of a dword (vision), a tech byte (Stim Packs), and a read of the slot's unit type. |
-| `magenta-eud-3-reads.scx` | Triggers every frame; reads of the local player, the game speed, the clock, the mouse crossing the middle of the screen, and the A key's states. |
+| `magenta-eud-3-reads.scx` | Triggers every frame; reads of the local player, the game speed, the mouse crossing the middle of the screen, and the A key's states. |
 | `magenta-aplus-counters.scx` | A comparison (A > B) at start, a copy of A into B on the beacon, then B = 1234 and A = B: the generated runs, 153 triggers in all. |
 
 What a run of these settles, in the catalogue: the `verified` flag on each entry that worked,
 which way round the vision bit goes (map 2 with two players), and what the key states 1 and 2
-mean (map 3). The slot rule is settled: the first created unit is slot 0, later ones count down from 1699,
+mean (map 3; settled: 1 on the press, 0 otherwise). The slot rule is settled: the first created unit is slot 0, later ones count down from 1699,
 and start locations and removed units take no slot (map 2 is the probe that showed it).
 
 ## For other plugins

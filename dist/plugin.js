@@ -1425,35 +1425,6 @@ var eud_default = {
       source: "game speed (eud-book)"
     },
     {
-      id: "game.elapsed",
-      kind: "condition",
-      group: "Game",
-      name: "Elapsed game time in seconds",
-      aliases: [
-        "clock",
-        "timer"
-      ],
-      sentence: {
-        condition: "The game clock is {cmp} {value}"
-      },
-      args: [],
-      address: {
-        base: "0x58D6F4"
-      },
-      width: 4,
-      value: {
-        unit: "s",
-        min: 0,
-        max: 4294967295
-      },
-      remastered: {
-        read: true,
-        write: false
-      },
-      source: "elapsed game seconds (eud-book)",
-      note: "The same clock the Elapsed Time condition reads; here for arithmetic with counters."
-    },
-    {
       id: "game.triggerTimer",
       kind: "both",
       group: "Game",
@@ -1540,7 +1511,8 @@ var eud_default = {
         write: false
       },
       source: "mouse position (eud-book)",
-      note: "Local to each computer, like the local player."
+      note: "Local to each computer, like the local player.",
+      verified: true
     },
     {
       id: "game.mouseY",
@@ -1565,7 +1537,8 @@ var eud_default = {
         write: false
       },
       source: "mouse position (eud-book)",
-      note: "Local to each computer, like the local player."
+      note: "Local to each computer, like the local player.",
+      verified: true
     },
     {
       id: "game.screenX",
@@ -1664,11 +1637,11 @@ var eud_default = {
           },
           {
             value: 2,
-            label: "held"
+            label: "held (not seen in the game)"
           },
           {
             value: 3,
-            label: "released"
+            label: "released (not seen in the game)"
           }
         ]
       },
@@ -1677,7 +1650,8 @@ var eud_default = {
         write: false
       },
       source: "keyboard state array (eud-book)",
-      note: "Local to each computer. Needs triggers running every frame to catch a press; the four states are as the community documents them and not yet verified here."
+      note: "Local to each computer. Needs triggers running every frame to catch a press. Verified in Remastered 2026-09-12: the press reads as 1 for a frame and the key reads 0 again at once, even while held; 2 and 3 never appeared.",
+      verified: true
     },
     {
       id: "cunit.hp",

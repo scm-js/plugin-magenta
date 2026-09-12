@@ -173,7 +173,6 @@ const MAPS: Map[] = [
         h.trigger(ALL, [eudIs("game.localPlayer", {}, 1)], [h.comment("read: local player"), h.text("Local player read: you are Player 2.")]),
         h.trigger(ALL, [eudIs("game.speed", {}, 6)], [h.comment("read: game speed"), h.text("Game speed reads Fastest.")]),
         h.trigger(ALL, [eudIs("game.speed", {}, 3)], [h.comment("read: game speed"), h.text("Game speed reads Normal.")]),
-        h.trigger(ALL, [eudIs("game.elapsed", {}, 10, Comparison.AtLeast)], [h.comment("read: clock"), h.text("The game clock read 10 seconds.")]),
         h.trigger(ALL, [eudIs("game.mouseX", {}, 400, Comparison.AtLeast), switchIs(0, false)], [h.comment("read: mouse"), h.text("Mouse: right half of the screen."), setSwitch(0, true), preserve()]),
         h.trigger(ALL, [eudIs("game.mouseX", {}, 399, Comparison.AtMost), switchIs(0, true)], [h.comment("read: mouse"), h.text("Mouse: left half of the screen."), setSwitch(0, false), preserve()]),
         h.trigger(ALL, [eudIs("game.key", { key: 0x41 }, 1), switchIs(1, false)], [h.comment("read: key A"), h.text("The A key was pressed (state 1)."), setSwitch(1, true), preserve()]),
