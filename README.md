@@ -91,7 +91,7 @@ and write it, and the entry's notes. What is there today:
 | Weapons | damage, damage bonus per upgrade, cooldown, damage factor, range, minimum range |
 | Players | minerals, gas, an upgrade's level, whether a technology is researched, the stance toward another player, shared vision |
 | Game | game speed, the game clock, the trigger timer, the local player, the mouse's position on screen, the screen's position on the map, a keyboard key's state |
-| Placed units | hit points, shields, energy, owner, type, position, invincibility, the hallucination flag, cloak — for the unit in a given slot of the game's unit table. The chip lists the map's units with their slots: the first placed unit takes slot 0 and every later one counts down from 1699, as seen in the game |
+| Placed units | hit points, shields, energy, owner, type, position, invincibility, the hallucination flag, cloak — for the unit in a given slot of the game's unit table. The chip lists the map's units with their slots: the first placed unit takes slot 0 and every later one counts down from 1699, as seen in the game. Start locations take no slot, and a unit of a human player who is not in the game takes none either, so later slots shift when a player is missing |
 
 A few things to know:
 
@@ -165,8 +165,8 @@ EUD maps. Each says on screen what to look for.
 
 What a run of these settles, in the catalogue: the `verified` flag on each entry that worked,
 which way round the vision bit goes (map 2 with two players), and what the key states 1 and 2
-mean (map 3). Map 2 also probes whether a start location or a removed unit consumes a slot of the
-unit table; the slot rule itself (first unit slot 0, then 1699 downwards) is settled.
+mean (map 3). The slot rule is settled: the first created unit is slot 0, later ones count down from 1699,
+and start locations and removed units take no slot (map 2 is the probe that showed it).
 
 ## For other plugins
 

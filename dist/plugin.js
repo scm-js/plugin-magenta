@@ -1721,7 +1721,7 @@ var eud_default = {
         write: true
       },
       source: "CUnit table 0x59CCA8, hitPoints at +0x08 (eud-book)",
-      note: "Verified in Remastered 2026-09-12. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out.",
+      note: "Verified in Remastered 2026-09-12. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out. Start locations take no slot; nor does a unit of a human player who is not in the game (it is removed at load), so slots after one shift by one when that player is missing.",
       verified: true
     },
     {
@@ -1762,7 +1762,7 @@ var eud_default = {
         write: true
       },
       source: "CUnit shieldPoints at +0x60 (eud-book)",
-      note: "Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out."
+      note: "Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out. Start locations take no slot; nor does a unit of a human player who is not in the game (it is removed at load), so slots after one shift by one when that player is missing."
     },
     {
       id: "cunit.energy",
@@ -1805,7 +1805,7 @@ var eud_default = {
         write: true
       },
       source: "CUnit energy at +0xA2 (community CUnit layout)",
-      note: "Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out."
+      note: "Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out. Start locations take no slot; nor does a unit of a human player who is not in the game (it is removed at load), so slots after one shift by one when that player is missing."
     },
     {
       id: "cunit.owner",
@@ -1847,7 +1847,7 @@ var eud_default = {
         write: true
       },
       source: "CUnit playerID at +0x4C (eud-book)",
-      note: "Changes the owner byte only: the unit turns hostile or friendly at once, but keeps its old colour (that lives on its sprite) and its selection and control groups. Give Units is the clean way. Verified in Remastered 2026-09-12. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out.",
+      note: "Changes the owner byte only: the unit turns hostile or friendly at once, but keeps its old colour (that lives on its sprite) and its selection and control groups. Give Units is the clean way. Verified in Remastered 2026-09-12. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out. Start locations take no slot; nor does a unit of a human player who is not in the game (it is removed at load), so slots after one shift by one when that player is missing.",
       verified: true
     },
     {
@@ -1887,7 +1887,7 @@ var eud_default = {
       },
       source: "CUnit unitType at +0x64 (eud-book)",
       verified: true,
-      note: "Slot order as for hit points: not simply map order, being probed. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out."
+      note: "Slot order as for hit points: not simply map order, being probed. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out. Start locations take no slot; nor does a unit of a human player who is not in the game (it is removed at load), so slots after one shift by one when that player is missing."
     },
     {
       id: "cunit.x",
@@ -1925,7 +1925,7 @@ var eud_default = {
         write: false
       },
       source: "CUnit position.x at +0x28 (eud-book)",
-      note: "Map pixels: 32 per tile. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out."
+      note: "Map pixels: 32 per tile. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out. Start locations take no slot; nor does a unit of a human player who is not in the game (it is removed at load), so slots after one shift by one when that player is missing."
     },
     {
       id: "cunit.y",
@@ -1963,7 +1963,7 @@ var eud_default = {
         write: false
       },
       source: "CUnit position.y at +0x2A (eud-book)",
-      note: "Map pixels: 32 per tile. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out."
+      note: "Map pixels: 32 per tile. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out. Start locations take no slot; nor does a unit of a human player who is not in the game (it is removed at load), so slots after one shift by one when that player is missing."
     },
     {
       id: "cunit.invincible",
@@ -2010,7 +2010,7 @@ var eud_default = {
         write: true
       },
       source: "CUnit statusFlags at +0xDC, bit 26 (community CUnit layout)",
-      note: "Slot order as for hit points: not simply map order, being probed. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out.",
+      note: "Slot order as for hit points: not simply map order, being probed. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out. Start locations take no slot; nor does a unit of a human player who is not in the game (it is removed at load), so slots after one shift by one when that player is missing.",
       verified: true
     },
     {
@@ -2058,7 +2058,7 @@ var eud_default = {
         write: true
       },
       source: "CUnit statusFlags at +0xDC, bit 30 (community CUnit layout)",
-      note: "A hallucinated unit takes double damage and deals none. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out."
+      note: "A hallucinated unit takes double damage and deals none. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out. Start locations take no slot; nor does a unit of a human player who is not in the game (it is removed at load), so slots after one shift by one when that player is missing."
     },
     {
       id: "cunit.cloaked",
@@ -2104,7 +2104,7 @@ var eud_default = {
         write: false
       },
       source: "CUnit statusFlags at +0xDC, bit 9 (community CUnit layout)",
-      note: "Slot order as for hit points: not simply map order, being probed. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out."
+      note: "Slot order as for hit points: not simply map order, being probed. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out. Start locations take no slot; nor does a unit of a human player who is not in the game (it is removed at load), so slots after one shift by one when that player is missing."
     }
   ]
 };

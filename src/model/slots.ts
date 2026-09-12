@@ -2,9 +2,11 @@
  * Which slot of the game's unit table a placed unit takes. Verified in StarCraft:
  * Remastered (2026-09-12): the first unit of the map's UNIT section takes slot 0, and
  * every later one is handed out from the top of the 1700-slot table downwards — the
- * second placed unit is slot 1699, the third 1698, and so on. Start locations are not
- * units in a Use Map Settings game and are skipped; whether a unit the game removes at
- * load (an absent player's) still consumes a slot is not yet known.
+ * second placed unit is slot 1699, the third 1698, and so on. Only units the game actually
+ * creates count: start locations are not units in a Use Map Settings game and take no
+ * slot, and a unit the game removes at load (an absent human player's) takes none
+ * either — so the slots of everything placed after such a unit shift by one when that
+ * player is missing from the lobby, which is the map maker's to keep in mind.
  */
 export const UNIT_SLOTS = 1700;
 const START_LOCATION = 214;
