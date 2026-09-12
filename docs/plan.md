@@ -273,8 +273,12 @@ run of the panel against a Blizzard map: the sentence editor with every chip kin
 row, folders, the sidecar, the checks, the 43-entry catalogue with lowering and recognition,
 named counters, and the copy / add / subtract / compare / per-player expansions with their
 claims. What milestone 8 still owes: the registry entry and the first tag, the guide pictures,
-Korean strings (no plugin registers a catalogue yet), and the three Remastered test maps for
-milestone 5's manual check. The templates of §1.4 were left out; the search row's browse mode
+Korean strings (no plugin registers a catalogue yet), and the guide pictures. The four Remastered test maps were played on 2026-09-12: the
+units.dat and weapon writes, a player's minerals, the placed-unit fields, the mouse, key and
+local-player reads and the Tier A+ runs all worked; the game clock read did not (dropped) and
+the game speed read is unconfirmed. Two findings shaped the catalogue: a unit's slot is 0 for
+the first created unit and counts down from 1699 after it, and a User Selectable race makes the
+game hand out melee units and drop the placed ones. The templates of §1.4 were left out; the search row's browse mode
 covers the category tree.
 
 ## Decisions (2026-09-12)

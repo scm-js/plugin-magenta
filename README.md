@@ -136,6 +136,8 @@ counters, as runs of ordinary triggers it generates:
   replaced by the player in every condition and action. The trigger itself becomes the template
   and stops running.
 
+Played in Remastered on 2026-09-12: the copy and both comparisons landed in the cycle they were asked for.
+
 The generated runs are hidden in Magenta's list — the trigger they belong to shows **+N** — and
 in the Classic editor and TrigEdit they are locked and fenced as Magenta's, with an **Open
 Magenta** button that comes back here. Edit the step's chips and the run is rebuilt; remove the
@@ -154,7 +156,7 @@ lost. Save leaves the member in unless you tick the plugin members out in the Sa
 `maps/` holds four small maps that check the EUD and counter work in StarCraft: Remastered;
 `npm run maps` (which needs a sibling `scm-js` checkout, and its extracted jungle tileset for
 proper terrain) writes them again. Play each as **Use Map Settings**; the lobby marks them as
-EUD maps. Each says on screen what to look for.
+EUD maps. Each says on screen what to look for. All four were played on 2026-09-12; the catalogue's `verified` flags and notes carry what they showed.
 
 | Map | What it checks |
 | --- | --- |
