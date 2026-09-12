@@ -91,7 +91,8 @@
         "read": true,
         "write": true
       },
-      "source": "units.dat shield points (eud-book)"
+      "source": "units.dat shield points (eud-book)",
+      "verified": true
     },
     {
       "id": "unit.armor",
@@ -132,7 +133,8 @@
         "read": true,
         "write": true
       },
-      "source": "units.dat armor (eud-book)"
+      "source": "units.dat armor (eud-book)",
+      "verified": true
     },
     {
       "id": "unit.buildTime",
@@ -798,7 +800,8 @@
         "write": true
       },
       "source": "player minerals (eud-book)",
-      "note": "The same number Set Resources changes, without the resource counter's sound."
+      "note": "The same number Set Resources changes, without the resource counter's sound.",
+      "verified": true
     },
     {
       "id": "player.gas",
@@ -1427,7 +1430,8 @@
         "write": true
       },
       "source": "CUnit table 0x59CCA8, hitPoints at +0x08 (eud-book)",
-      "note": "Placed units take the table's slots in map order, so the unit's number in the map is its slot; that order is not yet verified in game."
+      "note": "Which slot a placed unit takes is not simply map order; the test map's probe is finding the rule. Verified in Remastered 2026-09-12 that the write lands on a placed unit.",
+      "verified": true
     },
     {
       "id": "cunit.shields",
@@ -1467,7 +1471,7 @@
         "write": true
       },
       "source": "CUnit shieldPoints at +0x60 (eud-book)",
-      "note": "Slot order as for hit points."
+      "note": "Slot order as for hit points. Slot order as for hit points: not simply map order, being probed."
     },
     {
       "id": "cunit.energy",
@@ -1510,7 +1514,7 @@
         "write": true
       },
       "source": "CUnit energy at +0xA2 (community CUnit layout)",
-      "note": "Slot order as for hit points."
+      "note": "Slot order as for hit points. Slot order as for hit points: not simply map order, being probed."
     },
     {
       "id": "cunit.owner",
@@ -1552,7 +1556,8 @@
         "write": true
       },
       "source": "CUnit playerID at +0x4C (eud-book)",
-      "note": "Changes the owner byte only: the unit keeps its selection and control groups. Give Units is the clean way."
+      "note": "Changes the owner byte only: the unit turns hostile or friendly at once, but keeps its old colour (that lives on its sprite) and its selection and control groups. Give Units is the clean way. Verified in Remastered 2026-09-12.",
+      "verified": true
     },
     {
       "id": "cunit.type",
@@ -1589,7 +1594,9 @@
         "read": true,
         "write": false
       },
-      "source": "CUnit unitType at +0x64 (eud-book)"
+      "source": "CUnit unitType at +0x64 (eud-book)",
+      "verified": true,
+      "note": "Slot order as for hit points: not simply map order, being probed."
     },
     {
       "id": "cunit.x",
@@ -1627,7 +1634,7 @@
         "write": false
       },
       "source": "CUnit position.x at +0x28 (eud-book)",
-      "note": "Map pixels: 32 per tile."
+      "note": "Map pixels: 32 per tile. Slot order as for hit points: not simply map order, being probed."
     },
     {
       "id": "cunit.y",
@@ -1665,7 +1672,7 @@
         "write": false
       },
       "source": "CUnit position.y at +0x2A (eud-book)",
-      "note": "Map pixels: 32 per tile."
+      "note": "Map pixels: 32 per tile. Slot order as for hit points: not simply map order, being probed."
     },
     {
       "id": "cunit.invincible",
@@ -1711,7 +1718,8 @@
         "read": true,
         "write": true
       },
-      "source": "CUnit statusFlags at +0xDC, bit 26 (community CUnit layout)"
+      "source": "CUnit statusFlags at +0xDC, bit 26 (community CUnit layout)",
+      "note": "Slot order as for hit points: not simply map order, being probed."
     },
     {
       "id": "cunit.hallucination",
@@ -1758,7 +1766,7 @@
         "write": true
       },
       "source": "CUnit statusFlags at +0xDC, bit 30 (community CUnit layout)",
-      "note": "A hallucinated unit takes double damage and deals none."
+      "note": "A hallucinated unit takes double damage and deals none. Slot order as for hit points: not simply map order, being probed."
     },
     {
       "id": "cunit.cloaked",
@@ -1803,7 +1811,8 @@
         "read": true,
         "write": false
       },
-      "source": "CUnit statusFlags at +0xDC, bit 9 (community CUnit layout)"
+      "source": "CUnit statusFlags at +0xDC, bit 9 (community CUnit layout)",
+      "note": "Slot order as for hit points: not simply map order, being probed."
     }
   ]
 }

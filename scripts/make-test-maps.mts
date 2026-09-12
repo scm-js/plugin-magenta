@@ -48,7 +48,7 @@ const SIZE = 64;
 const T = 32;
 
 /* ── Records ── */
-const MARINE = 0, GHOST = 1, ZEALOT = 65, START = 214, BEACON = 195;
+const MARINE = 0, GHOST = 1, FIREBAT = 32, ZEALOT = 65, START = 214, BEACON = 195;
 const P1 = PlayerGroup.Player1, P2 = PlayerGroup.Player2;
 const eud = (id: string, args: Record<string, number>, value: number, op = SetModifier.SetTo): ActionRecord => lowerAction({ entry: entry(id)!, args, value, op });
 const eudIs = (id: string, args: Record<string, number>, value: number, op = Comparison.Exactly): ConditionRecord => lowerCondition({ entry: entry(id)!, args, value, op });
@@ -73,14 +73,15 @@ function scaffold(name: string, description: string) {
   const scn = createScenario({ width: SIZE, height: SIZE, era: ERA_JUNGLE, name, description, tiles, isom });
   let serial = 1;
   const place = (unitId: number, owner: number, tx: number, ty: number) => { scn.units.push(makeUnit(null, unitId, owner, tx * T + 16, ty * T + 16, serial++)); };
-  // Slot 0 of the game's unit table is the first placed unit: the marine map 2 pokes at.
+  // The slot-order probe (map 2): four different units placed first, in this order, at one spot each.
+  place(FIREBAT, 0, 14, 16);
   place(MARINE, 0, 14, 14);
-  place(START, 0, 10, 10);
-  place(START, 1, 52, 52);
-  place(MARINE, 0, 12, 12); place(MARINE, 0, 13, 12); place(MARINE, 0, 12, 13);
   place(GHOST, 0, 15, 12);
   place(ZEALOT, 0, 15, 15);
+  place(MARINE, 0, 12, 12); place(MARINE, 0, 13, 12); place(MARINE, 0, 12, 13);
   place(BEACON, 11, 20, 10); // neutral: units of an absent human player are removed at load
+  place(START, 0, 10, 10);
+  place(START, 1, 52, 52);
   markDirty(scn, "UNIT");
   // Player 2 is a computer, so a single-player custom game (which insists on a computer opponent) can start.
   scn.playerTypes[1] = 5;
@@ -134,23 +135,26 @@ const MAPS: Map[] = [
     build(scn, h) {
       applyTriggers(scn, [
         h.trigger([P1], [always()], [
-          h.comment("placed unit slot 0, bits"),
+          h.comment("slot probe: slots 0-3 get 5, 10, 15, 20 HP; slot 0 invincible"),
           eud("cunit.hp", { index: 0 }, 5),
+          eud("cunit.hp", { index: 1 }, 10),
+          eud("cunit.hp", { index: 2 }, 15),
+          eud("cunit.hp", { index: 3 }, 20),
           eud("cunit.invincible", { index: 0 }, 1),
           eud("player.techResearched", { player: 0, tech: 0 }, 1),
           eud("player.vision", { player: 0, other: 1 }, 1),
-          h.text("EUD 2. Check: the marine nearest 14,14 (the first placed unit) has 5 HP and is invincible. Stim Packs are researched for Player 1. Vision bit set for Player 1 / Player 2 (needs two players)."),
-          h.text("Move any unit onto the beacon to give that marine to Player 2 by writing its owner byte."),
+          h.text("EUD 2, slot probe. Placed in this order: Firebat, Marine (the lone one), Ghost, Zealot, then three Marines. Slots 0-3 got 5, 10, 15, 20 HP; slot 0 is invincible. Which unit has which HP?"),
+          h.text("Stim Packs should be researched. Move any unit onto the beacon to write slot 0's owner byte to Player 2."),
         ]),
         h.trigger([P1], [h.bringToBeacon()], [
           h.comment("beacon: owner byte"),
           eud("cunit.owner", { index: 0 }, 1),
-          h.text("The first marine now belongs to Player 2 (owner byte written)."),
+          h.text("Slot 0 now belongs to Player 2: it turns hostile but keeps its colour."),
         ]),
-        h.trigger([P1], [eudIs("cunit.type", { index: 0 }, MARINE)], [
-          h.comment("read: type of slot 0"),
-          h.text("Read OK: slot 0 holds a Marine."),
-        ]),
+        h.trigger([P1], [eudIs("cunit.type", { index: 0 }, FIREBAT)], [h.comment("read: type of slot 0"), h.text("Read: slot 0 holds the Firebat.")]),
+        h.trigger([P1], [eudIs("cunit.type", { index: 0 }, MARINE)], [h.comment("read: type of slot 0"), h.text("Read: slot 0 holds a Marine.")]),
+        h.trigger([P1], [eudIs("cunit.type", { index: 0 }, GHOST)], [h.comment("read: type of slot 0"), h.text("Read: slot 0 holds the Ghost.")]),
+        h.trigger([P1], [eudIs("cunit.type", { index: 0 }, ZEALOT)], [h.comment("read: type of slot 0"), h.text("Read: slot 0 holds the Zealot.")]),
       ]);
     },
   },
