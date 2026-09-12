@@ -80,12 +80,16 @@ function scaffold(name: string, description: string) {
   place(MARINE, 0, 12, 12); place(MARINE, 0, 13, 12); place(MARINE, 0, 12, 13);
   place(GHOST, 0, 15, 12);
   place(ZEALOT, 0, 15, 15);
-  place(BEACON, 7, 20, 10);
+  place(BEACON, 11, 20, 10); // neutral: units of an absent human player are removed at load
   markDirty(scn, "UNIT");
   // Player 2 is a computer, so a single-player custom game (which insists on a computer opponent) can start.
   scn.playerTypes[1] = 5;
   if (scn.editorPlayerTypes) scn.editorPlayerTypes[1] = 5;
-  markDirty(scn, "OWNR", "IOWN");
+  // Both players Terran. A "user selectable" race makes the game hand out melee starting
+  // units in Use Map Settings, and the placed units are gone with it.
+  scn.playerRaces[0] = 1;
+  scn.playerRaces[1] = 1;
+  markDirty(scn, "OWNR", "IOWN", "SIDE");
   // Location 1 (slot 0): the beacon's square. Written directly; the editor's addLocation only plans a change.
   scn.locations[0] = { left: 18 * T, top: 8 * T, right: 22 * T, bottom: 12 * T, nameIndex: internString(scn, "Beacon"), elevationFlags: 0 };
   markDirty(scn, "MRGN");
