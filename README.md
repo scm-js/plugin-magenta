@@ -91,7 +91,7 @@ and write it, and the entry's notes. What is there today:
 | Weapons | damage, damage bonus per upgrade, cooldown, damage factor, range, minimum range |
 | Players | minerals, gas, an upgrade's level, whether a technology is researched, the stance toward another player, shared vision |
 | Game | game speed, the game clock, the trigger timer, the local player, the mouse's position on screen, the screen's position on the map, a keyboard key's state |
-| Placed units | hit points, shields, energy, owner, type, position, invincibility, the hallucination flag, cloak — for the unit in a given slot of the game's unit table, which placed units take in map order |
+| Placed units | hit points, shields, energy, owner, type, position, invincibility, the hallucination flag, cloak — for the unit in a given slot of the game's unit table. The chip lists the map's units with their slots: the first placed unit takes slot 0 and every later one counts down from 1699, as seen in the game |
 
 A few things to know:
 
@@ -108,9 +108,10 @@ A few things to know:
   trigger timer to 0 each cycle, so the whole list runs every frame instead of every two
   seconds — what a key or mouse read needs to catch anything. Every Wait and every preserved
   trigger in the map then runs on that clock.
-- Nothing in the catalogue has been played in Remastered yet; each entry records where its
-  address came from, and `verified` turns on when a map has shown it working. Each address is
-  from Armoha's eud-book (see `ATTRIBUTION.md`).
+- Each entry records where its address came from, and `verified` turns on once a map has shown
+  it working in Remastered; the first runs (2026-09-12) verified the units.dat writes, a weapon's
+  damage, a player's minerals and the placed-unit fields. Each address is from Armoha's eud-book
+  (see `ATTRIBUTION.md`).
 
 A record whose address the catalogue does not know still reads: "memory at 0x…", with the
 numbers as chips. Maps made with other tools open with their EUD triggers translated where the
@@ -163,8 +164,9 @@ EUD maps. Each says on screen what to look for.
 | `magenta-aplus-counters.scx` | A comparison (A > B) at start, a copy of A into B on the beacon, then B = 1234 and A = B: the generated runs, 153 triggers in all. |
 
 What a run of these settles, in the catalogue: the `verified` flag on each entry that worked,
-the placed-unit slot order (map 2), which way round the vision bit goes (map 2 with two
-players), and what the key states 1 and 2 mean (map 3). Nothing has been played yet.
+which way round the vision bit goes (map 2 with two players), and what the key states 1 and 2
+mean (map 3). Map 2 also probes whether a start location or a removed unit consumes a slot of the
+unit table; the slot rule itself (first unit slot 0, then 1699 downwards) is settled.
 
 ## For other plugins
 

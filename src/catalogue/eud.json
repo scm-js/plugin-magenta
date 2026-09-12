@@ -552,7 +552,8 @@
         "read": true,
         "write": true
       },
-      "source": "weapons.dat damage amount (eud-book)"
+      "source": "weapons.dat damage amount (eud-book)",
+      "verified": true
     },
     {
       "id": "weapon.bonus",
@@ -1430,7 +1431,7 @@
         "write": true
       },
       "source": "CUnit table 0x59CCA8, hitPoints at +0x08 (eud-book)",
-      "note": "Which slot a placed unit takes is not simply map order; the test map's probe is finding the rule. Verified in Remastered 2026-09-12 that the write lands on a placed unit.",
+      "note": "Verified in Remastered 2026-09-12. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out.",
       "verified": true
     },
     {
@@ -1471,7 +1472,7 @@
         "write": true
       },
       "source": "CUnit shieldPoints at +0x60 (eud-book)",
-      "note": "Slot order as for hit points. Slot order as for hit points: not simply map order, being probed."
+      "note": "Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out."
     },
     {
       "id": "cunit.energy",
@@ -1514,7 +1515,7 @@
         "write": true
       },
       "source": "CUnit energy at +0xA2 (community CUnit layout)",
-      "note": "Slot order as for hit points. Slot order as for hit points: not simply map order, being probed."
+      "note": "Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out."
     },
     {
       "id": "cunit.owner",
@@ -1556,7 +1557,7 @@
         "write": true
       },
       "source": "CUnit playerID at +0x4C (eud-book)",
-      "note": "Changes the owner byte only: the unit turns hostile or friendly at once, but keeps its old colour (that lives on its sprite) and its selection and control groups. Give Units is the clean way. Verified in Remastered 2026-09-12.",
+      "note": "Changes the owner byte only: the unit turns hostile or friendly at once, but keeps its old colour (that lives on its sprite) and its selection and control groups. Give Units is the clean way. Verified in Remastered 2026-09-12. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out.",
       "verified": true
     },
     {
@@ -1596,7 +1597,7 @@
       },
       "source": "CUnit unitType at +0x64 (eud-book)",
       "verified": true,
-      "note": "Slot order as for hit points: not simply map order, being probed."
+      "note": "Slot order as for hit points: not simply map order, being probed. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out."
     },
     {
       "id": "cunit.x",
@@ -1634,7 +1635,7 @@
         "write": false
       },
       "source": "CUnit position.x at +0x28 (eud-book)",
-      "note": "Map pixels: 32 per tile. Slot order as for hit points: not simply map order, being probed."
+      "note": "Map pixels: 32 per tile. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out."
     },
     {
       "id": "cunit.y",
@@ -1672,7 +1673,7 @@
         "write": false
       },
       "source": "CUnit position.y at +0x2A (eud-book)",
-      "note": "Map pixels: 32 per tile. Slot order as for hit points: not simply map order, being probed."
+      "note": "Map pixels: 32 per tile. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out."
     },
     {
       "id": "cunit.invincible",
@@ -1719,7 +1720,8 @@
         "write": true
       },
       "source": "CUnit statusFlags at +0xDC, bit 26 (community CUnit layout)",
-      "note": "Slot order as for hit points: not simply map order, being probed."
+      "note": "Slot order as for hit points: not simply map order, being probed. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out.",
+      "verified": true
     },
     {
       "id": "cunit.hallucination",
@@ -1766,7 +1768,7 @@
         "write": true
       },
       "source": "CUnit statusFlags at +0xDC, bit 30 (community CUnit layout)",
-      "note": "A hallucinated unit takes double damage and deals none. Slot order as for hit points: not simply map order, being probed."
+      "note": "A hallucinated unit takes double damage and deals none. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out."
     },
     {
       "id": "cunit.cloaked",
@@ -1812,7 +1814,7 @@
         "write": false
       },
       "source": "CUnit statusFlags at +0xDC, bit 9 (community CUnit layout)",
-      "note": "Slot order as for hit points: not simply map order, being probed."
+      "note": "Slot order as for hit points: not simply map order, being probed. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out."
     }
   ]
 }

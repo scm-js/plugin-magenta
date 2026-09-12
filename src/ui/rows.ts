@@ -190,7 +190,9 @@ function eudTitle(entry: Entry, row: EudRow): string {
 function renderEud(ctx: RowContext, kind: "condition" | "action", row: EudRow, into: HTMLElement, onChange: (row: EudRow) => void): void {
   const { api, host } = ctx;
   const t = api.i18n.t;
-  const segments: EudSegment[] = describeEud(row, kind, ctx.namer, ctx.extra);
+  const placed = new Map(host.placedUnits().map((u) => [u.slot, u]));
+  const extraWithSlots = { ...ctx.extra, slot: (n: number) => { const u = placed.get(n); return u ? `${ctx.namer.unit(u.unitId)} (slot ${n})` : `slot ${n}`; } };
+  const segments: EudSegment[] = describeEud(row, kind, ctx.namer, extraWithSlots);
   const entry = row.entry;
   const update = (patch: Partial<EudRow>) => onChange({ ...row, ...patch, args: { ...row.args, ...(patch.args ?? {}) } });
   for (const seg of segments) {

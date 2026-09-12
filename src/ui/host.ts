@@ -8,6 +8,7 @@ import type { Namer } from "../model/names";
 import { addressOf } from "../model/eud";
 import { keyLabel } from "../model/eudSentence";
 import { decodeSidecar, encodeSidecar, MEMBER, type Sidecar } from "../model/sidecar";
+import { slotsOf } from "../model/slots";
 
 export interface NamedItem {
   value: number;
@@ -136,9 +137,11 @@ export class Host {
     return new Set((this.api.document.scenario()?.units ?? []).map((u) => u.unitId));
   }
 
-  /** The placed units in map order, for the placed-unit chip. */
-  placedUnits(): { index: number; unitId: number; owner: number; x: number; y: number }[] {
-    return (this.api.document.scenario()?.units ?? []).map((u, index) => ({ index, unitId: u.unitId, owner: u.owner, x: u.x, y: u.y }));
+  /** The placed units with the unit-table slot each takes in the game, for the placed-unit chip. Start locations are left out. */
+  placedUnits(): { index: number; slot: number; unitId: number; owner: number; x: number; y: number }[] {
+    const units = this.api.document.scenario()?.units ?? [];
+    const slots = slotsOf(units.map((u) => u.unitId));
+    return units.map((u, index) => ({ index, slot: slots[index], unitId: u.unitId, owner: u.owner, x: u.x, y: u.y })).filter((u) => u.slot >= 0);
   }
 
   claims(list?: TriggerRecord[]) {

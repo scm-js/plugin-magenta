@@ -214,13 +214,15 @@ export function pickKey(api: PluginApi, anchor: HTMLElement, current: number, on
   return pickChoice(api, anchor, KEYS.map((k) => ({ value: k.code, label: k.label, hint: `0x${k.code.toString(16).toUpperCase()}` })), onPick, { current, searchable: true, width: 200 });
 }
 
-/** A placed unit by its slot: the map's units in order, with pick-on-map. */
+/** A placed unit by the unit-table slot it takes in the game: the map's units with their slots, and pick-on-map. */
 export function pickPlacedUnit(api: PluginApi, host: Host, anchor: HTMLElement, current: number, onPick: (value: number) => void): PopoverHandle {
   const names = api.triggers.names();
-  const items: ChoiceOption[] = host.placedUnits().map((u) => ({ value: u.index, label: `#${u.index} ${names.unit(u.unitId)}`, hint: `P${u.owner + 1} · ${Math.floor(u.x / 32)},${Math.floor(u.y / 32)}` }));
+  const placed = host.placedUnits();
+  const items: ChoiceOption[] = placed.map((u) => ({ value: u.slot, label: `${names.unit(u.unitId)} (slot ${u.slot})`, hint: `P${u.owner + 1} · ${Math.floor(u.x / 32)},${Math.floor(u.y / 32)}` }));
+  const byIndex = new Map(placed.map((u) => [u.index, u]));
   return pickChoice(api, anchor, items, onPick, {
-    current, searchable: true, width: 300,
-    onHover: (i) => host.flashUnit(i),
-    actions: [{ label: api.i18n.t("Pick on map"), run: (h) => { h.close(); void host.pickUnit(api.i18n.t("Click a placed unit")).then((u) => { if (u) onPick(u.index); }); } }],
+    current, searchable: true, width: 320,
+    onHover: (slot) => { const u = placed.find((p) => p.slot === slot); if (u) host.flashUnit(u.index); },
+    actions: [{ label: api.i18n.t("Pick on map"), run: (h) => { h.close(); void host.pickUnit(api.i18n.t("Click a placed unit")).then((u) => { const p = u && byIndex.get(u.index); if (p) onPick(p.slot); }); } }],
   });
 }

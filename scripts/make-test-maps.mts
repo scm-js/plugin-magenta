@@ -73,14 +73,17 @@ function scaffold(name: string, description: string) {
   const scn = createScenario({ width: SIZE, height: SIZE, era: ERA_JUNGLE, name, description, tiles, isom });
   let serial = 1;
   const place = (unitId: number, owner: number, tx: number, ty: number) => { scn.units.push(makeUnit(null, unitId, owner, tx * T + 16, ty * T + 16, serial++)); };
-  // The slot-order probe (map 2): four different units placed first, in this order, at one spot each.
-  place(FIREBAT, 0, 14, 16);
-  place(MARINE, 0, 14, 14);
+  // Slot probe (map 2): the first placed unit is slot 0 and later ones count down from 1699
+  // (seen in the game). A start location and an absent player's unit sit between the probes
+  // to learn whether they consume a slot.
+  place(FIREBAT, 0, 14, 16);   // created 1st → slot 0
+  place(START, 0, 10, 10);     // not a unit in UMS — does it take a slot?
+  place(MARINE, 0, 14, 14);    // slot 1699 if not, 1698 if it does
+  place(MARINE, 7, 30, 30);    // Player 8 is absent: removed at load — does it take a slot?
   place(GHOST, 0, 15, 12);
   place(ZEALOT, 0, 15, 15);
   place(MARINE, 0, 12, 12); place(MARINE, 0, 13, 12); place(MARINE, 0, 12, 13);
   place(BEACON, 11, 20, 10); // neutral: units of an absent human player are removed at load
-  place(START, 0, 10, 10);
   place(START, 1, 52, 52);
   markDirty(scn, "UNIT");
   // Player 2 is a computer, so a single-player custom game (which insists on a computer opponent) can start.
@@ -137,13 +140,15 @@ const MAPS: Map[] = [
         h.trigger([P1], [always()], [
           h.comment("slot probe: slots 0-3 get 5, 10, 15, 20 HP; slot 0 invincible"),
           eud("cunit.hp", { index: 0 }, 5),
-          eud("cunit.hp", { index: 1 }, 10),
-          eud("cunit.hp", { index: 2 }, 15),
-          eud("cunit.hp", { index: 3 }, 20),
+          eud("cunit.hp", { index: 1699 }, 10),
+          eud("cunit.hp", { index: 1698 }, 15),
+          eud("cunit.hp", { index: 1697 }, 20),
+          eud("cunit.hp", { index: 1696 }, 25),
+          eud("cunit.hp", { index: 1695 }, 30),
           eud("cunit.invincible", { index: 0 }, 1),
           eud("player.techResearched", { player: 0, tech: 0 }, 1),
           eud("player.vision", { player: 0, other: 1 }, 1),
-          h.text("EUD 2, slot probe. Placed in this order: Firebat, Marine (the lone one), Ghost, Zealot, then three Marines. Slots 0-3 got 5, 10, 15, 20 HP; slot 0 is invincible. Which unit has which HP?"),
+          h.text("EUD 2, slot probe 3. Placed: Firebat, a start location, lone Marine, an absent player's Marine (removed), Ghost, Zealot, three Marines. HP by slot: 0=5, 1699=10, 1698=15, 1697=20, 1696=25, 1695=30. Which unit has which HP?"),
           h.text("Stim Packs should be researched. Move any unit onto the beacon to write slot 0's owner byte to Player 2."),
         ]),
         h.trigger([P1], [h.bringToBeacon()], [

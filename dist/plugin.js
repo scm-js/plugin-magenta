@@ -842,7 +842,8 @@ var eud_default = {
         read: true,
         write: true
       },
-      source: "weapons.dat damage amount (eud-book)"
+      source: "weapons.dat damage amount (eud-book)",
+      verified: true
     },
     {
       id: "weapon.bonus",
@@ -1720,7 +1721,7 @@ var eud_default = {
         write: true
       },
       source: "CUnit table 0x59CCA8, hitPoints at +0x08 (eud-book)",
-      note: "Which slot a placed unit takes is not simply map order; the test map's probe is finding the rule. Verified in Remastered 2026-09-12 that the write lands on a placed unit.",
+      note: "Verified in Remastered 2026-09-12. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out.",
       verified: true
     },
     {
@@ -1761,7 +1762,7 @@ var eud_default = {
         write: true
       },
       source: "CUnit shieldPoints at +0x60 (eud-book)",
-      note: "Slot order as for hit points. Slot order as for hit points: not simply map order, being probed."
+      note: "Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out."
     },
     {
       id: "cunit.energy",
@@ -1804,7 +1805,7 @@ var eud_default = {
         write: true
       },
       source: "CUnit energy at +0xA2 (community CUnit layout)",
-      note: "Slot order as for hit points. Slot order as for hit points: not simply map order, being probed."
+      note: "Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out."
     },
     {
       id: "cunit.owner",
@@ -1846,7 +1847,7 @@ var eud_default = {
         write: true
       },
       source: "CUnit playerID at +0x4C (eud-book)",
-      note: "Changes the owner byte only: the unit turns hostile or friendly at once, but keeps its old colour (that lives on its sprite) and its selection and control groups. Give Units is the clean way. Verified in Remastered 2026-09-12.",
+      note: "Changes the owner byte only: the unit turns hostile or friendly at once, but keeps its old colour (that lives on its sprite) and its selection and control groups. Give Units is the clean way. Verified in Remastered 2026-09-12. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out.",
       verified: true
     },
     {
@@ -1886,7 +1887,7 @@ var eud_default = {
       },
       source: "CUnit unitType at +0x64 (eud-book)",
       verified: true,
-      note: "Slot order as for hit points: not simply map order, being probed."
+      note: "Slot order as for hit points: not simply map order, being probed. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out."
     },
     {
       id: "cunit.x",
@@ -1924,7 +1925,7 @@ var eud_default = {
         write: false
       },
       source: "CUnit position.x at +0x28 (eud-book)",
-      note: "Map pixels: 32 per tile. Slot order as for hit points: not simply map order, being probed."
+      note: "Map pixels: 32 per tile. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out."
     },
     {
       id: "cunit.y",
@@ -1962,7 +1963,7 @@ var eud_default = {
         write: false
       },
       source: "CUnit position.y at +0x2A (eud-book)",
-      note: "Map pixels: 32 per tile. Slot order as for hit points: not simply map order, being probed."
+      note: "Map pixels: 32 per tile. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out."
     },
     {
       id: "cunit.invincible",
@@ -2009,7 +2010,8 @@ var eud_default = {
         write: true
       },
       source: "CUnit statusFlags at +0xDC, bit 26 (community CUnit layout)",
-      note: "Slot order as for hit points: not simply map order, being probed."
+      note: "Slot order as for hit points: not simply map order, being probed. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out.",
+      verified: true
     },
     {
       id: "cunit.hallucination",
@@ -2056,7 +2058,7 @@ var eud_default = {
         write: true
       },
       source: "CUnit statusFlags at +0xDC, bit 30 (community CUnit layout)",
-      note: "A hallucinated unit takes double damage and deals none. Slot order as for hit points: not simply map order, being probed."
+      note: "A hallucinated unit takes double damage and deals none. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out."
     },
     {
       id: "cunit.cloaked",
@@ -2102,7 +2104,7 @@ var eud_default = {
         write: false
       },
       source: "CUnit statusFlags at +0xDC, bit 9 (community CUnit layout)",
-      note: "Slot order as for hit points: not simply map order, being probed."
+      note: "Slot order as for hit points: not simply map order, being probed. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out."
     }
   ]
 };
@@ -2736,7 +2738,7 @@ function eudArgLabel(arg, value, namer, extra) {
     case "key":
       return extra.key(value);
     case "unitIndex":
-      return `#${value}`;
+      return extra.slot ? extra.slot(value) : `slot ${value}`;
     default:
       return String(value);
   }
@@ -3010,6 +3012,15 @@ function installClaims(api, open) {
   };
 }
 
+// src/model/slots.ts
+var UNIT_SLOTS = 1700;
+var START_LOCATION = 214;
+var slotOfCreated = (n) => n === 0 ? 0 : UNIT_SLOTS - n;
+function slotsOf(unitIds) {
+  let n = 0;
+  return unitIds.map((id) => id === START_LOCATION ? -1 : slotOfCreated(n++));
+}
+
 // src/ui/host.ts
 var Host = class {
   api;
@@ -3117,9 +3128,11 @@ var Host = class {
   placedUnitIds() {
     return new Set((this.api.document.scenario()?.units ?? []).map((u) => u.unitId));
   }
-  /** The placed units in map order, for the placed-unit chip. */
+  /** The placed units with the unit-table slot each takes in the game, for the placed-unit chip. Start locations are left out. */
   placedUnits() {
-    return (this.api.document.scenario()?.units ?? []).map((u, index) => ({ index, unitId: u.unitId, owner: u.owner, x: u.x, y: u.y }));
+    const units = this.api.document.scenario()?.units ?? [];
+    const slots = slotsOf(units.map((u) => u.unitId));
+    return units.map((u, index) => ({ index, slot: slots[index], unitId: u.unitId, owner: u.owner, x: u.x, y: u.y })).filter((u) => u.slot >= 0);
   }
   claims(list) {
     return this.api.triggers.claims(list);
@@ -3898,16 +3911,22 @@ function pickKey(api, anchor, current2, onPick) {
 }
 function pickPlacedUnit(api, host, anchor, current2, onPick) {
   const names = api.triggers.names();
-  const items = host.placedUnits().map((u) => ({ value: u.index, label: `#${u.index} ${names.unit(u.unitId)}`, hint: `P${u.owner + 1} \xB7 ${Math.floor(u.x / 32)},${Math.floor(u.y / 32)}` }));
+  const placed = host.placedUnits();
+  const items = placed.map((u) => ({ value: u.slot, label: `${names.unit(u.unitId)} (slot ${u.slot})`, hint: `P${u.owner + 1} \xB7 ${Math.floor(u.x / 32)},${Math.floor(u.y / 32)}` }));
+  const byIndex = new Map(placed.map((u) => [u.index, u]));
   return pickChoice(api, anchor, items, onPick, {
     current: current2,
     searchable: true,
-    width: 300,
-    onHover: (i) => host.flashUnit(i),
+    width: 320,
+    onHover: (slot) => {
+      const u = placed.find((p) => p.slot === slot);
+      if (u) host.flashUnit(u.index);
+    },
     actions: [{ label: api.i18n.t("Pick on map"), run: (h) => {
       h.close();
       void host.pickUnit(api.i18n.t("Click a placed unit")).then((u) => {
-        if (u) onPick(u.index);
+        const p = u && byIndex.get(u.index);
+        if (p) onPick(p.slot);
       });
     } }]
   });
@@ -4111,7 +4130,12 @@ function eudTitle(entry2, row) {
 function renderEud(ctx, kind, row, into, onChange) {
   const { api, host } = ctx;
   const t = api.i18n.t;
-  const segments = describeEud(row, kind, ctx.namer, ctx.extra);
+  const placed = new Map(host.placedUnits().map((u) => [u.slot, u]));
+  const extraWithSlots = { ...ctx.extra, slot: (n) => {
+    const u = placed.get(n);
+    return u ? `${ctx.namer.unit(u.unitId)} (slot ${n})` : `slot ${n}`;
+  } };
+  const segments = describeEud(row, kind, ctx.namer, extraWithSlots);
   const entry2 = row.entry;
   const update = (patch) => onChange({ ...row, ...patch, args: { ...row.args, ...patch.args ?? {} } });
   for (const seg of segments) {

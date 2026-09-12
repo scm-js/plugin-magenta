@@ -22,7 +22,7 @@ export interface EudChip {
 export type EudSegment = Segment | EudChip;
 
 /** The words for an entry argument's value. */
-export function eudArgLabel(arg: EntryArg, value: number, namer: Namer, extra: { weapon(id: number): string; upgrade(id: number): string; tech(id: number): string; key(code: number): string }): string {
+export function eudArgLabel(arg: EntryArg, value: number, namer: Namer, extra: { weapon(id: number): string; upgrade(id: number): string; tech(id: number): string; key(code: number): string; slot?(n: number): string }): string {
   switch (arg.kind) {
     case "unit": return namer.unit(value);
     case "player": return namer.player(value);
@@ -30,7 +30,7 @@ export function eudArgLabel(arg: EntryArg, value: number, namer: Namer, extra: {
     case "upgrade": return extra.upgrade(value);
     case "tech": return extra.tech(value);
     case "key": return extra.key(value);
-    case "unitIndex": return `#${value}`;
+    case "unitIndex": return extra.slot ? extra.slot(value) : `slot ${value}`;
     default: return String(value);
   }
 }
@@ -46,7 +46,7 @@ export function eudValueLabel(row: EudRow, namer: Namer, extra: { weapon(id: num
   return v?.unit ? `${n} ${v.unit}` : n;
 }
 
-export function describeEud(row: EudRow, kind: "condition" | "action", namer: Namer, extra: { weapon(id: number): string; upgrade(id: number): string; tech(id: number): string; key(code: number): string }): EudSegment[] {
+export function describeEud(row: EudRow, kind: "condition" | "action", namer: Namer, extra: { weapon(id: number): string; upgrade(id: number): string; tech(id: number): string; key(code: number): string; slot?(n: number): string }): EudSegment[] {
   const template = (kind === "condition" ? row.entry.sentence.condition : row.entry.sentence.action) ?? row.entry.name;
   const out: EudSegment[] = [];
   const re = /\{([^}]+)\}/g;
