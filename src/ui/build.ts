@@ -30,7 +30,7 @@ export function openBuildDialog(api: PluginApi, store: Store, everyFrame: boolea
   const builds = store.sidecar.builds;
   const chats = builds.filter((b) => b.kind === "chat").length;
   const hooks = builds.length - chats;
-  const plugins = composePlugins(builds, store.sidecar.chat, everyFrame);
+  const plugins = composePlugins(builds, store.sidecar.chat, everyFrame, store.sidecar.msqc);
   const info = api.document.info();
   const stem = (info?.fileName ?? "map").replace(/\.(scx|scm|chk)$/i, "");
 
@@ -39,7 +39,8 @@ export function openBuildDialog(api: PluginApi, store: Store, everyFrame: boolea
   const log = el("textarea", { className: "textarea", rows: 10, readOnly: true, spellcheck: false, style: "font-family: var(--font-mono); font-size: var(--fs-xs); display: none" }) as HTMLTextAreaElement;
   const summary = el("ul", {},
     el("li", {}, chats ? t("{n, plural, one {# chat command} other {# chat commands}}", { n: chats }) : t("No chat commands")),
-    el("li", {}, hooks ? t("{n, plural, one {# build row} other {# build rows}} (text, maths, unit passes)", { n: hooks }) : t("No build rows")),
+    el("li", {}, hooks ? t("{n, plural, one {# build row} other {# build rows}} (text, maths, unit passes, checks)", { n: hooks }) : t("No build rows")),
+    el("li", {}, plugins.MSQC ? t("Synced input (keys, clicks, mouse) through MSQC") : t("No synced input")),
     el("li", {}, everyFrame ? t("Triggers run every frame (turbo)") : t("Triggers run every two seconds")),
   );
   const nothing = !Object.keys(plugins).length;

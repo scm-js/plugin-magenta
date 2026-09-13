@@ -18,7 +18,7 @@ import { pickChoice } from "./chips";
 import { renderRow, type RowContext } from "./rows";
 import { compareOf, counterExpansionOf, newCompare, newCounterStep, renderCompare, renderCounterExpansion } from "./expansionRows";
 import { flagAction } from "../model/expansions";
-import { chatOf, hookOf, newChat, newHook, renderChat, renderHook } from "./buildRows";
+import { conditionRowOf, hookOf, newChat, newHook, newInput, newScan, renderConditionRow, renderHook } from "./buildRows";
 import type { Store } from "./store";
 
 export interface EditorDeps {
@@ -112,11 +112,12 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
   const writeConditions = (label: string, next: ConditionRecord[]) => replace(label, { ...trigger, conditions: next });
   const cmp = compareOf(store, index, trigger);
   conditions.forEach((c, i) => {
-    const chat = chatOf(store, c);
-    if (chat) {
+    const brow = conditionRowOf(store, c);
+    if (brow) {
       const sentence = el("span", { className: "mg-sentence" });
-      renderChat(api, host, store, chat, sentence);
-      const remove = api.ui.widgets.button("✕", { ghost: true, title: t("Remove"), onClick: () => store.commit(t("Remove chat command"), () => store.list.map((tr, j) => (j !== index ? tr : { ...tr, conditions: conditions.filter((_, k) => k !== i) })), { sidecar: { builds: store.sidecar.builds.filter((b) => b.id !== chat.id) } }) });
+      renderConditionRow(api, host, store, brow, sentence, (next) => writeConditions(t("Edit condition"), conditions.map((x, j) => (j === i ? next : x))));
+      const ownRecord = brow.kind === "chat" || brow.kind === "scan" ? brow.record.id : null;
+      const remove = api.ui.widgets.button("✕", { ghost: true, title: t("Remove"), onClick: () => store.commit(t("Remove condition"), () => store.list.map((tr, j) => (j !== index ? tr : { ...tr, conditions: conditions.filter((_, k) => k !== i) })), ownRecord ? { sidecar: { builds: store.sidecar.builds.filter((b) => b.id !== ownRecord) } } : {}) });
       condSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove))));
       return;
     }
@@ -138,10 +139,23 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
   });
   if (conditions.length < MAX_CONDITIONS) condSection.append(addRow(api, "condition", ({ pick, entities, query }: Picked) => {
     if (pick.kind === "build") {
-      const message = /^"?(.+?)"?$/.exec(query.replace(/^(the )?chat (said|command)\s*/i, "").trim())?.[1];
-      const made = newChat(api, host, store, message && message !== query.trim() ? message : undefined);
-      if (!made) { api.ui.toast({ kind: "error", title: t("No free counter cell for the chat command") }); return; }
-      store.commit(t("Add chat command"), () => store.list.map((tr, j) => (j !== index ? tr : { ...tr, conditions: [...conditions, made.condition] })), { sidecar: { builds: made.builds, chat: made.chat } });
+      const insert = (label: string, condition: ConditionRecord, sidecar: Record<string, unknown>) => store.commit(label, () => store.list.map((tr, j) => (j !== index ? tr : { ...tr, conditions: [...conditions, condition] })), { sidecar });
+      if (pick.what === "chat") {
+        const message = /^"?(.+?)"?$/.exec(query.replace(/^(the )?chat (said|command)\s*/i, "").trim())?.[1];
+        const made = newChat(host, store, message && message !== query.trim() ? message : undefined);
+        if (!made) { api.ui.toast({ kind: "error", title: t("No free counter cell for the chat command") }); return; }
+        insert(t("Add chat command"), made.condition, { builds: made.builds, chat: made.chat });
+      } else if (pick.what === "scan") {
+        const made = newScan(host, store);
+        if (!made) { api.ui.toast({ kind: "error", title: t("No free counter cell for the check") }); return; }
+        insert(t("Add unit check"), made.condition, { builds: made.builds });
+      } else if (pick.what === "key" || pick.what === "click" || pick.what === "mouseIn") {
+        const key = entities.find((e) => e.kind === "key");
+        const loc = entities.find((e) => e.kind === "location");
+        const made = newInput(host, store, pick.what, { code: key?.value, button: /right/i.test(query) ? "R" : "L", location: loc?.value });
+        if (!made) { api.ui.toast({ kind: "error", title: t("No room for synced input"), detail: t("It needs a free counter unit and, for the mouse, nine free location slots.") }); return; }
+        insert(t("Add input"), made.condition, { msqc: made.msqc });
+      }
       return;
     }
     if (pick.kind === "expansion") {
@@ -195,7 +209,7 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
   }
   if (actions.length < MAX_ACTIONS) actSection.append(addRow(api, "action", ({ pick, entities, query }: Picked) => {
     if (pick.kind === "build") {
-      if (pick.what === "chat") return;
+      if (pick.what === "chat" || pick.what === "scan" || pick.what === "key" || pick.what === "click" || pick.what === "mouseIn") return;
       const made = newHook(host, store, pick.what, query);
       if (!made) { api.ui.toast({ kind: "error", title: t("No free counter cell for the build row") }); return; }
       store.commit(t("Add build row"), () => store.list.map((tr, j) => (j !== index ? tr : { ...tr, actions: [...actions, made.action] })), { sidecar: { builds: made.builds } });

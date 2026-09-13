@@ -2884,7 +2884,7 @@ function markerOf(trigger3, text) {
 
 // src/model/sidecar.ts
 var MEMBER = "magenta\\magenta.json";
-var emptySidecar = () => ({ version: 1, folders: [], counters: [], settings: {}, expansions: [], builds: [], chat: null });
+var emptySidecar = () => ({ version: 1, folders: [], counters: [], settings: {}, expansions: [], builds: [], chat: null, msqc: null });
 function decodeSidecar(bytes) {
   if (!bytes) return emptySidecar();
   try {
@@ -2897,7 +2897,8 @@ function decodeSidecar(bytes) {
       settings: parsed.settings && typeof parsed.settings === "object" ? parsed.settings : {},
       expansions: Array.isArray(parsed.expansions) ? parsed.expansions.filter((x) => x && typeof x.id === "string" && typeof x.kind === "string") : [],
       builds: Array.isArray(parsed.builds) ? parsed.builds.filter((x) => x && typeof x.id === "string" && typeof x.kind === "string") : [],
-      chat: parsed.chat && Array.isArray(parsed.chat.cell) ? { cell: [Number(parsed.chat.cell[0]), Number(parsed.chat.cell[1])] } : null
+      chat: parsed.chat && Array.isArray(parsed.chat.cell) ? { cell: [Number(parsed.chat.cell[0]), Number(parsed.chat.cell[1])] } : null,
+      msqc: parsed.msqc && typeof parsed.msqc === "object" ? { keys: {}, clicks: {}, mouseIn: {}, select: null, mouseBase: null, qcUnit: 58, qcLoc: 62, qcPlayer: 10, ...parsed.msqc } : null
     };
   } catch {
     return emptySidecar();
@@ -3079,6 +3080,17 @@ var Host = class {
     });
     return out;
   }
+  /** 0-based location slots nothing uses, highest first, for MSQC's own locations. */
+  freeLocationSlots() {
+    const scn = this.api.document.scenario();
+    if (!scn) return [];
+    const out = [];
+    for (let i = 62; i >= 0; i--) {
+      const l = scn.locations[i];
+      if (l && l.left === l.right && l.top === l.bottom && l.nameIndex === 0) out.push(i);
+    }
+    return out;
+  }
   locationExists(n) {
     const scn = this.api.document.scenario();
     if (!scn) return true;
@@ -3172,7 +3184,7 @@ var Host = class {
     return value;
   }
   saveSidecar(sidecar) {
-    const empty = sidecar.folders.length === 0 && sidecar.counters.length === 0 && sidecar.expansions.length === 0 && sidecar.builds.length === 0 && !sidecar.chat && Object.keys(sidecar.settings).length === 0;
+    const empty = sidecar.folders.length === 0 && sidecar.counters.length === 0 && sidecar.expansions.length === 0 && sidecar.builds.length === 0 && !sidecar.chat && !sidecar.msqc && Object.keys(sidecar.settings).length === 0;
     if (empty) {
       this.api.document.extras.remove(MEMBER);
       this.sidecarCache = null;
@@ -3430,9 +3442,18 @@ function recipeContext(intern, locations) {
 }
 
 // src/model/builds.ts
-var MAGENTA_SPEC_VERSION = 1;
+var DEFAULT_MSQC = { qcUnit: 58, qcLoc: 62, qcPlayer: 10, keys: {}, clicks: {}, mouseBase: null, mouseIn: {}, select: null };
+var MAGENTA_SPEC_VERSION = 2;
 var cellAddress = (cell) => 5808996 + cell[0] * 4 + cell[1] * 48;
-function composePlugins(builds, chat, everyFrame) {
+function msqcKeyName(code) {
+  if (code >= 65 && code <= 90) return String.fromCharCode(code);
+  if (code >= 48 && code <= 57) return String.fromCharCode(code);
+  if (code >= 112 && code <= 123) return `F${code - 111}`;
+  const named = { 32: "SPACE", 13: "ENTER", 27: "ESC", 9: "TAB", 16: "SHIFT", 17: "LCTRL", 18: "LALT", 37: "LEFT", 38: "UP", 39: "RIGHT", 40: "DOWN", 8: "BACK", 46: "DELETE", 45: "INSERT", 36: "HOME", 35: "END", 33: "PGUP", 34: "PGDN" };
+  return named[code] ?? `0x${code.toString(16).toUpperCase()}`;
+}
+var usesMsqc = (m) => !!m && (Object.keys(m.keys).length > 0 || Object.keys(m.clicks).length > 0 || Object.keys(m.mouseIn).length > 0 || m.select !== null);
+function composePlugins(builds, chat, everyFrame, msqc = null) {
   const plugins = {};
   const chats = builds.filter((b) => b.kind === "chat");
   if (chats.length && chat) {
@@ -3440,9 +3461,28 @@ function composePlugins(builds, chat, everyFrame) {
     for (const c2 of chats) section[c2.message] = c2.value;
     plugins.chatEvent = section;
   }
-  const hooks = builds.filter((b) => b.kind !== "chat");
-  const spec = { version: MAGENTA_SPEC_VERSION, everyFrame, chat: chats.length && chat ? { cell: chat.cell } : null, hooks };
-  if (hooks.length || spec.chat) plugins.magenta = { spec: JSON.stringify(spec) };
+  let msqcSpec = null;
+  if (usesMsqc(msqc)) {
+    const section = { QCUnit: msqc.qcUnit, QCLoc: msqc.qcLoc, QCPlayer: msqc.qcPlayer + 1, QCDebug: "false" };
+    const clear = [];
+    for (const [code, unit] of Object.entries(msqc.keys)) {
+      section[`KeyPress(${msqcKeyName(Number(code))}); NotTyping`] = `${unit}, 1`;
+      clear.push(unit);
+    }
+    for (const [button, unit] of Object.entries(msqc.clicks)) {
+      section[`MouseDown(${button})`] = `${unit}, 1`;
+      clear.push(unit);
+    }
+    const mouseIn = Object.entries(msqc.mouseIn).map(([location, unit]) => ({ location: Number(location), unit }));
+    if ((mouseIn.length || Object.keys(msqc.clicks).length) && msqc.mouseBase !== null) section["Mouse"] = msqc.mouseBase;
+    if (msqc.select) section["MouseUp(L); val, 0x597208"] = String(msqc.select.ptr);
+    plugins.MSQC = section;
+    msqcSpec = { clear, mouseBase: msqc.mouseBase, mouseIn, select: msqc.select };
+  }
+  const hooks = builds.filter((b) => "flag" in b);
+  const scans = builds.filter((b) => b.kind === "scan");
+  const spec = { version: MAGENTA_SPEC_VERSION, everyFrame, chat: chats.length && chat ? { cell: chat.cell } : null, hooks, scans, msqc: msqcSpec };
+  if (hooks.length || scans.length || spec.chat || msqcSpec) plugins.magenta = { spec: JSON.stringify(spec) };
   if (everyFrame) plugins.eudTurbo = {};
   return plugins;
 }
@@ -3480,7 +3520,7 @@ function openBuildDialog(api, store, everyFrame) {
   const builds = store.sidecar.builds;
   const chats = builds.filter((b) => b.kind === "chat").length;
   const hooks = builds.length - chats;
-  const plugins = composePlugins(builds, store.sidecar.chat, everyFrame);
+  const plugins = composePlugins(builds, store.sidecar.chat, everyFrame, store.sidecar.msqc);
   const info = api.document.info();
   const stem2 = (info?.fileName ?? "map").replace(/\.(scx|scm|chk)$/i, "");
   const server = w.text({ value: serverUrl(api), placeholder: DEFAULT_SERVER });
@@ -3490,7 +3530,8 @@ function openBuildDialog(api, store, everyFrame) {
     "ul",
     {},
     el("li", {}, chats ? t("{n, plural, one {# chat command} other {# chat commands}}", { n: chats }) : t("No chat commands")),
-    el("li", {}, hooks ? t("{n, plural, one {# build row} other {# build rows}} (text, maths, unit passes)", { n: hooks }) : t("No build rows")),
+    el("li", {}, hooks ? t("{n, plural, one {# build row} other {# build rows}} (text, maths, unit passes, checks)", { n: hooks }) : t("No build rows")),
+    el("li", {}, plugins.MSQC ? t("Synced input (keys, clicks, mouse) through MSQC") : t("No synced input")),
     el("li", {}, everyFrame ? t("Triggers run every frame (turbo)") : t("Triggers run every two seconds"))
   );
   const nothing = !Object.keys(plugins).length;
@@ -4301,10 +4342,16 @@ function paletteItems(kind) {
   if (kind === "condition") {
     items.push({ label: "Compare two counters", aliases: ["greater", "less", "equal", "variable"], group: "Counters", value: { kind: "expansion", what: "compare" } });
     items.push({ label: "The chat said a command", aliases: ["chat", "typed", "command", "message", "-heal"], group: "Build", value: { kind: "build", what: "chat" } });
+    items.push({ label: "A player pressed a key (synced)", aliases: ["keyboard", "hotkey", "press", "input"], group: "Build", value: { kind: "build", what: "key" } });
+    items.push({ label: "A player clicked (synced)", aliases: ["mouse button", "left click", "right click", "input"], group: "Build", value: { kind: "build", what: "click" } });
+    items.push({ label: "A player's mouse is over a location (synced)", aliases: ["hover", "cursor", "pointer", "mouse at"], group: "Build", value: { kind: "build", what: "mouseIn" } });
+    items.push({ label: "Any unit of a kind has a stat below or above", aliases: ["hp check", "low health", "any unit", "damaged", "scan"], group: "Build", value: { kind: "build", what: "scan" } });
   } else {
     items.push({ label: "Show text with numbers in it", aliases: ["display counter", "print score", "dynamic text", "message with value"], group: "Build", value: { kind: "build", what: "text" } });
     items.push({ label: "Multiply, divide or randomize a counter", aliases: ["times", "random", "modulo", "remainder", "maths"], group: "Build", value: { kind: "build", what: "math" } });
-    items.push({ label: "For each unit of a kind", aliases: ["all units", "every unit", "loop", "set hp of all"], group: "Build", value: { kind: "build", what: "foreach" } });
+    items.push({ label: "For each unit of a kind", aliases: ["all units", "every unit", "loop", "set hp of all", "give units with colour"], group: "Build", value: { kind: "build", what: "foreach" } });
+    items.push({ label: "Count units into a counter", aliases: ["number of", "how many", "tally"], group: "Build", value: { kind: "build", what: "count" } });
+    items.push({ label: "Read a unit's stat into a counter", aliases: ["get hp", "read health", "unit's kills", "position into"], group: "Build", value: { kind: "build", what: "read" } });
     items.push({ label: "Copy a counter into another", aliases: ["set variable", "assign", "transfer"], group: "Counters", value: { kind: "expansion", what: "copy" } });
     items.push({ label: "Add a counter to another", aliases: ["sum", "plus", "variable"], group: "Counters", value: { kind: "expansion", what: "add" } });
     items.push({ label: "Subtract a counter from another", aliases: ["minus", "difference", "variable"], group: "Counters", value: { kind: "expansion", what: "subtract" } });
@@ -4715,10 +4762,41 @@ function freeCell(store, host, taken = []) {
       used.add(cellKey(...x.to));
     }
   }
-  for (const b of store.sidecar.builds) if (b.kind !== "chat") used.add(cellKey(...b.flag));
+  for (const b of store.sidecar.builds) if ("flag" in b) used.add(cellKey(...b.flag));
   if (store.sidecar.chat) used.add(cellKey(...store.sidecar.chat.cell));
+  for (const b of store.sidecar.builds) if (b.kind === "scan") used.add(cellKey(...b.cell));
+  const m = store.sidecar.msqc;
+  if (m) for (const unit of [...Object.values(m.keys), ...Object.values(m.clicks), ...Object.values(m.mouseIn), ...m.select ? [m.select.ptr, m.select.type] : []]) for (let p = 0; p < 12; p++) used.add(cellKey(p, unit));
   for (const c2 of taken) used.add(cellKey(...c2));
   return allocate(used, host.placedUnitIds());
+}
+function freeUnit(store, host) {
+  const used = usage(store.list).cells;
+  const taken = /* @__PURE__ */ new Set();
+  for (const k of used) taken.add(Math.floor(k / 12));
+  for (const c2 of store.sidecar.counters) taken.add(c2.unit);
+  for (const x of store.sidecar.expansions) {
+    if (x.kind === "compare") {
+      taken.add(x.scratch[0][1]);
+      taken.add(x.scratch[1][1]);
+      taken.add(x.a[1]);
+      taken.add(x.b[1]);
+    } else if (x.kind !== "forEachPlayer") {
+      taken.add(x.flag[1]);
+      taken.add(x.from[1]);
+      taken.add(x.to[1]);
+    }
+  }
+  for (const b of store.sidecar.builds) {
+    if ("flag" in b) taken.add(b.flag[1]);
+    if (b.kind === "scan") taken.add(b.cell[1]);
+  }
+  if (store.sidecar.chat) taken.add(store.sidecar.chat.cell[1]);
+  const m = store.sidecar.msqc;
+  if (m) for (const unit of [...Object.values(m.keys), ...Object.values(m.clicks), ...Object.values(m.mouseIn), ...m.select ? [m.select.ptr, m.select.type] : []]) taken.add(unit);
+  const placed = host.placedUnitIds();
+  for (const unit of COUNTER_UNITS) if (!taken.has(unit) && !placed.has(unit)) return unit;
+  return null;
 }
 function pickCell(api, host, store, anchor, current2, onPick) {
   const t = api.i18n.t;
@@ -4842,13 +4920,26 @@ function textToParts(text, names) {
 }
 
 // src/ui/buildRows.ts
-var hookOf = (store, a2) => store.sidecar.builds.find((b) => b.kind !== "chat" && isFlagAction(a2, { cell: b.flag })) ?? null;
-function chatOf(store, c2) {
+var hookOf = (store, a2) => store.sidecar.builds.find((b) => "flag" in b && isFlagAction(a2, { cell: b.flag })) ?? null;
+function conditionRowOf(store, c2) {
+  if (c2.type !== ConditionType.Deaths) return null;
   const chat = store.sidecar.chat;
-  if (!chat || c2.type !== ConditionType.Deaths || c2.player !== chat.cell[0] || c2.unitId !== chat.cell[1] || c2.comparison !== Comparison.Exactly) return null;
-  return store.sidecar.builds.find((b) => b.kind === "chat" && b.value === c2.amount) ?? null;
+  if (chat && c2.player === chat.cell[0] && c2.unitId === chat.cell[1] && c2.comparison === Comparison.Exactly) {
+    const record = store.sidecar.builds.find((b) => b.kind === "chat" && b.value === c2.amount);
+    return record ? { kind: "chat", record } : null;
+  }
+  const scan = store.sidecar.builds.find((b) => b.kind === "scan" && b.cell[0] === c2.player && b.cell[1] === c2.unitId);
+  if (scan) return { kind: "scan", record: scan };
+  const m = store.sidecar.msqc;
+  if (m) {
+    for (const [code, unit] of Object.entries(m.keys)) if (unit === c2.unitId) return { kind: "key", player: c2.player, code: Number(code) };
+    for (const [button, unit] of Object.entries(m.clicks)) if (unit === c2.unitId) return { kind: "click", player: c2.player, button };
+    for (const [location, unit] of Object.entries(m.mouseIn)) if (unit === c2.unitId) return { kind: "mouseIn", player: c2.player, location: Number(location) };
+  }
+  return null;
 }
-var chatCondition = (cell, value) => ({ location: 0, player: cell[0], amount: value, unitId: cell[1], comparison: Comparison.Exactly, type: ConditionType.Deaths, resource: 0, flags: 0, mask: 0 });
+var deathsIs2 = (cell, comparison, amount) => ({ location: 0, player: cell[0], amount, unitId: cell[1], comparison, type: ConditionType.Deaths, resource: 0, flags: 0, mask: 0 });
+var chatCondition = (cell, value) => deathsIs2(cell, Comparison.Exactly, value);
 function counterNames(store, host) {
   const namer = host.namer(store.sidecar);
   return {
@@ -4864,10 +4955,28 @@ function counterNames(store, host) {
 function chip2(api, label, className = "counter") {
   return api.ui.el("button", { type: "button", className: `mg-chip ${className}` }, label);
 }
-function tag(api, title) {
-  return api.ui.el("span", { className: "mg-tag", title }, "BUILD");
-}
 var BUILD_NOTE = "Needs a Build (\u22EF menu): the game's own triggers cannot do this, so the built map carries the code that does. The source map stays as it is.";
+var INPUT_NOTE = "Needs a Build (\u22EF menu). The MSQC plugin in the built map turns each player's input into a game command, so every client sees it in the same cycle; the cell is cleared after the triggers have read it.";
+var tag = (api, title = BUILD_NOTE) => api.ui.el("span", { className: "mg-tag", title }, "BUILD");
+var FIELDS = [
+  { value: 0, label: "hit points", field: "hp" },
+  { value: 1, label: "shields", field: "shields" },
+  { value: 2, label: "energy", field: "energy" },
+  { value: 3, label: "kills", field: "kills" },
+  { value: 4, label: "x", field: "x" },
+  { value: 5, label: "y", field: "y" }
+];
+function filterChips(api, host, store, f, update) {
+  const t = api.i18n.t;
+  const namer = host.namer(store.sidecar);
+  const unit = chip2(api, f.unit === null ? t("any unit") : namer.unit(f.unit));
+  unit.addEventListener("click", () => pickUnitType(api, host, unit, f.unit ?? 228, (v) => update({ unit: v >= 228 ? null : v }), { classes: true }));
+  const owner = chip2(api, f.owner === null ? t("anyone") : namer.player(f.owner), "");
+  owner.addEventListener("click", () => pickChoice(api, owner, [{ value: -1, label: t("anyone") }, ...Array.from({ length: 12 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null }))], (v) => update({ owner: v < 0 ? null : v }), { current: f.owner ?? -1 }));
+  const loc = chip2(api, f.location === null ? t("anywhere") : namer.location(f.location), "");
+  loc.addEventListener("click", () => pickLocation(api, host, loc, f.location ?? 64, (v) => update({ location: v === 0 || v === 64 ? null : v })));
+  return [unit, api.ui.el("span", {}, t(" owned by ")), owner, api.ui.el("span", {}, t(" at ")), loc];
+}
 function renderHook(api, host, store, hook, into) {
   const t = api.i18n.t;
   const namer = host.namer(store.sidecar);
@@ -4878,7 +4987,7 @@ function renderHook(api, host, store, hook, into) {
     text.addEventListener("click", () => pickText(api, text, partsToText(hook.parts, names), (value) => update({ parts: textToParts(value, names) }), { title: t("Write {Counter name} where a counter's value goes") }));
     const to = chip2(api, hook.to === "all" ? t("everyone") : namer.player(hook.to), "");
     to.addEventListener("click", () => pickChoice(api, to, [{ value: -1, label: t("everyone") }, ...Array.from({ length: 8 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null }))], (v) => update({ to: v < 0 ? "all" : v }), { current: hook.to === "all" ? -1 : hook.to }));
-    into.append(t("Show "), text, t(" to "), to, tag(api, BUILD_NOTE));
+    into.append(t("Show "), text, t(" to "), to, tag(api));
     return;
   }
   if (hook.kind === "math") {
@@ -4893,53 +5002,133 @@ function renderHook(api, host, store, hook, into) {
     b.addEventListener("click", () => pickCell(api, host, store, b, typeof hook.b === "number" ? hook.a : hook.b, (cell) => update({ b: cell })));
     const num = chip2(api, "#", "");
     num.title = t("A number instead of a counter");
-    num.addEventListener("click", () => pickNumber(api, num, typeof hook.b === "number" ? hook.b : 2, (v) => update({ b: v }), { min: hook.op === "rand" || hook.op === "div" || hook.op === "mod" ? 1 : 0 }));
-    if (hook.op === "rand") into.append(t("Set "), to, t(" to "), op, " ", b, num, tag(api, BUILD_NOTE));
-    else into.append(t("Set "), to, t(" to "), a2, " ", op, " ", b, num, tag(api, BUILD_NOTE));
+    num.addEventListener("click", () => pickNumber(api, num, typeof hook.b === "number" ? hook.b : 2, (v) => update({ b: v }), { min: hook.op === "mul" ? 0 : 1 }));
+    if (hook.op === "rand") into.append(t("Set "), to, t(" to "), op, " ", b, num, tag(api));
+    else into.append(t("Set "), to, t(" to "), a2, " ", op, " ", b, num, tag(api));
     return;
   }
-  const unit = chip2(api, hook.unit === null ? t("any unit") : namer.unit(hook.unit));
-  unit.addEventListener("click", () => pickUnitType(api, host, unit, hook.unit ?? 228, (v) => update({ unit: v >= 228 ? null : v }), { classes: true }));
-  const owner = chip2(api, hook.owner === null ? t("anyone") : namer.player(hook.owner), "");
-  owner.addEventListener("click", () => pickChoice(api, owner, [{ value: -1, label: t("anyone") }, ...Array.from({ length: 12 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null }))], (v) => update({ owner: v < 0 ? null : v }), { current: hook.owner ?? -1 }));
-  const loc = chip2(api, hook.location === null ? t("anywhere") : namer.location(hook.location), "");
-  loc.addEventListener("click", () => pickLocation(api, host, loc, hook.location ?? 64, (v) => update({ location: v === 0 || v === 64 ? null : v })));
+  if (hook.kind === "count") {
+    const to = chip2(api, cellLabel(hook.to, namer));
+    to.addEventListener("click", () => pickCell(api, host, store, to, hook.to, (cell) => update({ to: cell })));
+    into.append(t("Set "), to, t(" to the number of "), ...filterChips(api, host, store, hook, update), tag(api));
+    return;
+  }
+  if (hook.kind === "read") {
+    const to = chip2(api, cellLabel(hook.to, namer));
+    to.addEventListener("click", () => pickCell(api, host, store, to, hook.to, (cell) => update({ to: cell })));
+    const field = chip2(api, FIELDS.find((f) => f.field === hook.field)?.label ?? hook.field, "");
+    field.addEventListener("click", () => pickChoice(api, field, FIELDS, (v) => update({ field: FIELDS[v].field }), { current: FIELDS.findIndex((f) => f.field === hook.field) }));
+    into.append(t("Set "), to, t(" to the "), field, t(" of the first "), ...filterChips(api, host, store, hook, update), tag(api));
+    return;
+  }
   const DOS = [
     { value: 0, label: t("set hit points"), make: () => ({ set: "hp", value: 100 }) },
     { value: 1, label: t("set shields"), make: () => ({ set: "shields", value: 100 }) },
     { value: 2, label: t("set energy"), make: () => ({ set: "energy", value: 100 }) },
-    { value: 3, label: t("kill"), make: () => ({ kill: true }) },
-    { value: 4, label: t("remove"), make: () => ({ remove: true }) },
-    { value: 5, label: t("make invincible"), make: () => ({ invincible: true }) },
-    { value: 6, label: t("make vulnerable"), make: () => ({ invincible: false }) }
+    { value: 3, label: t("set kills"), make: () => ({ set: "kills", value: 0 }) },
+    { value: 4, label: t("kill"), make: () => ({ kill: true }) },
+    { value: 5, label: t("remove"), make: () => ({ remove: true }) },
+    { value: 6, label: t("make invincible"), make: () => ({ invincible: true }) },
+    { value: 7, label: t("make vulnerable"), make: () => ({ invincible: false }) },
+    { value: 8, label: t("hallucinate"), make: () => ({ hallucination: true }) },
+    { value: 9, label: t("un-hallucinate"), make: () => ({ hallucination: false }) },
+    { value: 10, label: t("give the speed upgrade"), make: () => ({ speed: true }) },
+    { value: 11, label: t("take the speed upgrade"), make: () => ({ speed: false }) },
+    { value: 12, label: t("give to"), make: () => ({ give: 1 }) },
+    { value: 13, label: t("center a location on it"), make: () => ({ locate: 1 }) }
   ];
-  const current2 = "set" in hook.do ? { hp: 0, shields: 1, energy: 2 }[hook.do.set] : "kill" in hook.do ? 3 : "remove" in hook.do ? 4 : hook.do.invincible ? 5 : 6;
+  const d = hook.do;
+  const current2 = "set" in d ? { hp: 0, shields: 1, energy: 2, kills: 3 }[d.set] : "kill" in d ? 4 : "remove" in d ? 5 : "invincible" in d ? d.invincible ? 6 : 7 : "hallucination" in d ? d.hallucination ? 8 : 9 : "speed" in d ? d.speed ? 10 : 11 : "give" in d ? 12 : 13;
   const what = chip2(api, DOS[current2].label, "");
   what.addEventListener("click", () => pickChoice(api, what, DOS, (v) => update({ do: DOS[v].make() }), { current: current2 }));
-  into.append(t("For each "), unit, t(" owned by "), owner, t(" at "), loc, ": ", what);
-  if ("set" in hook.do) {
-    const d = hook.do;
+  into.append(t("For each "), ...filterChips(api, host, store, hook, update), ": ", what);
+  if ("set" in d) {
     const value = chip2(api, String(d.value), "");
     value.addEventListener("click", () => pickNumber(api, value, d.value, (v) => update({ do: { set: d.set, value: v } }), { min: 0, max: 65535 }));
     into.append(t(" to "), value);
+  } else if ("give" in d) {
+    const p = chip2(api, namer.player(d.give), "");
+    p.addEventListener("click", () => pickChoice(api, p, Array.from({ length: 12 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null })), (v) => update({ do: { give: v } }), { current: d.give }));
+    into.append(" ", p);
+  } else if ("locate" in d) {
+    const l = chip2(api, namer.location(d.locate), "");
+    l.addEventListener("click", () => pickLocation(api, host, l, d.locate, (v) => {
+      if (v > 0 && v < 64) update({ do: { locate: v } });
+    }));
+    into.append(": ", l);
   }
-  into.append(tag(api, BUILD_NOTE));
+  into.append(tag(api));
 }
-function renderChat(api, host, store, chat, into) {
+function renderConditionRow(api, host, store, row, into, replace) {
   const t = api.i18n.t;
-  void host;
-  const msg = chip2(api, chat.message, "text");
-  msg.addEventListener("click", () => pickText(api, msg, chat.message, (value) => {
-    const problem = checkChatMessage(value);
-    if (problem) {
-      api.ui.toast({ kind: "error", title: problem });
-      return;
-    }
-    store.updateSidecar(t("Edit chat command"), { builds: store.sidecar.builds.map((b) => b.id === chat.id ? { ...b, message: value.trim() } : b) });
-  }, { title: t("What a player types in chat; ^\u2026$ for a pattern, as in ^-give .*$") }));
-  into.append(t("The chat said "), msg, tag(api, "Needs a Build (\u22EF menu): the chat plugin in the built map writes the command's number into a cell this condition reads, in the cycle the message arrives, for every player at once."));
+  const namer = host.namer(store.sidecar);
+  const playerChip = (player, onPick) => {
+    const c2 = chip2(api, namer.player(player), "");
+    c2.addEventListener("click", () => pickChoice(api, c2, [{ value: PlayerGroup.CurrentPlayer, label: namer.player(PlayerGroup.CurrentPlayer) }, ...Array.from({ length: 8 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null }))], onPick, { current: player }));
+    return c2;
+  };
+  if (row.kind === "chat") {
+    const chat = row.record;
+    const msg = chip2(api, chat.message, "text");
+    msg.addEventListener("click", () => pickText(api, msg, chat.message, (value) => {
+      const problem = checkChatMessage(value);
+      if (problem) {
+        api.ui.toast({ kind: "error", title: problem });
+        return;
+      }
+      store.updateSidecar(t("Edit chat command"), { builds: store.sidecar.builds.map((b) => b.id === chat.id ? { ...b, message: value.trim() } : b) });
+    }, { title: t("What a player types in chat; ^\u2026$ for a pattern, as in ^-give .*$") }));
+    into.append(t("The chat said "), msg, tag(api, t("Needs a Build (\u22EF menu): the chat plugin in the built map writes the command's number into a cell this condition reads, in the cycle the message arrives, for every player at once.")));
+    return;
+  }
+  if (row.kind === "scan") {
+    const s = row.record;
+    const update = (patch) => store.updateSidecar(t("Edit unit check"), { builds: store.sidecar.builds.map((b) => b.id === s.id ? { ...b, ...patch } : b) });
+    const field = chip2(api, FIELDS.find((f) => f.field === s.field)?.label ?? s.field, "");
+    field.addEventListener("click", () => pickChoice(api, field, FIELDS, (v) => update({ field: FIELDS[v].field }), { current: FIELDS.findIndex((f) => f.field === s.field) }));
+    const CMP = [{ value: 0, label: t("below"), cmp: "<" }, { value: 1, label: t("above"), cmp: ">" }, { value: 2, label: t("exactly"), cmp: "=" }];
+    const cmp = chip2(api, CMP.find((c2) => c2.cmp === s.cmp)?.label ?? s.cmp, "");
+    cmp.addEventListener("click", () => pickChoice(api, cmp, CMP, (v) => update({ cmp: CMP[v].cmp }), { current: CMP.findIndex((c2) => c2.cmp === s.cmp) }));
+    const value = chip2(api, String(s.value), "");
+    value.addEventListener("click", () => pickNumber(api, value, s.value, (v) => update({ value: v }), { min: 0, max: 65535 }));
+    into.append(t("Any "), ...filterChips(api, host, store, s, update), t(" has "), field, " ", cmp, " ", value, tag(api, t("Needs a Build (\u22EF menu): the built map checks this every cycle and leaves the answer in a cell this condition reads.")));
+    return;
+  }
+  const m = store.sidecar.msqc ?? DEFAULT_MSQC;
+  if (row.kind === "key") {
+    const key = chip2(api, KEYS.find((k) => k.code === row.code)?.label ?? `0x${row.code.toString(16)}`, "");
+    key.addEventListener("click", () => pickKey(api, key, row.code, (code) => {
+      const unit = m.keys[String(code)] ?? m.keys[String(row.code)];
+      void unit;
+      store.commit(t("Change key"), () => store.list, { sidecar: { msqc: { ...m, keys: { ...m.keys, [String(code)]: m.keys[String(code)] ?? freeUnit(store, host) ?? m.keys[String(row.code)] } } } });
+      replace(deathsIs2([row.player, (store.sidecar.msqc ?? m).keys[String(code)] ?? m.keys[String(row.code)]], Comparison.AtLeast, 1));
+    }));
+    into.append(playerChip(row.player, (p) => replace(deathsIs2([p, m.keys[String(row.code)]], Comparison.AtLeast, 1))), t(" pressed "), key, tag(api, INPUT_NOTE));
+    return;
+  }
+  if (row.kind === "click") {
+    const button = chip2(api, row.button === "L" ? t("left") : t("right"), "");
+    button.addEventListener("click", () => pickChoice(api, button, [{ value: 0, label: t("left") }, { value: 1, label: t("right") }], (v) => {
+      const b = v === 0 ? "L" : "R";
+      const unit = m.clicks[b] ?? freeUnit(store, host);
+      if (unit === null) return;
+      store.commit(t("Change button"), () => store.list, { sidecar: { msqc: { ...m, clicks: { ...m.clicks, [b]: unit } } } });
+      replace(deathsIs2([row.player, unit], Comparison.AtLeast, 1));
+    }, { current: row.button === "L" ? 0 : 1 }));
+    into.append(playerChip(row.player, (p) => replace(deathsIs2([p, m.clicks[row.button]], Comparison.AtLeast, 1))), t(" clicked the "), button, t(" button"), tag(api, INPUT_NOTE));
+    return;
+  }
+  const loc = chip2(api, namer.location(row.location), "");
+  loc.addEventListener("click", () => pickLocation(api, host, loc, row.location, (v) => {
+    if (v <= 0 || v >= 64) return;
+    const unit = m.mouseIn[String(v)] ?? freeUnit(store, host);
+    if (unit === null) return;
+    store.commit(t("Change location"), () => store.list, { sidecar: { msqc: { ...m, mouseIn: { ...m.mouseIn, [String(v)]: unit } } } });
+    replace(deathsIs2([row.player, unit], Comparison.Exactly, 1));
+  }));
+  into.append(playerChip(row.player, (p) => replace(deathsIs2([p, m.mouseIn[String(row.location)]], Comparison.Exactly, 1))), t("'s mouse is over "), loc, tag(api, INPUT_NOTE));
 }
-function newChat(api, host, store, message = "-command") {
+function newChat(host, store, message = "-command") {
   const chat = store.sidecar.chat ?? (() => {
     const cell = freeCell(store, host);
     return cell ? { cell } : null;
@@ -4947,8 +5136,61 @@ function newChat(api, host, store, message = "-command") {
   if (!chat) return null;
   const value = nextChatValue(store.sidecar.builds);
   const record = { id: `h${Date.now().toString(36)}`, kind: "chat", message, value };
-  void api;
   return { condition: chatCondition(chat.cell, value), builds: [...store.sidecar.builds, record], chat };
+}
+function withMsqc(host, store, needMouse) {
+  const m = store.sidecar.msqc ? { ...store.sidecar.msqc } : { ...DEFAULT_MSQC, keys: {}, clicks: {}, mouseIn: {} };
+  if (!store.sidecar.msqc) {
+    const free = host.freeLocationSlots();
+    if (!free.length) return null;
+    m.qcLoc = free[0];
+  }
+  if (needMouse && m.mouseBase === null) {
+    const free = new Set(host.freeLocationSlots().filter((i) => i !== m.qcLoc));
+    for (let base = 0; base + 8 <= 63; base++) {
+      let ok = true;
+      for (let p = 0; p < 8; p++) if (!free.has(base + p)) {
+        ok = false;
+        break;
+      }
+      if (ok) {
+        m.mouseBase = base;
+        break;
+      }
+    }
+    if (m.mouseBase === null) return null;
+  }
+  return m;
+}
+function newInput(host, store, what, options = {}) {
+  const m = withMsqc(host, store, what !== "key");
+  if (!m) return null;
+  if (what === "key") {
+    const code = options.code ?? 65;
+    const unit2 = m.keys[String(code)] ?? freeUnit({ ...store, sidecar: { ...store.sidecar, msqc: m } }, host);
+    if (unit2 === null) return null;
+    m.keys = { ...m.keys, [String(code)]: unit2 };
+    return { condition: deathsIs2([PlayerGroup.CurrentPlayer, unit2], Comparison.AtLeast, 1), msqc: m };
+  }
+  if (what === "click") {
+    const b = options.button ?? "L";
+    const unit2 = m.clicks[b] ?? freeUnit({ ...store, sidecar: { ...store.sidecar, msqc: m } }, host);
+    if (unit2 === null) return null;
+    m.clicks = { ...m.clicks, [b]: unit2 };
+    return { condition: deathsIs2([PlayerGroup.CurrentPlayer, unit2], Comparison.AtLeast, 1), msqc: m };
+  }
+  const location = options.location ?? host.locations().find((l) => l.value !== 64)?.value ?? 0;
+  if (!location) return null;
+  const unit = m.mouseIn[String(location)] ?? freeUnit({ ...store, sidecar: { ...store.sidecar, msqc: m } }, host);
+  if (unit === null) return null;
+  m.mouseIn = { ...m.mouseIn, [String(location)]: unit };
+  return { condition: deathsIs2([PlayerGroup.CurrentPlayer, unit], Comparison.Exactly, 1), msqc: m };
+}
+function newScan(host, store) {
+  const cell = freeCell(store, host);
+  if (!cell) return null;
+  const record = { id: `s${Date.now().toString(36)}`, kind: "scan", cell, unit: 0, owner: PlayerGroup.Player1, location: null, field: "hp", cmp: "<", value: 20 };
+  return { condition: deathsIs2(cell, Comparison.Exactly, 1), builds: [...store.sidecar.builds, record] };
 }
 function newHook(host, store, what, query = "") {
   const flag = freeCell(store, host);
@@ -4956,11 +5198,12 @@ function newHook(host, store, what, query = "") {
   const named = store.sidecar.counters;
   const a2 = named[0] ? [named[0].player, named[0].unit] : freeCell(store, host, [flag]) ?? [0, 181];
   const id = `b${Date.now().toString(36)}`;
-  const record = what === "text" ? { id, kind: "text", flag, parts: [{ text: "Score: " }, { counter: a2 }], to: "all" } : what === "math" ? { id, kind: "math", flag, op: /random/i.test(query) ? "rand" : /divid/i.test(query) ? "div" : /modul|remainder/i.test(query) ? "mod" : "mul", a: a2, b: /random/i.test(query) ? 100 : 2, to: a2 } : { id, kind: "foreach", flag, unit: 0, owner: PlayerGroup.Player1, location: null, do: { set: "hp", value: 100 } };
+  const filter = { unit: 0, owner: PlayerGroup.Player1, location: null };
+  const record = what === "text" ? { id, kind: "text", flag, parts: [{ text: "Score: " }, { counter: a2 }], to: "all" } : what === "math" ? { id, kind: "math", flag, op: /random/i.test(query) ? "rand" : /divid/i.test(query) ? "div" : /modul|remainder/i.test(query) ? "mod" : "mul", a: a2, b: /random/i.test(query) ? 100 : 2, to: a2 } : what === "count" ? { id, kind: "count", flag, ...filter, to: a2 } : what === "read" ? { id, kind: "read", flag, ...filter, field: "hp", to: a2 } : { id, kind: "foreach", flag, ...filter, do: /give/i.test(query) ? { give: 1 } : /kill/i.test(query) ? { kill: true } : { set: "hp", value: 100 } };
   return { action: flagAction({ cell: flag }), builds: [...store.sidecar.builds, record] };
 }
 function needsBuild(store, trigger3) {
-  return trigger3.actions.some((a2) => a2.type === ActionType.SetDeaths && a2.modifier === SetModifier.SetTo && hookOf(store, a2) !== null) || trigger3.conditions.some((c2) => chatOf(store, c2) !== null);
+  return trigger3.actions.some((a2) => a2.type === ActionType.SetDeaths && a2.modifier === SetModifier.SetTo && hookOf(store, a2) !== null) || trigger3.conditions.some((c2) => conditionRowOf(store, c2) !== null);
 }
 
 // src/ui/editor.ts
@@ -5047,11 +5290,12 @@ function renderEditor(deps, root) {
   const writeConditions = (label, next) => replace(label, { ...trigger3, conditions: next });
   const cmp = compareOf(store, index, trigger3);
   conditions.forEach((c2, i) => {
-    const chat = chatOf(store, c2);
-    if (chat) {
+    const brow = conditionRowOf(store, c2);
+    if (brow) {
       const sentence = el("span", { className: "mg-sentence" });
-      renderChat(api, host, store, chat, sentence);
-      const remove = api.ui.widgets.button("\u2715", { ghost: true, title: t("Remove"), onClick: () => store.commit(t("Remove chat command"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, conditions: conditions.filter((_, k) => k !== i) }), { sidecar: { builds: store.sidecar.builds.filter((b) => b.id !== chat.id) } }) });
+      renderConditionRow(api, host, store, brow, sentence, (next) => writeConditions(t("Edit condition"), conditions.map((x, j) => j === i ? next : x)));
+      const ownRecord = brow.kind === "chat" || brow.kind === "scan" ? brow.record.id : null;
+      const remove = api.ui.widgets.button("\u2715", { ghost: true, title: t("Remove"), onClick: () => store.commit(t("Remove condition"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, conditions: conditions.filter((_, k) => k !== i) }), ownRecord ? { sidecar: { builds: store.sidecar.builds.filter((b) => b.id !== ownRecord) } } : {}) });
       condSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove))));
       return;
     }
@@ -5079,13 +5323,32 @@ function renderEditor(deps, root) {
   });
   if (conditions.length < MAX_CONDITIONS) condSection.append(addRow(api, "condition", ({ pick, entities, query }) => {
     if (pick.kind === "build") {
-      const message = /^"?(.+?)"?$/.exec(query.replace(/^(the )?chat (said|command)\s*/i, "").trim())?.[1];
-      const made = newChat(api, host, store, message && message !== query.trim() ? message : void 0);
-      if (!made) {
-        api.ui.toast({ kind: "error", title: t("No free counter cell for the chat command") });
-        return;
+      const insert = (label, condition, sidecar) => store.commit(label, () => store.list.map((tr, j) => j !== index ? tr : { ...tr, conditions: [...conditions, condition] }), { sidecar });
+      if (pick.what === "chat") {
+        const message = /^"?(.+?)"?$/.exec(query.replace(/^(the )?chat (said|command)\s*/i, "").trim())?.[1];
+        const made = newChat(host, store, message && message !== query.trim() ? message : void 0);
+        if (!made) {
+          api.ui.toast({ kind: "error", title: t("No free counter cell for the chat command") });
+          return;
+        }
+        insert(t("Add chat command"), made.condition, { builds: made.builds, chat: made.chat });
+      } else if (pick.what === "scan") {
+        const made = newScan(host, store);
+        if (!made) {
+          api.ui.toast({ kind: "error", title: t("No free counter cell for the check") });
+          return;
+        }
+        insert(t("Add unit check"), made.condition, { builds: made.builds });
+      } else if (pick.what === "key" || pick.what === "click" || pick.what === "mouseIn") {
+        const key = entities.find((e) => e.kind === "key");
+        const loc = entities.find((e) => e.kind === "location");
+        const made = newInput(host, store, pick.what, { code: key?.value, button: /right/i.test(query) ? "R" : "L", location: loc?.value });
+        if (!made) {
+          api.ui.toast({ kind: "error", title: t("No room for synced input"), detail: t("It needs a free counter unit and, for the mouse, nine free location slots.") });
+          return;
+        }
+        insert(t("Add input"), made.condition, { msqc: made.msqc });
       }
-      store.commit(t("Add chat command"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, conditions: [...conditions, made.condition] }), { sidecar: { builds: made.builds, chat: made.chat } });
       return;
     }
     if (pick.kind === "expansion") {
@@ -5143,7 +5406,7 @@ function renderEditor(deps, root) {
   }
   if (actions.length < MAX_ACTIONS) actSection.append(addRow(api, "action", ({ pick, entities, query }) => {
     if (pick.kind === "build") {
-      if (pick.what === "chat") return;
+      if (pick.what === "chat" || pick.what === "scan" || pick.what === "key" || pick.what === "click" || pick.what === "mouseIn") return;
       const made = newHook(host, store, pick.what, query);
       if (!made) {
         api.ui.toast({ kind: "error", title: t("No free counter cell for the build row") });

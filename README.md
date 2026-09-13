@@ -159,20 +159,39 @@ like the catalogue.
 
 ### Rows that need a Build
 
-Four kinds of row have no record in the game's own trigger set and only work in a map
-built by [euddraft](https://github.com/armoha/euddraft), which the scmjs.dev server runs
-for you. They read like any other row, with a **BUILD** tag, and the trigger that carries
-one shows a BUILD badge in the list:
+Some rows have no record in the game's own trigger set and only work in a map built by
+[euddraft](https://github.com/armoha/euddraft), which the scmjs.dev server runs for you.
+They read like any other row, with a **BUILD** tag, and the trigger that carries one shows
+a BUILD badge in the list.
 
-- **The chat said `-heal`** (condition): fires in the cycle a player sends that message,
-  for every player at once. `^…$` writes a pattern, as in `^-give .*$`.
-- **Show `Score: {Score} points` to everyone** (action): text with counters' values in it.
-  Write `{Counter name}` where a value goes.
-- **Set A to A times B / divided by / modulo / a random number below N** (action): the
-  counter maths the game cannot do, in one row.
-- **For each Marine owned by Player 1 at Beacon: set hit points to 100** (action): a pass
-  over every unit of a kind; also set shields or energy, kill, remove, make invincible or
-  vulnerable. Any unit, anyone and anywhere are the wide settings.
+Conditions:
+
+- **The chat said `-heal`**: fires in the cycle a player sends that message, for every
+  player at once. `^…$` writes a pattern, as in `^-give .*$`.
+- **Player 1 pressed A**, **Player 1 clicked the left button**, **Player 1's mouse is over
+  Beacon**: input that works in multiplayer. Each player's keys, clicks and mouse go out
+  as game commands (the MSQC plugin), so every client agrees on them in the same cycle;
+  the plain EUD reads in the catalogue are local to one computer and cannot do that. With
+  *Current Player* as the player, one trigger serves everyone. Typing in chat does not
+  count as key presses.
+- **Any Marine owned by Player 1 at Beacon has hit points below 20**: a check over every
+  unit of a kind, every cycle; also shields, energy, kills, x or y, below, above or exactly.
+
+Actions:
+
+- **Show `Score: {Score} points` to everyone**: text with counters' values in it. Write
+  `{Counter name}` where a value goes.
+- **Set A to A times B / divided by / modulo / a random number below N**: the counter
+  maths the game cannot do, in one row.
+- **For each Marine owned by Player 1 at Beacon: set hit points to 100**: a pass over every
+  unit of a kind; also set shields, energy or kills, kill, remove, make invincible or
+  vulnerable, hallucinate, give or take the speed upgrade, **give to a player** with the
+  colour, selection and control groups following (which the owner byte in the catalogue
+  does not), and **center a location on it**, so the trigger's other actions can act on
+  that unit through the location. Any unit, anyone and anywhere are the wide settings.
+- **Set A to the number of Marines owned by Player 1 at Beacon**: a count into a counter.
+- **Set A to the hit points of the first Marine owned by Player 1 at Beacon**: a read
+  into a counter; also shields, energy, kills, x, y.
 
 In the map these are one private counter cell each: the trigger sets it (an action) or reads
 it (a condition), so it stays an ordinary trigger everywhere. **⋯ ▸ Build EUD map…** sends
@@ -183,7 +202,10 @@ so keep the source map: the built one is what players get, the way a compiled pr
 **⋯ ▸ Build server…** changes the server address (`https://api.scmjs.dev` by default).
 
 An action row does its work right after the map's triggers in the cycle its trigger fired;
-a chat command fires once per message. The code behind them is the Magenta plugin of the
+a chat command or an input fires once per message, press or click, and a check is fresh
+every cycle. Synced input needs a few things of its own in the map, which Magenta takes:
+one location slot for MSQC, eight in a row for the players' mice, a player slot nobody
+uses (Player 11) and a unit type that must not appear in the map (the Valkyrie by default). The code behind them is the Magenta plugin of the
 server's build box, `euddraft/plugins/magenta.py` in the ai-server repository, which turns
 the rows into eudplib code; nothing you write in a row is code.
 

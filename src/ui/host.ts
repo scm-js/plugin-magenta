@@ -104,6 +104,15 @@ export class Host {
     return out;
   }
 
+  /** 0-based location slots nothing uses, highest first, for MSQC's own locations. */
+  freeLocationSlots(): number[] {
+    const scn = this.api.document.scenario();
+    if (!scn) return [];
+    const out: number[] = [];
+    for (let i = 62; i >= 0; i--) { const l = scn.locations[i]; if (l && l.left === l.right && l.top === l.bottom && l.nameIndex === 0) out.push(i); }
+    return out;
+  }
+
   locationExists(n: number): boolean {
     const scn = this.api.document.scenario();
     if (!scn) return true;
@@ -216,7 +225,7 @@ export class Host {
   }
 
   saveSidecar(sidecar: Sidecar): void {
-    const empty = sidecar.folders.length === 0 && sidecar.counters.length === 0 && sidecar.expansions.length === 0 && sidecar.builds.length === 0 && !sidecar.chat && Object.keys(sidecar.settings).length === 0;
+    const empty = sidecar.folders.length === 0 && sidecar.counters.length === 0 && sidecar.expansions.length === 0 && sidecar.builds.length === 0 && !sidecar.chat && !sidecar.msqc && Object.keys(sidecar.settings).length === 0;
     if (empty) { this.api.document.extras.remove(MEMBER); this.sidecarCache = null; return; }
     const bytes = encodeSidecar(sidecar);
     this.api.document.extras.set(MEMBER, bytes);

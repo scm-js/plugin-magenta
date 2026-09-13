@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkChatMessage, composePlugins, nextChatValue, type BuildRecord } from "../src/model/builds";
+import { checkChatMessage, composePlugins, msqcKeyName, nextChatValue, type BuildRecord, type Msqc } from "../src/model/builds";
 
 describe("build plugins", () => {
   it("composes the chat plugin, Magenta's spec and turbo from the records", () => {
@@ -13,9 +13,26 @@ describe("build plugins", () => {
     expect(p.chatEvent).toEqual({ __addr__: "0x58C580", "-heal": 2, "^-give .*$": 3 });
     expect(p.eudTurbo).toEqual({});
     const spec = JSON.parse(p.magenta.spec as string);
-    expect(spec).toMatchObject({ version: 1, everyFrame: true, chat: { cell: [11, 181] } });
+    expect(spec).toMatchObject({ version: 2, everyFrame: true, chat: { cell: [11, 181] } });
     expect(spec.hooks).toHaveLength(2);
     expect(spec.hooks[0].kind).toBe("text");
+    expect(spec.scans).toEqual([]);
+    expect(spec.msqc).toBeNull();
+    expect(p.MSQC).toBeUndefined();
+  });
+  it("writes the MSQC section for synced input, and the follow-up for Magenta's hook", () => {
+    const msqc: Msqc = { qcUnit: 58, qcLoc: 62, qcPlayer: 10, keys: { "65": 184, "32": 185 }, clicks: { L: 186 }, mouseBase: 50, mouseIn: { "1": 187 }, select: { ptr: 188, type: 189 } };
+    const scan: BuildRecord = { id: "s", kind: "scan", cell: [0, 183], unit: 0, owner: 0, location: 1, field: "hp", cmp: "<", value: 20 };
+    const p = composePlugins([scan], null, false, msqc);
+    expect(p.MSQC).toEqual({ QCUnit: 58, QCLoc: 62, QCPlayer: 11, QCDebug: "false", "KeyPress(A); NotTyping": "184, 1", "KeyPress(SPACE); NotTyping": "185, 1", "MouseDown(L)": "186, 1", Mouse: 50, "MouseUp(L); val, 0x597208": "188" });
+    const spec = JSON.parse(p.magenta.spec as string);
+    expect({ ...spec.msqc, clear: [...spec.msqc.clear].sort() }).toEqual({ clear: [184, 185, 186], mouseBase: 50, mouseIn: [{ location: 1, unit: 187 }], select: { ptr: 188, type: 189 } });
+    expect(spec.scans).toHaveLength(1);
+    expect(spec.hooks).toEqual([]);
+    expect(msqcKeyName(0x70)).toBe("F1");
+    expect(msqcKeyName(0x25)).toBe("LEFT");
+    // An MSQC with nothing registered is left out.
+    expect(composePlugins([], null, false, { ...msqc, keys: {}, clicks: {}, mouseIn: {}, select: null }).MSQC).toBeUndefined();
   });
   it("leaves out what the map does not use", () => {
     expect(composePlugins([], null, false)).toEqual({});

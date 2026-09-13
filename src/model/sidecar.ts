@@ -8,7 +8,7 @@
 import type { TriggerRecord } from "../../vendor/triggers";
 import { fingerprint } from "./records";
 import type { ExpansionRecord } from "./sync";
-import type { BuildRecord, ChatCell } from "./builds";
+import type { BuildRecord, ChatCell, Msqc } from "./builds";
 
 export const MEMBER = "magenta\\magenta.json";
 
@@ -42,9 +42,11 @@ export interface Sidecar {
   builds: BuildRecord[];
   /** The cell the chat plugin writes into; null until the first chat command. */
   chat: ChatCell | null;
+  /** Synced input through MSQC: what it owns and which counter unit each event lands in; null until the first input row. */
+  msqc: Msqc | null;
 }
 
-export const emptySidecar = (): Sidecar => ({ version: 1, folders: [], counters: [], settings: {}, expansions: [], builds: [], chat: null });
+export const emptySidecar = (): Sidecar => ({ version: 1, folders: [], counters: [], settings: {}, expansions: [], builds: [], chat: null, msqc: null });
 
 export function decodeSidecar(bytes: Uint8Array | null): Sidecar {
   if (!bytes) return emptySidecar();
@@ -59,6 +61,7 @@ export function decodeSidecar(bytes: Uint8Array | null): Sidecar {
       expansions: Array.isArray(parsed.expansions) ? parsed.expansions.filter((x) => x && typeof x.id === "string" && typeof x.kind === "string") : [],
       builds: Array.isArray(parsed.builds) ? parsed.builds.filter((x) => x && typeof x.id === "string" && typeof x.kind === "string") : [],
       chat: parsed.chat && Array.isArray(parsed.chat.cell) ? { cell: [Number(parsed.chat.cell[0]), Number(parsed.chat.cell[1])] } : null,
+      msqc: parsed.msqc && typeof parsed.msqc === "object" ? { keys: {}, clicks: {}, mouseIn: {}, select: null, mouseBase: null, qcUnit: 58, qcLoc: 62, qcPlayer: 10, ...(parsed.msqc as Partial<Msqc>) } : null,
     };
   } catch {
     return emptySidecar();

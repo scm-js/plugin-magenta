@@ -6,7 +6,7 @@
  */
 import type { PluginApi, ActionRecord, ConditionRecord, TriggerRecord } from "@scm-js/plugin-api";
 import { Comparison, ConditionType } from "../../vendor/triggers";
-import { allocate, cellKey, usage, type Cell } from "../model/counters";
+import { allocate, cellKey, COUNTER_UNITS, usage, type Cell } from "../model/counters";
 import { compareConditions, isFlagAction } from "../model/expansions";
 import type { Namer } from "../model/names";
 import type { ExpansionRecord } from "../model/sync";
@@ -52,10 +52,32 @@ export function freeCell(store: Store, host: Host, taken: Cell[] = []): Cell | n
     if (x.kind === "compare") { used.add(cellKey(...x.scratch[0])); used.add(cellKey(...x.scratch[1])); used.add(cellKey(...x.a)); used.add(cellKey(...x.b)); }
     else if (x.kind !== "forEachPlayer") { used.add(cellKey(...x.flag)); used.add(cellKey(...x.from)); used.add(cellKey(...x.to)); }
   }
-  for (const b of store.sidecar.builds) if (b.kind !== "chat") used.add(cellKey(...b.flag));
+  for (const b of store.sidecar.builds) if ("flag" in b) used.add(cellKey(...b.flag));
   if (store.sidecar.chat) used.add(cellKey(...store.sidecar.chat.cell));
+  for (const b of store.sidecar.builds) if (b.kind === "scan") used.add(cellKey(...b.cell));
+  const m = store.sidecar.msqc;
+  if (m) for (const unit of [...Object.values(m.keys), ...Object.values(m.clicks), ...Object.values(m.mouseIn), ...(m.select ? [m.select.ptr, m.select.type] : [])]) for (let p = 0; p < 12; p++) used.add(cellKey(p, unit));
   for (const c of taken) used.add(cellKey(...c));
   return allocate(used, host.placedUnitIds());
+}
+
+/** A whole counter unit nothing uses: for an MSQC event, whose cells are one per player. */
+export function freeUnit(store: Store, host: Host): number | null {
+  const used = usage(store.list).cells;
+  const taken = new Set<number>();
+  for (const k of used) taken.add(Math.floor(k / 12));
+  for (const c of store.sidecar.counters) taken.add(c.unit);
+  for (const x of store.sidecar.expansions) {
+    if (x.kind === "compare") { taken.add(x.scratch[0][1]); taken.add(x.scratch[1][1]); taken.add(x.a[1]); taken.add(x.b[1]); }
+    else if (x.kind !== "forEachPlayer") { taken.add(x.flag[1]); taken.add(x.from[1]); taken.add(x.to[1]); }
+  }
+  for (const b of store.sidecar.builds) { if ("flag" in b) taken.add(b.flag[1]); if (b.kind === "scan") taken.add(b.cell[1]); }
+  if (store.sidecar.chat) taken.add(store.sidecar.chat.cell[1]);
+  const m = store.sidecar.msqc;
+  if (m) for (const unit of [...Object.values(m.keys), ...Object.values(m.clicks), ...Object.values(m.mouseIn), ...(m.select ? [m.select.ptr, m.select.type] : [])]) taken.add(unit);
+  const placed = host.placedUnitIds();
+  for (const unit of COUNTER_UNITS) if (!taken.has(unit) && !placed.has(unit)) return unit;
+  return null;
 }
 
 /** A counter cell: the named counters, or a new one. */
