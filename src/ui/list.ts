@@ -10,6 +10,7 @@ import { isEud } from "../model/eud";
 import { commentIndex, isTriggerDisabled, liveActions, liveConditions, owners } from "../model/records";
 import { actionText, conditionText } from "./describe";
 import { cellLabel, compareOf, counterExpansionOf, RELATION_WORDS } from "./expansionRows";
+import { needsBuild } from "./buildRows";
 import type { Host } from "./host";
 import type { Store } from "./store";
 
@@ -35,6 +36,8 @@ export interface ItemInfo {
   disabled: boolean;
   /** Triggers Magenta generated for this one. */
   generated: number;
+  /** Uses a row that only a euddraft build can do. */
+  build: boolean;
 }
 
 export function itemInfo(deps: ListDeps, index: number, trigger: TriggerRecord): ItemInfo {
@@ -63,6 +66,7 @@ export function itemInfo(deps: ListDeps, index: number, trigger: TriggerRecord):
   const generated = store.runs.filter((r) => r.anchor === index).reduce((n, r) => n + r.count, 0);
   return {
     generated,
+    build: needsBuild(store, trigger),
     index, title: title || summary || deps.api.i18n.t("Empty trigger"), summary: title ? summary : "", ownersText, eud, locked: claim?.badge ?? null,
     problems: problems.some((p) => p.level === "error") ? "error" : problems.some((p) => p.level === "warn") ? "warn" : null,
     disabled: isTriggerDisabled(trigger),
@@ -90,6 +94,7 @@ export function renderList(deps: ListDeps, root: HTMLElement, onMove: (from: num
         info.locked ? el("span", { className: "mg-badge lock" }, info.locked) : null,
         info.eud ? el("span", { className: "mg-badge eud" }, "EUD") : null,
         info.generated ? el("span", { className: "mg-badge", title: t("Triggers Magenta generates for this one") }, `+${info.generated}`) : null,
+        info.build ? el("span", { className: "mg-badge eud", title: t("Needs a Build to work in the game") }, "BUILD") : null,
         info.problems ? el("span", { className: `mg-badge ${info.problems}` }, "!") : null,
         el("span", { className: "mg-badge" }, info.ownersText),
       ),

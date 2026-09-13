@@ -11,6 +11,7 @@ import type { Folder } from "../model/sidecar";
 import { setOwners } from "../model/records";
 import { DEFAULT_PLACEHOLDER, HUMAN_PLAYERS } from "../model/sync";
 import { RECIPES, recipeContext } from "../model/recipes";
+import { openBuildDialog, serverUrl, setServerUrl } from "./build";
 import { pickChoice } from "./chips";
 import { renderEditor } from "./editor";
 import { Host } from "./host";
@@ -243,6 +244,9 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
         sep(),
         item(t("Run triggers every frame"), () => setEveryFrame(!everyFrame()), { checked: everyFrame() }),
         item(t("Counters…"), () => countersDialog()),
+        sep(),
+        item(t("Build EUD map…"), () => openBuildDialog(api, s, everyFrame())),
+        item(t("Build server…"), () => { void api.ui.prompt(t("The scmjs.dev server that builds EUD maps"), { title: t("Build server"), value: serverUrl(api) }).then((v) => { if (typeof v === "string") setServerUrl(api, v); }); }),
         sep(),
         item(t("Show every trigger"), () => { filter = "all"; render(); }, { checked: filter === "all" }),
         item(t("Show only triggers with a problem"), () => { filter = "problems"; render(); }, { checked: filter === "problems" }),

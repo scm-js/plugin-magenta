@@ -8,6 +8,7 @@
 import type { TriggerRecord } from "../../vendor/triggers";
 import { fingerprint } from "./records";
 import type { ExpansionRecord } from "./sync";
+import type { BuildRecord, ChatCell } from "./builds";
 
 export const MEMBER = "magenta\\magenta.json";
 
@@ -37,9 +38,13 @@ export interface Sidecar {
   settings: { everyFrame?: boolean };
   /** The Tier A+ expansions: what generated each run, and where it hangs. */
   expansions: ExpansionRecord[];
+  /** The rows that need a euddraft build: chat commands, text hooks, counter maths, unit passes. */
+  builds: BuildRecord[];
+  /** The cell the chat plugin writes into; null until the first chat command. */
+  chat: ChatCell | null;
 }
 
-export const emptySidecar = (): Sidecar => ({ version: 1, folders: [], counters: [], settings: {}, expansions: [] });
+export const emptySidecar = (): Sidecar => ({ version: 1, folders: [], counters: [], settings: {}, expansions: [], builds: [], chat: null });
 
 export function decodeSidecar(bytes: Uint8Array | null): Sidecar {
   if (!bytes) return emptySidecar();
@@ -52,6 +57,8 @@ export function decodeSidecar(bytes: Uint8Array | null): Sidecar {
       counters: Array.isArray(parsed.counters) ? parsed.counters.filter((c) => c && typeof c.name === "string" && Number.isInteger(c.player) && Number.isInteger(c.unit)) : [],
       settings: parsed.settings && typeof parsed.settings === "object" ? parsed.settings : {},
       expansions: Array.isArray(parsed.expansions) ? parsed.expansions.filter((x) => x && typeof x.id === "string" && typeof x.kind === "string") : [],
+      builds: Array.isArray(parsed.builds) ? parsed.builds.filter((x) => x && typeof x.id === "string" && typeof x.kind === "string") : [],
+      chat: parsed.chat && Array.isArray(parsed.chat.cell) ? { cell: [Number(parsed.chat.cell[0]), Number(parsed.chat.cell[1])] } : null,
     };
   } catch {
     return emptySidecar();

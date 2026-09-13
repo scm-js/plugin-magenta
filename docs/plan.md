@@ -281,6 +281,15 @@ the first created unit and counts down from 1699 after it, and a User Selectable
 game hand out melee units and drop the placed ones. The templates of §1.4 were left out; the search row's browse mode
 covers the category tree.
 
+## Tier B, as built (2026-09-12)
+
+Not the payload of §3's Tier B but its shortcut: euddraft runs as a service beside the
+scmjs.dev AI server (`ai-server/euddraft/`), and Magenta rows that need it — chat commands,
+text with counter values, counter maths, a pass over every unit of a kind — are data in
+the sidecar that the box's Magenta plugin turns into eudplib code at build time. In the map
+each is one private flag cell, so the trigger stays ordinary. ⋯ ▸ Build EUD map… sends the
+map and saves the built one beside it.
+
 ## Decisions (2026-09-12)
 
 - The panel opens with Ctrl+Shift+M (Ctrl+Shift+H, I, K, L, S, T, W and Z are taken).

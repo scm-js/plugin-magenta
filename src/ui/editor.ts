@@ -18,6 +18,7 @@ import { pickChoice } from "./chips";
 import { renderRow, type RowContext } from "./rows";
 import { compareOf, counterExpansionOf, newCompare, newCounterStep, renderCompare, renderCounterExpansion } from "./expansionRows";
 import { flagAction } from "../model/expansions";
+import { chatOf, hookOf, newChat, newHook, renderChat, renderHook } from "./buildRows";
 import type { Store } from "./store";
 
 export interface EditorDeps {
@@ -111,6 +112,14 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
   const writeConditions = (label: string, next: ConditionRecord[]) => replace(label, { ...trigger, conditions: next });
   const cmp = compareOf(store, index, trigger);
   conditions.forEach((c, i) => {
+    const chat = chatOf(store, c);
+    if (chat) {
+      const sentence = el("span", { className: "mg-sentence" });
+      renderChat(api, host, store, chat, sentence);
+      const remove = api.ui.widgets.button("✕", { ghost: true, title: t("Remove"), onClick: () => store.commit(t("Remove chat command"), () => store.list.map((tr, j) => (j !== index ? tr : { ...tr, conditions: conditions.filter((_, k) => k !== i) })), { sidecar: { builds: store.sidecar.builds.filter((b) => b.id !== chat.id) } }) });
+      condSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove))));
+      return;
+    }
     if (cmp && cmp.rows.includes(i)) {
       if (i !== cmp.rows[0]) return;
       const sentence = el("span", { className: "mg-sentence" });
@@ -128,6 +137,13 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
     }));
   });
   if (conditions.length < MAX_CONDITIONS) condSection.append(addRow(api, "condition", ({ pick, entities, query }: Picked) => {
+    if (pick.kind === "build") {
+      const message = /^"?(.+?)"?$/.exec(query.replace(/^(the )?chat (said|command)\s*/i, "").trim())?.[1];
+      const made = newChat(api, host, store, message && message !== query.trim() ? message : undefined);
+      if (!made) { api.ui.toast({ kind: "error", title: t("No free counter cell for the chat command") }); return; }
+      store.commit(t("Add chat command"), () => store.list.map((tr, j) => (j !== index ? tr : { ...tr, conditions: [...conditions, made.condition] })), { sidecar: { builds: made.builds, chat: made.chat } });
+      return;
+    }
     if (pick.kind === "expansion") {
       if (cmp) { api.ui.toast({ kind: "info", title: t("One comparison per trigger"), detail: t("Put a second comparison in another trigger.") }); return; }
       const made = newCompare(store, host, index, trigger);
@@ -145,6 +161,14 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
   const actSection = el("div", { className: "mg-section" }, el("div", { className: "mg-section-head" }, t("Actions"), el("span", { className: "grow" }), el("span", { className: "hint" }, `${actions.length}/${MAX_ACTIONS}`)));
   const writeActions = (label: string, next: ActionRecord[]) => replace(label, { ...trigger, actions: next });
   for (const { a, i } of shownActions) {
+    const hook = hookOf(store, a);
+    if (hook) {
+      const sentence = el("span", { className: "mg-sentence" });
+      renderHook(api, host, store, hook, sentence);
+      const remove = api.ui.widgets.button("✕", { ghost: true, title: t("Remove"), onClick: () => store.commit(t("Remove build row"), () => store.list.map((tr, j) => (j !== index ? tr : { ...tr, actions: actions.filter((_, j2) => j2 !== i) })), { sidecar: { builds: store.sidecar.builds.filter((b) => b.id !== hook.id) } }) });
+      actSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove))));
+      continue;
+    }
     const cx = counterExpansionOf(store, a);
     if (cx) {
       const sentence = el("span", { className: "mg-sentence" });
@@ -170,6 +194,13 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
     }));
   }
   if (actions.length < MAX_ACTIONS) actSection.append(addRow(api, "action", ({ pick, entities, query }: Picked) => {
+    if (pick.kind === "build") {
+      if (pick.what === "chat") return;
+      const made = newHook(host, store, pick.what, query);
+      if (!made) { api.ui.toast({ kind: "error", title: t("No free counter cell for the build row") }); return; }
+      store.commit(t("Add build row"), () => store.list.map((tr, j) => (j !== index ? tr : { ...tr, actions: [...actions, made.action] })), { sidecar: { builds: made.builds } });
+      return;
+    }
     if (pick.kind === "expansion") {
       if (pick.what === "compare") return;
       const made = newCounterStep(store, host, pick.what);
@@ -185,7 +216,7 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
 /** A fresh condition for a pick: StarEdit's defaults for a native one, the entry's for an EUD one. */
 export function newCondition(api: PluginApi, pick: Pick, entities: Entity[] = [], query = ""): ConditionRecord {
   if (pick.kind === "native") return fillCondition(api.triggers.newCondition(pick.type), entities);
-  if (pick.kind === "expansion") throw new Error("an expansion is not a record");
+  if (pick.kind === "expansion" || pick.kind === "build") throw new Error("not a record of its own");
   const e = pick.entry;
   if (entities.length) return lowerCondition(fillEud(e, "condition", entities, query));
   const args: Record<string, number> = {};
@@ -195,7 +226,7 @@ export function newCondition(api: PluginApi, pick: Pick, entities: Entity[] = []
 
 export function newAction(api: PluginApi, pick: Pick, entities: Entity[] = [], query = ""): ActionRecord {
   if (pick.kind === "native") return fillAction(api.triggers.newAction(pick.type), entities);
-  if (pick.kind === "expansion") throw new Error("an expansion is not a record");
+  if (pick.kind === "expansion" || pick.kind === "build") throw new Error("not a record of its own");
   const e = pick.entry;
   if (entities.length) return lowerAction(fillEud(e, "action", entities, query));
   const args: Record<string, number> = {};

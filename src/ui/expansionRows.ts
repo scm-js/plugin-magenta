@@ -52,6 +52,8 @@ export function freeCell(store: Store, host: Host, taken: Cell[] = []): Cell | n
     if (x.kind === "compare") { used.add(cellKey(...x.scratch[0])); used.add(cellKey(...x.scratch[1])); used.add(cellKey(...x.a)); used.add(cellKey(...x.b)); }
     else if (x.kind !== "forEachPlayer") { used.add(cellKey(...x.flag)); used.add(cellKey(...x.from)); used.add(cellKey(...x.to)); }
   }
+  for (const b of store.sidecar.builds) if (b.kind !== "chat") used.add(cellKey(...b.flag));
+  if (store.sidecar.chat) used.add(cellKey(...store.sidecar.chat.cell));
   for (const c of taken) used.add(cellKey(...c));
   return allocate(used, host.placedUnitIds());
 }

@@ -216,7 +216,7 @@ export class Host {
   }
 
   saveSidecar(sidecar: Sidecar): void {
-    const empty = sidecar.folders.length === 0 && sidecar.counters.length === 0 && sidecar.expansions.length === 0 && Object.keys(sidecar.settings).length === 0;
+    const empty = sidecar.folders.length === 0 && sidecar.counters.length === 0 && sidecar.expansions.length === 0 && sidecar.builds.length === 0 && !sidecar.chat && Object.keys(sidecar.settings).length === 0;
     if (empty) { this.api.document.extras.remove(MEMBER); this.sidecarCache = null; return; }
     const bytes = encodeSidecar(sidecar);
     this.api.document.extras.set(MEMBER, bytes);

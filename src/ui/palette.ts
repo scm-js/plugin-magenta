@@ -10,7 +10,7 @@ import { search, type SearchItem } from "../model/search";
 import { parseQuery, type Entity, type ParseNames } from "../model/parse";
 import { openPopover, type PopoverHandle } from "./popover";
 
-export type Pick = { kind: "native"; type: number } | { kind: "eud"; entry: Entry } | { kind: "expansion"; what: "copy" | "add" | "subtract" | "compare" };
+export type Pick = { kind: "native"; type: number } | { kind: "eud"; entry: Entry } | { kind: "expansion"; what: "copy" | "add" | "subtract" | "compare" } | { kind: "build"; what: "chat" | "text" | "math" | "foreach" };
 
 const NATIVE_ALIASES: Record<string, string[]> = {
   "Create Unit": ["spawn", "make"], "Kill Unit": ["destroy"], "Kill Unit At Location": ["destroy"], "Remove Unit": ["delete", "vanish"], "Remove Unit At Location": ["delete"],
@@ -29,8 +29,13 @@ export function paletteItems(kind: "condition" | "action"): SearchItem<Pick>[] {
   if (kind === "condition") for (const d of CONDITION_DEFS) { if (d.type !== ConditionType.Briefing) items.push({ label: d.name, aliases: NATIVE_ALIASES[d.name], priority: 1, value: { kind: "native", type: d.type } }); }
   else for (const d of ACTION_DEFS) { if (d.type !== ActionType.None) items.push({ label: d.name, aliases: NATIVE_ALIASES[d.name], priority: 1, value: { kind: "native", type: d.type } }); }
   for (const e of entriesFor(kind)) items.push({ label: e.name, aliases: e.aliases, group: e.group, value: { kind: "eud", entry: e } });
-  if (kind === "condition") items.push({ label: "Compare two counters", aliases: ["greater", "less", "equal", "variable"], group: "Counters", value: { kind: "expansion", what: "compare" } });
-  else {
+  if (kind === "condition") {
+    items.push({ label: "Compare two counters", aliases: ["greater", "less", "equal", "variable"], group: "Counters", value: { kind: "expansion", what: "compare" } });
+    items.push({ label: "The chat said a command", aliases: ["chat", "typed", "command", "message", "-heal"], group: "Build", value: { kind: "build", what: "chat" } });
+  } else {
+    items.push({ label: "Show text with numbers in it", aliases: ["display counter", "print score", "dynamic text", "message with value"], group: "Build", value: { kind: "build", what: "text" } });
+    items.push({ label: "Multiply, divide or randomize a counter", aliases: ["times", "random", "modulo", "remainder", "maths"], group: "Build", value: { kind: "build", what: "math" } });
+    items.push({ label: "For each unit of a kind", aliases: ["all units", "every unit", "loop", "set hp of all"], group: "Build", value: { kind: "build", what: "foreach" } });
     items.push({ label: "Copy a counter into another", aliases: ["set variable", "assign", "transfer"], group: "Counters", value: { kind: "expansion", what: "copy" } });
     items.push({ label: "Add a counter to another", aliases: ["sum", "plus", "variable"], group: "Counters", value: { kind: "expansion", what: "add" } });
     items.push({ label: "Subtract a counter from another", aliases: ["minus", "difference", "variable"], group: "Counters", value: { kind: "expansion", what: "subtract" } });
@@ -78,13 +83,13 @@ export function addRow(api: PluginApi, kind: "condition" | "action", onPick: (pi
       const eud = item.value.kind === "eud";
       const rows: HTMLElement[] = [];
       if (browsing) {
-        const group = eud ? `EUD · ${item.group}` : item.value.kind === "expansion" ? api.i18n.t("Counters") : kind === "condition" ? api.i18n.t("Conditions") : api.i18n.t("Actions");
+        const group = eud ? `EUD · ${item.group}` : item.value.kind === "expansion" ? api.i18n.t("Counters") : item.value.kind === "build" ? api.i18n.t("Needs a build") : kind === "condition" ? api.i18n.t("Conditions") : api.i18n.t("Actions");
         if (group !== lastGroup) { lastGroup = group; rows.push(el("div", { className: "mg-option group" }, group)); }
       }
       const named = entities.length ? entities.map((e) => e.text).join(" · ") : "";
       const row = el("button", { type: "button", className: `mg-option${i === active ? " active" : ""}`, title: eud ? (item.value as { entry: Entry }).entry.note ?? "" : "" },
         el("span", { className: "grow" }, item.label, named ? el("span", { className: "hint" }, `  ${named}`) : null),
-        el("span", { className: `mg-hit-group${eud ? " eud" : ""}` }, eud ? `EUD · ${item.group}` : item.value.kind === "expansion" ? api.i18n.t("Counters") : ""),
+        el("span", { className: `mg-hit-group${eud ? " eud" : ""}` }, eud ? `EUD · ${item.group}` : item.value.kind === "expansion" ? api.i18n.t("Counters") : item.value.kind === "build" ? api.i18n.t("Build") : ""),
       ) as HTMLButtonElement;
       row.addEventListener("mousedown", (e) => e.preventDefault());
       row.addEventListener("click", () => choose(item));

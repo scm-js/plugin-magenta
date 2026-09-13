@@ -157,10 +157,40 @@ Magenta** button that comes back here. Edit the step's chips and the run is rebu
 row and the run goes with it. The runs use Remastered's masked reads, so they are Remastered-only
 like the catalogue.
 
+### Rows that need a Build
+
+Four kinds of row have no record in the game's own trigger set and only work in a map
+built by [euddraft](https://github.com/armoha/euddraft), which the scmjs.dev server runs
+for you. They read like any other row, with a **BUILD** tag, and the trigger that carries
+one shows a BUILD badge in the list:
+
+- **The chat said `-heal`** (condition): fires in the cycle a player sends that message,
+  for every player at once. `^…$` writes a pattern, as in `^-give .*$`.
+- **Show `Score: {Score} points` to everyone** (action): text with counters' values in it.
+  Write `{Counter name}` where a value goes.
+- **Set A to A times B / divided by / modulo / a random number below N** (action): the
+  counter maths the game cannot do, in one row.
+- **For each Marine owned by Player 1 at Beacon: set hit points to 100** (action): a pass
+  over every unit of a kind; also set shields or energy, kill, remove, make invincible or
+  vulnerable. Any unit, anyone and anywhere are the wide settings.
+
+In the map these are one private counter cell each: the trigger sets it (an action) or reads
+it (a condition), so it stays an ordinary trigger everywhere. **⋯ ▸ Build EUD map…** sends
+the map as it stands to the server, which adds the code behind the rows and hands back a
+built map to save beside the source, `name-eud.scx`. Nothing about the map is kept on the
+server. Only StarCraft: Remastered plays a built map, and this editor cannot open one yet,
+so keep the source map: the built one is what players get, the way a compiled program is.
+**⋯ ▸ Build server…** changes the server address (`https://api.scmjs.dev` by default).
+
+An action row does its work right after the map's triggers in the cycle its trigger fired;
+a chat command fires once per message. The code behind them is the Magenta plugin of the
+server's build box, `euddraft/plugins/magenta.py` in the ai-server repository, which turns
+the rows into eudplib code; nothing you write in a row is code.
+
 ### What Magenta keeps with the map
 
-Folders, counter names and the record of each generated run live in one member of the map
-archive, `magenta\magenta.json`. The map is a whole map without it: every trigger is in TRIG
+Folders, counter names, the record of each generated run and of each build row live in one
+member of the map archive, `magenta\magenta.json`. The map is a whole map without it: every trigger is in TRIG
 as the game reads it, and only the names, folders and the ability to rebuild the runs are
 lost. Save leaves the member in unless you tick the plugin members out in the Save dialog.
 

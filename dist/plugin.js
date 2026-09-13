@@ -2884,7 +2884,7 @@ function markerOf(trigger3, text) {
 
 // src/model/sidecar.ts
 var MEMBER = "magenta\\magenta.json";
-var emptySidecar = () => ({ version: 1, folders: [], counters: [], settings: {}, expansions: [] });
+var emptySidecar = () => ({ version: 1, folders: [], counters: [], settings: {}, expansions: [], builds: [], chat: null });
 function decodeSidecar(bytes) {
   if (!bytes) return emptySidecar();
   try {
@@ -2895,7 +2895,9 @@ function decodeSidecar(bytes) {
       folders: Array.isArray(parsed.folders) ? parsed.folders.filter((f) => f && typeof f.id === "string" && typeof f.name === "string").map((f) => ({ ...f, triggers: Array.isArray(f.triggers) ? f.triggers : [] })) : [],
       counters: Array.isArray(parsed.counters) ? parsed.counters.filter((c2) => c2 && typeof c2.name === "string" && Number.isInteger(c2.player) && Number.isInteger(c2.unit)) : [],
       settings: parsed.settings && typeof parsed.settings === "object" ? parsed.settings : {},
-      expansions: Array.isArray(parsed.expansions) ? parsed.expansions.filter((x) => x && typeof x.id === "string" && typeof x.kind === "string") : []
+      expansions: Array.isArray(parsed.expansions) ? parsed.expansions.filter((x) => x && typeof x.id === "string" && typeof x.kind === "string") : [],
+      builds: Array.isArray(parsed.builds) ? parsed.builds.filter((x) => x && typeof x.id === "string" && typeof x.kind === "string") : [],
+      chat: parsed.chat && Array.isArray(parsed.chat.cell) ? { cell: [Number(parsed.chat.cell[0]), Number(parsed.chat.cell[1])] } : null
     };
   } catch {
     return emptySidecar();
@@ -3170,7 +3172,7 @@ var Host = class {
     return value;
   }
   saveSidecar(sidecar) {
-    const empty = sidecar.folders.length === 0 && sidecar.counters.length === 0 && sidecar.expansions.length === 0 && Object.keys(sidecar.settings).length === 0;
+    const empty = sidecar.folders.length === 0 && sidecar.counters.length === 0 && sidecar.expansions.length === 0 && sidecar.builds.length === 0 && !sidecar.chat && Object.keys(sidecar.settings).length === 0;
     if (empty) {
       this.api.document.extras.remove(MEMBER);
       this.sidecarCache = null;
@@ -3425,6 +3427,123 @@ var RECIPES = [
 ];
 function recipeContext(intern, locations) {
   return { intern, location: locations[0] ?? ANYWHERE, location2: locations[1] ?? locations[0] ?? ANYWHERE };
+}
+
+// src/model/builds.ts
+var MAGENTA_SPEC_VERSION = 1;
+var cellAddress = (cell) => 5808996 + cell[0] * 4 + cell[1] * 48;
+function composePlugins(builds, chat, everyFrame) {
+  const plugins = {};
+  const chats = builds.filter((b) => b.kind === "chat");
+  if (chats.length && chat) {
+    const section = { __addr__: `0x${cellAddress(chat.cell).toString(16).toUpperCase()}` };
+    for (const c2 of chats) section[c2.message] = c2.value;
+    plugins.chatEvent = section;
+  }
+  const hooks = builds.filter((b) => b.kind !== "chat");
+  const spec = { version: MAGENTA_SPEC_VERSION, everyFrame, chat: chats.length && chat ? { cell: chat.cell } : null, hooks };
+  if (hooks.length || spec.chat) plugins.magenta = { spec: JSON.stringify(spec) };
+  if (everyFrame) plugins.eudTurbo = {};
+  return plugins;
+}
+function nextChatValue(builds) {
+  let n = 2;
+  const used = new Set(builds.filter((b) => b.kind === "chat").map((b) => b.value));
+  while (used.has(n)) n++;
+  return n;
+}
+function checkChatMessage(text) {
+  if (!text.trim()) return "Type the message players will send.";
+  if (/[\r\n]/.test(text)) return "One line.";
+  if (new TextEncoder().encode(text).length > 78) return "Up to 78 bytes, which is what the game lets a player type.";
+  if (/[:=]/.test(text) && !text.startsWith("^")) return "A message cannot contain : or =.";
+  return null;
+}
+
+// src/ui/build.ts
+var DEFAULT_SERVER = "https://api.scmjs.dev";
+var SERVER_KEY = "server";
+var serverUrl = (api) => api.storage.get(SERVER_KEY, DEFAULT_SERVER).replace(/\/+$/, "");
+var setServerUrl = (api, url) => {
+  api.storage.set(SERVER_KEY, url.trim().replace(/\/+$/, "") || DEFAULT_SERVER);
+};
+var toBase64 = (bytes) => {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 32768) s += String.fromCharCode(...bytes.subarray(i, i + 32768));
+  return btoa(s);
+};
+var fromBase64 = (b64) => Uint8Array.from(atob(b64), (c2) => c2.charCodeAt(0));
+function openBuildDialog(api, store, everyFrame) {
+  const t = api.i18n.t;
+  const el = api.ui.el;
+  const w = api.ui.widgets;
+  const builds = store.sidecar.builds;
+  const chats = builds.filter((b) => b.kind === "chat").length;
+  const hooks = builds.length - chats;
+  const plugins = composePlugins(builds, store.sidecar.chat, everyFrame);
+  const info = api.document.info();
+  const stem2 = (info?.fileName ?? "map").replace(/\.(scx|scm|chk)$/i, "");
+  const server = w.text({ value: serverUrl(api), placeholder: DEFAULT_SERVER });
+  const status = w.statusLine();
+  const log = el("textarea", { className: "textarea", rows: 10, readOnly: true, spellcheck: false, style: "font-family: var(--font-mono); font-size: var(--fs-xs); display: none" });
+  const summary = el(
+    "ul",
+    {},
+    el("li", {}, chats ? t("{n, plural, one {# chat command} other {# chat commands}}", { n: chats }) : t("No chat commands")),
+    el("li", {}, hooks ? t("{n, plural, one {# build row} other {# build rows}} (text, maths, unit passes)", { n: hooks }) : t("No build rows")),
+    el("li", {}, everyFrame ? t("Triggers run every frame (turbo)") : t("Triggers run every two seconds"))
+  );
+  const nothing = !Object.keys(plugins).length;
+  api.ui.dialog({
+    title: t("Build EUD map"),
+    size: "md",
+    mount(body) {
+      body.append(
+        w.hint(t("The map goes to the build server as it stands, euddraft adds the code for the rows below, and the built map comes back as a file to save. The server keeps nothing. Only StarCraft: Remastered plays the result, and this editor cannot open it yet: keep this map as the source.")),
+        summary,
+        w.form([{ label: t("Build server"), field: server }]),
+        status,
+        log
+      );
+      if (nothing) status.set(t("Nothing in this map needs a build; a plain save is all it takes."), "warn");
+    },
+    buttons: [
+      { label: t("Build\u2026"), primary: true, closes: false, run: async () => {
+        setServerUrl(api, server.value);
+        const file = await api.document.export();
+        if (!file) {
+          status.set(t("No map is open."), "error");
+          return;
+        }
+        status.busy(t("Building\u2026"));
+        log.style.display = "none";
+        try {
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          const res = await fetch(`${serverUrl(api)}/v1/eud/build`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ map: toBase64(bytes), plugins }) });
+          const answer = await res.json().catch(() => null);
+          if (!res.ok || !answer?.map) {
+            const e = answer?.error;
+            status.set(e?.message ?? t("The server answered {status}.", { status: res.status }), "error");
+            if (e?.log) {
+              log.value = e.log;
+              log.style.display = "";
+            }
+            return;
+          }
+          const out = fromBase64(answer.map);
+          const saved = await api.ui.saveFile(out, `${stem2}-eud.scx`);
+          status.set(saved ? t("Built: {name}, {kb} KB.", { name: saved.fileName, kb: Math.round(out.length / 1024) }) : t("Built, but not saved."), saved ? "ok" : "warn");
+          if (answer.log) {
+            log.value = answer.log;
+            log.style.display = "";
+          }
+        } catch (err) {
+          status.set(t("Could not reach the build server: {why}", { why: String(err.message ?? err) }), "error");
+        }
+      } },
+      { label: t("Close") }
+    ]
+  });
 }
 
 // src/ui/popover.ts
@@ -4179,8 +4298,13 @@ function paletteItems(kind) {
     if (d.type !== ActionType.None) items.push({ label: d.name, aliases: NATIVE_ALIASES[d.name], priority: 1, value: { kind: "native", type: d.type } });
   }
   for (const e of entriesFor(kind)) items.push({ label: e.name, aliases: e.aliases, group: e.group, value: { kind: "eud", entry: e } });
-  if (kind === "condition") items.push({ label: "Compare two counters", aliases: ["greater", "less", "equal", "variable"], group: "Counters", value: { kind: "expansion", what: "compare" } });
-  else {
+  if (kind === "condition") {
+    items.push({ label: "Compare two counters", aliases: ["greater", "less", "equal", "variable"], group: "Counters", value: { kind: "expansion", what: "compare" } });
+    items.push({ label: "The chat said a command", aliases: ["chat", "typed", "command", "message", "-heal"], group: "Build", value: { kind: "build", what: "chat" } });
+  } else {
+    items.push({ label: "Show text with numbers in it", aliases: ["display counter", "print score", "dynamic text", "message with value"], group: "Build", value: { kind: "build", what: "text" } });
+    items.push({ label: "Multiply, divide or randomize a counter", aliases: ["times", "random", "modulo", "remainder", "maths"], group: "Build", value: { kind: "build", what: "math" } });
+    items.push({ label: "For each unit of a kind", aliases: ["all units", "every unit", "loop", "set hp of all"], group: "Build", value: { kind: "build", what: "foreach" } });
     items.push({ label: "Copy a counter into another", aliases: ["set variable", "assign", "transfer"], group: "Counters", value: { kind: "expansion", what: "copy" } });
     items.push({ label: "Add a counter to another", aliases: ["sum", "plus", "variable"], group: "Counters", value: { kind: "expansion", what: "add" } });
     items.push({ label: "Subtract a counter from another", aliases: ["minus", "difference", "variable"], group: "Counters", value: { kind: "expansion", what: "subtract" } });
@@ -4237,7 +4361,7 @@ function addRow(api, kind, onPick, options = {}) {
       const eud = item.value.kind === "eud";
       const rows = [];
       if (browsing) {
-        const group = eud ? `EUD \xB7 ${item.group}` : item.value.kind === "expansion" ? api.i18n.t("Counters") : kind === "condition" ? api.i18n.t("Conditions") : api.i18n.t("Actions");
+        const group = eud ? `EUD \xB7 ${item.group}` : item.value.kind === "expansion" ? api.i18n.t("Counters") : item.value.kind === "build" ? api.i18n.t("Needs a build") : kind === "condition" ? api.i18n.t("Conditions") : api.i18n.t("Actions");
         if (group !== lastGroup) {
           lastGroup = group;
           rows.push(el("div", { className: "mg-option group" }, group));
@@ -4248,7 +4372,7 @@ function addRow(api, kind, onPick, options = {}) {
         "button",
         { type: "button", className: `mg-option${i === active ? " active" : ""}`, title: eud ? item.value.entry.note ?? "" : "" },
         el("span", { className: "grow" }, item.label, named ? el("span", { className: "hint" }, `  ${named}`) : null),
-        el("span", { className: `mg-hit-group${eud ? " eud" : ""}` }, eud ? `EUD \xB7 ${item.group}` : item.value.kind === "expansion" ? api.i18n.t("Counters") : "")
+        el("span", { className: `mg-hit-group${eud ? " eud" : ""}` }, eud ? `EUD \xB7 ${item.group}` : item.value.kind === "expansion" ? api.i18n.t("Counters") : item.value.kind === "build" ? api.i18n.t("Build") : "")
       );
       row.addEventListener("mousedown", (e) => e.preventDefault());
       row.addEventListener("click", () => choose(item));
@@ -4350,70 +4474,70 @@ function renderNative(ctx, kind, record, segments, into, h) {
     const { arg, value } = seg;
     const className = seg.role === "eud" ? "eud" : seg.role === "counter" ? "counter" : arg.kind === "text" ? "text" : "";
     const color = arg.kind === "player" ? ctx.namer.playerColor?.(value) ?? null : null;
-    const chip2 = chipEl(api, seg.label, className, color, arg.kind === "location" && value > 0 && value < 64 ? t("Click to change; hover to show on the map") : arg.label);
+    const chip3 = chipEl(api, seg.label, className, color, arg.kind === "location" && value > 0 && value < 64 ? t("Click to change; hover to show on the map") : arg.label);
     if (arg.kind === "location") {
-      chip2.addEventListener("pointerenter", () => host.flashLocation(value));
+      chip3.addEventListener("pointerenter", () => host.flashLocation(value));
     }
-    chip2.addEventListener("click", () => {
+    chip3.addEventListener("click", () => {
       const isDeaths2 = record.type === (kind === "condition" ? ConditionType.Deaths : ActionType.SetDeaths);
       if (seg.role === "counter") {
-        pickCounter(ctx, chip2, record, kind, h);
+        pickCounter(ctx, chip3, record, kind, h);
         return;
       }
       switch (arg.kind) {
         case "player":
-          pickPlayer(api, host, chip2, value, (v) => set(arg.field, v), { eud: isDeaths2 });
+          pickPlayer(api, host, chip3, value, (v) => set(arg.field, v), { eud: isDeaths2 });
           break;
         case "unit":
-          pickUnitType(api, host, chip2, value, (v) => set(arg.field, v), { classes: !isDeaths2 || kind === "condition" });
+          pickUnitType(api, host, chip3, value, (v) => set(arg.field, v), { classes: !isDeaths2 || kind === "condition" });
           break;
         case "location":
-          pickLocation(api, host, chip2, value, (v) => set(arg.field, v));
+          pickLocation(api, host, chip3, value, (v) => set(arg.field, v));
           break;
         case "switch":
-          pickSwitch(api, host, chip2, value, (v) => set(arg.field, v), (i, name) => {
+          pickSwitch(api, host, chip3, value, (v) => set(arg.field, v), (i, name) => {
             host.renameSwitch(i, name);
             store.reload();
           });
           break;
         case "wav":
-          pickSound(api, host, chip2, value, (v) => set(arg.field, v));
+          pickSound(api, host, chip3, value, (v) => set(arg.field, v));
           break;
         case "text":
-          pickText(api, chip2, ctx.namer.string(value) ?? "", (text) => h.onChangeWithText(text, (i) => ({ ...record, [arg.field]: i })), { title: arg.label });
+          pickText(api, chip3, ctx.namer.string(value) ?? "", (text) => h.onChangeWithText(text, (i) => ({ ...record, [arg.field]: i })), { title: arg.label });
           break;
         case "aiScript":
-          pickNamed(api, chip2, AI_SCRIPT_CHOICES.map((s) => ({ value: aiScriptCode(s.id), label: s.name, hint: s.id })), value, (v) => set(arg.field, v), 300);
+          pickNamed(api, chip3, AI_SCRIPT_CHOICES.map((s) => ({ value: aiScriptCode(s.id), label: s.name, hint: s.id })), value, (v) => set(arg.field, v), 300);
           break;
         case "cuwp":
-          pickNumber(api, chip2, value, (v) => set(arg.field, v), { min: 0, max: 64, hint: t("A Unit Properties slot, 1 to 64; 0 for none") });
+          pickNumber(api, chip3, value, (v) => set(arg.field, v), { min: 0, max: 64, hint: t("A Unit Properties slot, 1 to 64; 0 for none") });
           break;
         case "slot":
-          pickNumber(api, chip2, value + 1, (v) => set(arg.field, v - 1), { min: 1, max: 4, hint: t("Portrait slot, 1 to 4") });
+          pickNumber(api, chip3, value + 1, (v) => set(arg.field, v - 1), { min: 1, max: 4, hint: t("Portrait slot, 1 to 4") });
           break;
         case "count":
-          pickNumber(api, chip2, value, (v) => set(arg.field, v), { min: 0, max: 255, hint: t("0 means all") });
+          pickNumber(api, chip3, value, (v) => set(arg.field, v), { min: 0, max: 255, hint: t("0 means all") });
           break;
         case "percent":
-          pickNumber(api, chip2, value, (v) => set(arg.field, v), { min: 0, max: 100, unit: "%" });
+          pickNumber(api, chip3, value, (v) => set(arg.field, v), { min: 0, max: 100, unit: "%" });
           break;
         case "duration":
-          pickNumber(api, chip2, value, (v) => set(arg.field, v), { min: 0, max: 4294967295, unit: arg.label === "Seconds" ? t("seconds") : "ms" });
+          pickNumber(api, chip3, value, (v) => set(arg.field, v), { min: 0, max: 4294967295, unit: arg.label === "Seconds" ? t("seconds") : "ms" });
           break;
         case "number":
         case "amount":
-          pickNumber(api, chip2, value, (v) => set(arg.field, v), { min: 0, max: 4294967295 });
+          pickNumber(api, chip3, value, (v) => set(arg.field, v), { min: 0, max: 4294967295 });
           break;
         case "textFlags": {
           const a2 = record;
-          pickChoice(api, chip2, choicesOf(api, "textFlags"), (v) => h.onChange({ ...record, flags: v ? a2.flags | 4 : a2.flags & ~4 }), { current: a2.flags & 4 });
+          pickChoice(api, chip3, choicesOf(api, "textFlags"), (v) => h.onChange({ ...record, flags: v ? a2.flags | 4 : a2.flags & ~4 }), { current: a2.flags & 4 });
           break;
         }
         default:
-          pickChoice(api, chip2, choicesOf(api, arg.kind), (v) => set(arg.field, v), { current: value });
+          pickChoice(api, chip3, choicesOf(api, arg.kind), (v) => set(arg.field, v), { current: value });
       }
     });
-    into.append(chip2);
+    into.append(chip3);
   }
   const isDeaths = record.type === (kind === "condition" ? ConditionType.Deaths : ActionType.SetDeaths);
   if (isDeaths && record.player < 27 && !segments.some((s) => s.kind === "chip" && s.role === "counter")) {
@@ -4432,12 +4556,12 @@ function nameCounter(ctx, player, unit) {
     store.updateSidecar(api.i18n.t("Name counter"), { counters });
   });
 }
-function pickCounter(ctx, chip2, record, kind, h) {
+function pickCounter(ctx, chip3, record, kind, h) {
   const { api, host, store } = ctx;
   const t = api.i18n.t;
   const items = store.sidecar.counters.map((c2) => ({ value: cellKey(c2.player, c2.unit), label: c2.name, hint: `${ctx.namer.player(c2.player)} \xB7 ${ctx.namer.unit(c2.unit)}` }));
   const current2 = cellKey(record.player, record.unitId);
-  pickChoice(api, chip2, items, (key) => {
+  pickChoice(api, chip3, items, (key) => {
     const c2 = store.sidecar.counters.find((x) => cellKey(x.player, x.unit) === key);
     if (c2) h.onChange({ ...record, player: c2.player, unitId: c2.unit });
   }, {
@@ -4499,53 +4623,53 @@ function renderEud(ctx, kind, row, into, onChange) {
       into.append(chipEl(api, seg.label, ""));
       continue;
     }
-    const chip2 = chipEl(api, seg.label, "eud", seg.slot !== "value" && seg.slot !== "op" && seg.slot.arg.kind === "player" ? ctx.namer.playerColor?.(seg.value) ?? null : entry2.value?.kind === "player" && seg.slot === "value" ? ctx.namer.playerColor?.(seg.value) ?? null : null);
-    chip2.addEventListener("click", () => {
+    const chip3 = chipEl(api, seg.label, "eud", seg.slot !== "value" && seg.slot !== "op" && seg.slot.arg.kind === "player" ? ctx.namer.playerColor?.(seg.value) ?? null : entry2.value?.kind === "player" && seg.slot === "value" ? ctx.namer.playerColor?.(seg.value) ?? null : null);
+    chip3.addEventListener("click", () => {
       if (seg.slot === "op") {
-        pickChoice(api, chip2, choicesOf(api, kind === "condition" ? "comparison" : "modifier"), (v) => update({ op: v }), { current: row.op });
+        pickChoice(api, chip3, choicesOf(api, kind === "condition" ? "comparison" : "modifier"), (v) => update({ op: v }), { current: row.op });
         return;
       }
       if (seg.slot === "value") {
         const v = entry2.value;
-        if (v?.choices) pickChoice(api, chip2, v.choices, (value) => update({ value }), { current: row.value });
-        else if (v?.kind === "unit") pickUnitType(api, host, chip2, row.value, (value) => update({ value }), { classes: false });
-        else if (v?.kind === "player") pickPlayer(api, host, chip2, row.value, (value) => update({ value }), { eud: false });
-        else if (v?.kind === "weapon") pickNamed(api, chip2, [...host.weapons(), { value: 130, label: t("No weapon") }], row.value, (value) => update({ value }));
-        else pickNumber(api, chip2, row.value, (value) => update({ value }), { min: v?.min ?? 0, max: v?.max ?? 4294967295, unit: v?.unit, integer: (v?.scale ?? 1) === 1, step: (v?.scale ?? 1) === 1 ? 1 : 0.01, hint: entry2.note });
+        if (v?.choices) pickChoice(api, chip3, v.choices, (value) => update({ value }), { current: row.value });
+        else if (v?.kind === "unit") pickUnitType(api, host, chip3, row.value, (value) => update({ value }), { classes: false });
+        else if (v?.kind === "player") pickPlayer(api, host, chip3, row.value, (value) => update({ value }), { eud: false });
+        else if (v?.kind === "weapon") pickNamed(api, chip3, [...host.weapons(), { value: 130, label: t("No weapon") }], row.value, (value) => update({ value }));
+        else pickNumber(api, chip3, row.value, (value) => update({ value }), { min: v?.min ?? 0, max: v?.max ?? 4294967295, unit: v?.unit, integer: (v?.scale ?? 1) === 1, step: (v?.scale ?? 1) === 1 ? 1 : 0.01, hint: entry2.note });
         return;
       }
       const arg = seg.slot.arg;
       const setArg = (value) => update({ args: { [arg.name]: value } });
       switch (arg.kind) {
         case "unit":
-          pickUnitType(api, host, chip2, seg.value, setArg, { classes: false });
+          pickUnitType(api, host, chip3, seg.value, setArg, { classes: false });
           break;
         case "player":
-          pickPlayer(api, host, chip2, seg.value, setArg, { eud: false });
+          pickPlayer(api, host, chip3, seg.value, setArg, { eud: false });
           break;
         case "weapon":
-          pickNamed(api, chip2, host.weapons(), seg.value, setArg);
+          pickNamed(api, chip3, host.weapons(), seg.value, setArg);
           break;
         case "upgrade":
-          pickNamed(api, chip2, host.upgrades().filter((u) => u.value < arg.max), seg.value, setArg);
+          pickNamed(api, chip3, host.upgrades().filter((u) => u.value < arg.max), seg.value, setArg);
           break;
         case "tech":
-          pickNamed(api, chip2, host.techs().filter((u) => u.value < arg.max), seg.value, setArg);
+          pickNamed(api, chip3, host.techs().filter((u) => u.value < arg.max), seg.value, setArg);
           break;
         case "key":
-          pickKey(api, chip2, seg.value, setArg);
+          pickKey(api, chip3, seg.value, setArg);
           break;
         case "unitIndex":
-          pickPlacedUnit(api, host, chip2, seg.value, setArg);
+          pickPlacedUnit(api, host, chip3, seg.value, setArg);
           break;
         default:
-          pickNumber(api, chip2, seg.value, setArg, { min: 0, max: arg.max - 1 });
+          pickNumber(api, chip3, seg.value, setArg, { min: 0, max: arg.max - 1 });
       }
     });
-    into.append(chip2);
+    into.append(chip3);
   }
-  const tag = api.ui.el("span", { className: "mg-tag", title: eudTitle(entry2, row) }, "EUD");
-  into.append(tag);
+  const tag2 = api.ui.el("span", { className: "mg-tag", title: eudTitle(entry2, row) }, "EUD");
+  into.append(tag2);
   if (kind === "action" && !entry2.remastered.write) into.append(api.ui.el("span", { className: "mg-tag ro", title: t("Remastered does not let a trigger write this address; the action does nothing in the game.") }, t("read only")));
 }
 
@@ -4591,6 +4715,8 @@ function freeCell(store, host, taken = []) {
       used.add(cellKey(...x.to));
     }
   }
+  for (const b of store.sidecar.builds) if (b.kind !== "chat") used.add(cellKey(...b.flag));
+  if (store.sidecar.chat) used.add(cellKey(...store.sidecar.chat.cell));
   for (const c2 of taken) used.add(cellKey(...c2));
   return allocate(used, host.placedUnitIds());
 }
@@ -4675,6 +4801,168 @@ function newCounterStep(store, host, what) {
   return { expansion: { id: `c${Date.now().toString(36)}`, kind: what, from, to, bits: 32, flag }, flag };
 }
 
+// src/model/textParts.ts
+function partsToText(parts, names) {
+  return parts.map((p) => "text" in p ? p.text.replace(/[{}]/g, (c2) => `\\${c2}`) : `{${names.name(p.counter) ?? `${p.counter[0]}:${p.counter[1]}`}}`).join("");
+}
+function textToParts(text, names) {
+  const out = [];
+  let buf = "";
+  const flush = () => {
+    if (buf) {
+      out.push({ text: buf });
+      buf = "";
+    }
+  };
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "\\" && (text[i + 1] === "{" || text[i + 1] === "}")) {
+      buf += text[i + 1];
+      i++;
+      continue;
+    }
+    if (ch === "{") {
+      const end = text.indexOf("}", i + 1);
+      if (end > i) {
+        const inner = text.slice(i + 1, end).trim();
+        const raw = /^(\d{1,2}):(\d{1,3})$/.exec(inner);
+        const cell = raw ? [Number(raw[1]), Number(raw[2])] : names.cell(inner);
+        if (cell) {
+          flush();
+          out.push({ counter: cell });
+          i = end;
+          continue;
+        }
+      }
+    }
+    buf += ch;
+  }
+  flush();
+  return out;
+}
+
+// src/ui/buildRows.ts
+var hookOf = (store, a2) => store.sidecar.builds.find((b) => b.kind !== "chat" && isFlagAction(a2, { cell: b.flag })) ?? null;
+function chatOf(store, c2) {
+  const chat = store.sidecar.chat;
+  if (!chat || c2.type !== ConditionType.Deaths || c2.player !== chat.cell[0] || c2.unitId !== chat.cell[1] || c2.comparison !== Comparison.Exactly) return null;
+  return store.sidecar.builds.find((b) => b.kind === "chat" && b.value === c2.amount) ?? null;
+}
+var chatCondition = (cell, value) => ({ location: 0, player: cell[0], amount: value, unitId: cell[1], comparison: Comparison.Exactly, type: ConditionType.Deaths, resource: 0, flags: 0, mask: 0 });
+function counterNames(store, host) {
+  const namer = host.namer(store.sidecar);
+  return {
+    name: (cell) => store.sidecar.counters.find((c2) => c2.player === cell[0] && c2.unit === cell[1])?.name ?? cellLabel(cell, namer),
+    cell: (name) => {
+      const c2 = store.sidecar.counters.find((x) => x.name.toLowerCase() === name.toLowerCase());
+      if (c2) return [c2.player, c2.unit];
+      const byLabel = store.sidecar.counters.map((x) => [x.player, x.unit]).find((cell) => cellLabel(cell, namer).toLowerCase() === name.toLowerCase());
+      return byLabel ?? null;
+    }
+  };
+}
+function chip2(api, label, className = "counter") {
+  return api.ui.el("button", { type: "button", className: `mg-chip ${className}` }, label);
+}
+function tag(api, title) {
+  return api.ui.el("span", { className: "mg-tag", title }, "BUILD");
+}
+var BUILD_NOTE = "Needs a Build (\u22EF menu): the game's own triggers cannot do this, so the built map carries the code that does. The source map stays as it is.";
+function renderHook(api, host, store, hook, into) {
+  const t = api.i18n.t;
+  const namer = host.namer(store.sidecar);
+  const update = (patch) => store.updateSidecar(t("Edit build row"), { builds: store.sidecar.builds.map((b) => b.id === hook.id ? { ...b, ...patch } : b) });
+  if (hook.kind === "text") {
+    const names = counterNames(store, host);
+    const text = chip2(api, partsToText(hook.parts, names), "text");
+    text.addEventListener("click", () => pickText(api, text, partsToText(hook.parts, names), (value) => update({ parts: textToParts(value, names) }), { title: t("Write {Counter name} where a counter's value goes") }));
+    const to = chip2(api, hook.to === "all" ? t("everyone") : namer.player(hook.to), "");
+    to.addEventListener("click", () => pickChoice(api, to, [{ value: -1, label: t("everyone") }, ...Array.from({ length: 8 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null }))], (v) => update({ to: v < 0 ? "all" : v }), { current: hook.to === "all" ? -1 : hook.to }));
+    into.append(t("Show "), text, t(" to "), to, tag(api, BUILD_NOTE));
+    return;
+  }
+  if (hook.kind === "math") {
+    const OPS = [{ value: 0, label: t("times"), op: "mul" }, { value: 1, label: t("divided by"), op: "div" }, { value: 2, label: t("modulo"), op: "mod" }, { value: 3, label: t("a random number below"), op: "rand" }];
+    const to = chip2(api, cellLabel(hook.to, namer));
+    to.addEventListener("click", () => pickCell(api, host, store, to, hook.to, (cell) => update({ to: cell })));
+    const a2 = chip2(api, cellLabel(hook.a, namer));
+    a2.addEventListener("click", () => pickCell(api, host, store, a2, hook.a, (cell) => update({ a: cell })));
+    const op = chip2(api, OPS.find((o) => o.op === hook.op)?.label ?? hook.op, "");
+    op.addEventListener("click", () => pickChoice(api, op, OPS, (v) => update({ op: OPS[v].op }), { current: OPS.findIndex((o) => o.op === hook.op) }));
+    const b = chip2(api, typeof hook.b === "number" ? String(hook.b) : cellLabel(hook.b, namer));
+    b.addEventListener("click", () => pickCell(api, host, store, b, typeof hook.b === "number" ? hook.a : hook.b, (cell) => update({ b: cell })));
+    const num = chip2(api, "#", "");
+    num.title = t("A number instead of a counter");
+    num.addEventListener("click", () => pickNumber(api, num, typeof hook.b === "number" ? hook.b : 2, (v) => update({ b: v }), { min: hook.op === "rand" || hook.op === "div" || hook.op === "mod" ? 1 : 0 }));
+    if (hook.op === "rand") into.append(t("Set "), to, t(" to "), op, " ", b, num, tag(api, BUILD_NOTE));
+    else into.append(t("Set "), to, t(" to "), a2, " ", op, " ", b, num, tag(api, BUILD_NOTE));
+    return;
+  }
+  const unit = chip2(api, hook.unit === null ? t("any unit") : namer.unit(hook.unit));
+  unit.addEventListener("click", () => pickUnitType(api, host, unit, hook.unit ?? 228, (v) => update({ unit: v >= 228 ? null : v }), { classes: true }));
+  const owner = chip2(api, hook.owner === null ? t("anyone") : namer.player(hook.owner), "");
+  owner.addEventListener("click", () => pickChoice(api, owner, [{ value: -1, label: t("anyone") }, ...Array.from({ length: 12 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null }))], (v) => update({ owner: v < 0 ? null : v }), { current: hook.owner ?? -1 }));
+  const loc = chip2(api, hook.location === null ? t("anywhere") : namer.location(hook.location), "");
+  loc.addEventListener("click", () => pickLocation(api, host, loc, hook.location ?? 64, (v) => update({ location: v === 0 || v === 64 ? null : v })));
+  const DOS = [
+    { value: 0, label: t("set hit points"), make: () => ({ set: "hp", value: 100 }) },
+    { value: 1, label: t("set shields"), make: () => ({ set: "shields", value: 100 }) },
+    { value: 2, label: t("set energy"), make: () => ({ set: "energy", value: 100 }) },
+    { value: 3, label: t("kill"), make: () => ({ kill: true }) },
+    { value: 4, label: t("remove"), make: () => ({ remove: true }) },
+    { value: 5, label: t("make invincible"), make: () => ({ invincible: true }) },
+    { value: 6, label: t("make vulnerable"), make: () => ({ invincible: false }) }
+  ];
+  const current2 = "set" in hook.do ? { hp: 0, shields: 1, energy: 2 }[hook.do.set] : "kill" in hook.do ? 3 : "remove" in hook.do ? 4 : hook.do.invincible ? 5 : 6;
+  const what = chip2(api, DOS[current2].label, "");
+  what.addEventListener("click", () => pickChoice(api, what, DOS, (v) => update({ do: DOS[v].make() }), { current: current2 }));
+  into.append(t("For each "), unit, t(" owned by "), owner, t(" at "), loc, ": ", what);
+  if ("set" in hook.do) {
+    const d = hook.do;
+    const value = chip2(api, String(d.value), "");
+    value.addEventListener("click", () => pickNumber(api, value, d.value, (v) => update({ do: { set: d.set, value: v } }), { min: 0, max: 65535 }));
+    into.append(t(" to "), value);
+  }
+  into.append(tag(api, BUILD_NOTE));
+}
+function renderChat(api, host, store, chat, into) {
+  const t = api.i18n.t;
+  void host;
+  const msg = chip2(api, chat.message, "text");
+  msg.addEventListener("click", () => pickText(api, msg, chat.message, (value) => {
+    const problem = checkChatMessage(value);
+    if (problem) {
+      api.ui.toast({ kind: "error", title: problem });
+      return;
+    }
+    store.updateSidecar(t("Edit chat command"), { builds: store.sidecar.builds.map((b) => b.id === chat.id ? { ...b, message: value.trim() } : b) });
+  }, { title: t("What a player types in chat; ^\u2026$ for a pattern, as in ^-give .*$") }));
+  into.append(t("The chat said "), msg, tag(api, "Needs a Build (\u22EF menu): the chat plugin in the built map writes the command's number into a cell this condition reads, in the cycle the message arrives, for every player at once."));
+}
+function newChat(api, host, store, message = "-command") {
+  const chat = store.sidecar.chat ?? (() => {
+    const cell = freeCell(store, host);
+    return cell ? { cell } : null;
+  })();
+  if (!chat) return null;
+  const value = nextChatValue(store.sidecar.builds);
+  const record = { id: `h${Date.now().toString(36)}`, kind: "chat", message, value };
+  void api;
+  return { condition: chatCondition(chat.cell, value), builds: [...store.sidecar.builds, record], chat };
+}
+function newHook(host, store, what, query = "") {
+  const flag = freeCell(store, host);
+  if (!flag) return null;
+  const named = store.sidecar.counters;
+  const a2 = named[0] ? [named[0].player, named[0].unit] : freeCell(store, host, [flag]) ?? [0, 181];
+  const id = `b${Date.now().toString(36)}`;
+  const record = what === "text" ? { id, kind: "text", flag, parts: [{ text: "Score: " }, { counter: a2 }], to: "all" } : what === "math" ? { id, kind: "math", flag, op: /random/i.test(query) ? "rand" : /divid/i.test(query) ? "div" : /modul|remainder/i.test(query) ? "mod" : "mul", a: a2, b: /random/i.test(query) ? 100 : 2, to: a2 } : { id, kind: "foreach", flag, unit: 0, owner: PlayerGroup.Player1, location: null, do: { set: "hp", value: 100 } };
+  return { action: flagAction({ cell: flag }), builds: [...store.sidecar.builds, record] };
+}
+function needsBuild(store, trigger3) {
+  return trigger3.actions.some((a2) => a2.type === ActionType.SetDeaths && a2.modifier === SetModifier.SetTo && hookOf(store, a2) !== null) || trigger3.conditions.some((c2) => chatOf(store, c2) !== null);
+}
+
 // src/ui/editor.ts
 function renderEditor(deps, root) {
   const { api, host, store } = deps;
@@ -4742,9 +5030,9 @@ function renderEditor(deps, root) {
   const groups = host.playerGroups();
   const players = host.players();
   for (const g of own) {
-    const chip2 = el("button", { type: "button", className: "mg-chip", title: t("Click to remove") }, g < 12 && players[g]?.color ? el("span", { className: "mg-dot", style: `background:${players[g].color}` }) : null, groups.find((x) => x.value === g)?.label ?? String(g));
-    chip2.addEventListener("click", () => replace(t("Change owners"), setOwners(trigger3, own.filter((x) => x !== g))));
-    playersRow.append(chip2);
+    const chip3 = el("button", { type: "button", className: "mg-chip", title: t("Click to remove") }, g < 12 && players[g]?.color ? el("span", { className: "mg-dot", style: `background:${players[g].color}` }) : null, groups.find((x) => x.value === g)?.label ?? String(g));
+    chip3.addEventListener("click", () => replace(t("Change owners"), setOwners(trigger3, own.filter((x) => x !== g))));
+    playersRow.append(chip3);
   }
   const addOwner = el("button", { type: "button", className: "mg-chip", title: t("Add a player or group") }, "+");
   addOwner.addEventListener("click", () => pickChoice(api, addOwner, groups.filter((g) => !own.includes(g.value)).map((g) => ({ value: g.value, label: g.label, color: g.value < 12 ? players[g.value]?.color ?? null : void 0 })), (v) => replace(t("Change owners"), setOwners(trigger3, [...own, v])), { width: 220 }));
@@ -4759,6 +5047,14 @@ function renderEditor(deps, root) {
   const writeConditions = (label, next) => replace(label, { ...trigger3, conditions: next });
   const cmp = compareOf(store, index, trigger3);
   conditions.forEach((c2, i) => {
+    const chat = chatOf(store, c2);
+    if (chat) {
+      const sentence = el("span", { className: "mg-sentence" });
+      renderChat(api, host, store, chat, sentence);
+      const remove = api.ui.widgets.button("\u2715", { ghost: true, title: t("Remove"), onClick: () => store.commit(t("Remove chat command"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, conditions: conditions.filter((_, k) => k !== i) }), { sidecar: { builds: store.sidecar.builds.filter((b) => b.id !== chat.id) } }) });
+      condSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove))));
+      return;
+    }
     if (cmp && cmp.rows.includes(i)) {
       if (i !== cmp.rows[0]) return;
       const sentence = el("span", { className: "mg-sentence" });
@@ -4782,6 +5078,16 @@ function renderEditor(deps, root) {
     }));
   });
   if (conditions.length < MAX_CONDITIONS) condSection.append(addRow(api, "condition", ({ pick, entities, query }) => {
+    if (pick.kind === "build") {
+      const message = /^"?(.+?)"?$/.exec(query.replace(/^(the )?chat (said|command)\s*/i, "").trim())?.[1];
+      const made = newChat(api, host, store, message && message !== query.trim() ? message : void 0);
+      if (!made) {
+        api.ui.toast({ kind: "error", title: t("No free counter cell for the chat command") });
+        return;
+      }
+      store.commit(t("Add chat command"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, conditions: [...conditions, made.condition] }), { sidecar: { builds: made.builds, chat: made.chat } });
+      return;
+    }
     if (pick.kind === "expansion") {
       if (cmp) {
         api.ui.toast({ kind: "info", title: t("One comparison per trigger"), detail: t("Put a second comparison in another trigger.") });
@@ -4803,6 +5109,14 @@ function renderEditor(deps, root) {
   const actSection = el("div", { className: "mg-section" }, el("div", { className: "mg-section-head" }, t("Actions"), el("span", { className: "grow" }), el("span", { className: "hint" }, `${actions.length}/${MAX_ACTIONS}`)));
   const writeActions = (label, next) => replace(label, { ...trigger3, actions: next });
   for (const { a: a2, i } of shownActions) {
+    const hook = hookOf(store, a2);
+    if (hook) {
+      const sentence = el("span", { className: "mg-sentence" });
+      renderHook(api, host, store, hook, sentence);
+      const remove = api.ui.widgets.button("\u2715", { ghost: true, title: t("Remove"), onClick: () => store.commit(t("Remove build row"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, actions: actions.filter((_, j2) => j2 !== i) }), { sidecar: { builds: store.sidecar.builds.filter((b) => b.id !== hook.id) } }) });
+      actSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove))));
+      continue;
+    }
     const cx = counterExpansionOf(store, a2);
     if (cx) {
       const sentence = el("span", { className: "mg-sentence" });
@@ -4828,6 +5142,16 @@ function renderEditor(deps, root) {
     }));
   }
   if (actions.length < MAX_ACTIONS) actSection.append(addRow(api, "action", ({ pick, entities, query }) => {
+    if (pick.kind === "build") {
+      if (pick.what === "chat") return;
+      const made = newHook(host, store, pick.what, query);
+      if (!made) {
+        api.ui.toast({ kind: "error", title: t("No free counter cell for the build row") });
+        return;
+      }
+      store.commit(t("Add build row"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, actions: [...actions, made.action] }), { sidecar: { builds: made.builds } });
+      return;
+    }
     if (pick.kind === "expansion") {
       if (pick.what === "compare") return;
       const made = newCounterStep(store, host, pick.what);
@@ -4844,7 +5168,7 @@ function renderEditor(deps, root) {
 }
 function newCondition(api, pick, entities = [], query = "") {
   if (pick.kind === "native") return fillCondition(api.triggers.newCondition(pick.type), entities);
-  if (pick.kind === "expansion") throw new Error("an expansion is not a record");
+  if (pick.kind === "expansion" || pick.kind === "build") throw new Error("not a record of its own");
   const e = pick.entry;
   if (entities.length) return lowerCondition(fillEud(e, "condition", entities, query));
   const args = {};
@@ -4853,7 +5177,7 @@ function newCondition(api, pick, entities = [], query = "") {
 }
 function newAction(api, pick, entities = [], query = "") {
   if (pick.kind === "native") return fillAction(api.triggers.newAction(pick.type), entities);
-  if (pick.kind === "expansion") throw new Error("an expansion is not a record");
+  if (pick.kind === "expansion" || pick.kind === "build") throw new Error("not a record of its own");
   const e = pick.entry;
   if (entities.length) return lowerAction(fillEud(e, "action", entities, query));
   const args = {};
@@ -4888,6 +5212,7 @@ function itemInfo(deps, index, trigger3) {
   const generated = store.runs.filter((r) => r.anchor === index).reduce((n, r) => n + r.count, 0);
   return {
     generated,
+    build: needsBuild(store, trigger3),
     index,
     title: title || summary || deps.api.i18n.t("Empty trigger"),
     summary: title ? summary : "",
@@ -4925,6 +5250,7 @@ function renderList(deps, root, onMove) {
         info.locked ? el("span", { className: "mg-badge lock" }, info.locked) : null,
         info.eud ? el("span", { className: "mg-badge eud" }, "EUD") : null,
         info.generated ? el("span", { className: "mg-badge", title: t("Triggers Magenta generates for this one") }, `+${info.generated}`) : null,
+        info.build ? el("span", { className: "mg-badge eud", title: t("Needs a Build to work in the game") }, "BUILD") : null,
         info.problems ? el("span", { className: `mg-badge ${info.problems}` }, "!") : null,
         el("span", { className: "mg-badge" }, info.ownersText)
       ),
@@ -5519,6 +5845,13 @@ function createPanel(api, hooks = {}) {
         sep(),
         item(t("Run triggers every frame"), () => setEveryFrame(!everyFrame()), { checked: everyFrame() }),
         item(t("Counters\u2026"), () => countersDialog()),
+        sep(),
+        item(t("Build EUD map\u2026"), () => openBuildDialog(api, s, everyFrame())),
+        item(t("Build server\u2026"), () => {
+          void api.ui.prompt(t("The scmjs.dev server that builds EUD maps"), { title: t("Build server"), value: serverUrl(api) }).then((v) => {
+            if (typeof v === "string") setServerUrl(api, v);
+          });
+        }),
         sep(),
         item(t("Show every trigger"), () => {
           filter = "all";

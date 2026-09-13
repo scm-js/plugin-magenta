@@ -93,21 +93,21 @@ describe("sidecar", () => {
   const list = [trig([0], [{ type: ConditionType.Always }], [{ type: ActionType.Victory }]), trig([1], [], [{ type: ActionType.Defeat }]), trig([2], [], [{ type: ActionType.Draw }])];
   it("round-trips and follows a moved trigger by fingerprint", () => {
     const folders = new Map([[0, "setup"], [2, "end"]]);
-    const sc: Sidecar = withFolders({ version: 1, folders: [{ id: "setup", name: "Setup", triggers: [] }, { id: "end", name: "End", triggers: [] }], counters: [{ player: 7, unit: 181, name: "Score" }], settings: { everyFrame: true }, expansions: [] }, list, folders);
+    const sc: Sidecar = withFolders({ version: 1, folders: [{ id: "setup", name: "Setup", triggers: [] }, { id: "end", name: "End", triggers: [] }], counters: [{ player: 7, unit: 181, name: "Score" }], settings: { everyFrame: true }, expansions: [], builds: [], chat: null }, list, folders);
     const back = decodeSidecar(encodeSidecar(sc));
     expect(back).toEqual(sc);
     const moved = [list[2], list[0], list[1]];
     expect([...folderOf(moved, back)]).toEqual([[1, "setup"], [0, "end"]]);
   });
   it("keeps expansions through a round trip", () => {
-    const sc: Sidecar = { version: 1, folders: [], counters: [], settings: {}, expansions: [{ id: "c1", kind: "copy", from: [0, 181], to: [1, 181], flag: [2, 181] }] };
+    const sc: Sidecar = { version: 1, folders: [], counters: [], settings: {}, expansions: [{ id: "c1", kind: "copy", from: [0, 181], to: [1, 181], flag: [2, 181] }], builds: [], chat: null };
     expect(decodeSidecar(encodeSidecar(sc)).expansions).toEqual(sc.expansions);
   });
   it("falls back to the index for a trigger edited elsewhere, and survives junk", () => {
-    const sc = withFolders({ version: 1, folders: [{ id: "f", name: "F", triggers: [] }], counters: [], settings: {}, expansions: [] }, list, new Map([[1, "f"]]));
+    const sc = withFolders({ version: 1, folders: [{ id: "f", name: "F", triggers: [] }], counters: [], settings: {}, expansions: [], builds: [], chat: null }, list, new Map([[1, "f"]]));
     const edited = [list[0], setOwners(list[1], [5]), list[2]];
     expect([...folderOf(edited, sc)]).toEqual([[1, "f"]]);
-    expect(decodeSidecar(new TextEncoder().encode("{not json"))).toEqual({ version: 1, folders: [], counters: [], settings: {}, expansions: [] });
+    expect(decodeSidecar(new TextEncoder().encode("{not json"))).toEqual({ version: 1, folders: [], counters: [], settings: {}, expansions: [], builds: [], chat: null });
     expect(decodeSidecar(null).folders).toEqual([]);
   });
 });
