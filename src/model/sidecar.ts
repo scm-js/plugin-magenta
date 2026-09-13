@@ -8,7 +8,7 @@
 import type { TriggerRecord } from "../../vendor/triggers";
 import { fingerprint } from "./records";
 import type { ExpansionRecord } from "./sync";
-import type { BuildRecord, ChatCell, Msqc } from "./builds";
+import type { BuildOptions, BuildRecord, ChatCell, Msqc } from "./builds";
 
 export const MEMBER = "magenta\\magenta.json";
 
@@ -35,7 +35,7 @@ export interface Sidecar {
   version: 1;
   folders: Folder[];
   counters: CounterName[];
-  settings: { everyFrame?: boolean };
+  settings: { everyFrame?: boolean; build?: Partial<BuildOptions> };
   /** The Tier A+ expansions: what generated each run, and where it hangs. */
   expansions: ExpansionRecord[];
   /** The rows that need a euddraft build: chat commands, text hooks, counter maths, unit passes. */

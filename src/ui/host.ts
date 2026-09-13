@@ -10,11 +10,14 @@ import { keyLabel } from "../model/eudSentence";
 import { decodeSidecar, encodeSidecar, MEMBER, type Sidecar } from "../model/sidecar";
 import { slotsOf } from "../model/slots";
 import type { ParseNames } from "../model/parse";
+import { usage } from "../model/counters";
 
 export interface NamedItem {
   value: number;
   label: string;
   hint?: string;
+  /** A location with a name of its own in the map (not the editor's `Location N` default). */
+  named?: boolean;
 }
 
 export class Host {
@@ -99,7 +102,7 @@ export class Host {
     const out: NamedItem[] = [];
     scn.locations.forEach((l, i) => {
       const n = i + 1;
-      if (i === 63 || l.left !== l.right || l.top !== l.bottom) out.push({ value: n, label: names.location(n), hint: i === 63 ? "" : `${Math.floor(l.left / 32)},${Math.floor(l.top / 32)}` });
+      if (i === 63 || l.left !== l.right || l.top !== l.bottom) out.push({ value: n, label: names.location(n), hint: i === 63 ? "" : `${Math.floor(l.left / 32)},${Math.floor(l.top / 32)}`, named: l.nameIndex !== 0 });
     });
     return out;
   }
@@ -132,6 +135,47 @@ export class Host {
 
   sounds(): NamedItem[] {
     return this.api.settings.sounds().map((s) => ({ value: s.stringIndex, label: s.path.split("\\").pop() ?? s.path, hint: s.present ? undefined : "missing" }));
+  }
+
+  /** Seconds of a PCM WAV in the archive, from its header; null when it is not there or not plain PCM. */
+  wavSeconds(path: string): number | null {
+    const bytes = this.api.document.extras.get(path) ?? this.api.document.extras.get(path.replace(/\//g, "\\"));
+    if (!bytes || bytes.length < 44) return null;
+    const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    if (String.fromCharCode(...bytes.subarray(0, 4)) !== "RIFF" || String.fromCharCode(...bytes.subarray(8, 12)) !== "WAVE") return null;
+    let at = 12, rate = 0, block = 0;
+    while (at + 8 <= bytes.length) {
+      const id = String.fromCharCode(...bytes.subarray(at, at + 4));
+      const size = v.getUint32(at + 4, true);
+      if (id === "fmt ") { rate = v.getUint32(at + 12, true); block = v.getUint16(at + 20, true); }
+      if (id === "data" && rate && block) return size / (rate * block);
+      at += 8 + size + (size & 1);
+    }
+    return null;
+  }
+
+  /** The 1-based number of a location by exact name, making an empty one when the map has none; null when every slot is taken. */
+  ensureLocation(name: string): number | null {
+    const scn = this.api.document.scenario();
+    if (!scn) return null;
+    const names = this.api.triggers.names();
+    for (let i = 0; i < 63; i++) if (names.location(i + 1) === name && this.locationExists(i + 1)) return i + 1;
+    let made = -1;
+    this.api.document.edit(`Add ${name}`, (tx) => { made = tx.addLocation({ left: 0, top: 0, right: 64, bottom: 64 }, name); });
+    return made >= 0 ? made + 1 : null;
+  }
+
+  /** The 0-based index of a switch by exact name, naming a free one when the map has none; null when all 256 are used. */
+  ensureSwitch(name: string): number | null {
+    const names = this.api.triggers.switchNames();
+    const at = names.indexOf(name);
+    if (at >= 0) return at;
+    const used = usage(this.api.triggers.list()).switches;
+    let free = -1;
+    for (let i = 0; i < 256; i++) { const n = names[i] ?? ""; if (!used.has(i) && (n === "" || /^Switch \d+$/.test(n))) { free = i; break; } }
+    if (free < 0) return null;
+    this.api.document.update(`Name switch ${name}`, (tx) => { tx.switches.setName(free, name); });
+    return free;
   }
 
   wavPresent(index: number): boolean {

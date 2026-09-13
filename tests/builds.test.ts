@@ -34,6 +34,15 @@ describe("build plugins", () => {
     // An MSQC with nothing registered is left out.
     expect(composePlugins([], null, false, { ...msqc, keys: {}, clicks: {}, mouseIn: {}, select: null }).MSQC).toBeUndefined();
   });
+  it("adds the map-wide plugins from the build options", () => {
+    const p = composePlugins([], null, false, null, { camera: { location: 3, name: "Hero", inertia: 5, maxspeed: 48 }, bgm: { path: "staredit\\wav\\theme.wav", length: 92.5 }, noAirCollision: true, unlimiter: false }, 60);
+    expect(p.cammove).toEqual({ targetloc: "Hero", inertia: 5, maxspeed: 48 });
+    expect(p.bgmplayer).toEqual({ path: "staredit\\wav\\theme.wav", length: 92.5 });
+    expect(p.noAirCollision).toEqual({});
+    expect(p.unlimiter).toBeUndefined();
+    // The camera needs its helper location; without one the option is skipped.
+    expect(composePlugins([], null, false, null, { camera: { location: 3, name: "Hero", inertia: 5, maxspeed: 48 }, bgm: null, noAirCollision: false, unlimiter: false }, null).cammove).toBeUndefined();
+  });
   it("leaves out what the map does not use", () => {
     expect(composePlugins([], null, false)).toEqual({});
     expect(Object.keys(composePlugins([{ id: "m", kind: "math", flag: [0, 181], op: "rand", a: [0, 181], b: 100, to: [0, 181] }], null, false))).toEqual(["magenta"]);

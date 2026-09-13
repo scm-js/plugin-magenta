@@ -210,6 +210,7 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
   if (actions.length < MAX_ACTIONS) actSection.append(addRow(api, "action", ({ pick, entities, query }: Picked) => {
     if (pick.kind === "build") {
       if (pick.what === "chat" || pick.what === "scan" || pick.what === "key" || pick.what === "click" || pick.what === "mouseIn") return;
+      // setloc, text, math, foreach, count, read
       const made = newHook(host, store, pick.what, query);
       if (!made) { api.ui.toast({ kind: "error", title: t("No free counter cell for the build row") }); return; }
       store.commit(t("Add build row"), () => store.list.map((tr, j) => (j !== index ? tr : { ...tr, actions: [...actions, made.action] })), { sidecar: { builds: made.builds } });

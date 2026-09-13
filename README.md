@@ -192,6 +192,21 @@ Actions:
 - **Set A to the number of Marines owned by Player 1 at Beacon**: a count into a counter.
 - **Set A to the hit points of the first Marine owned by Player 1 at Beacon**: a read
   into a counter; also shields, energy, kills, x, y.
+- **Move Beacon to 640, 320 keeping its size**: a location placed by numbers, in map
+  pixels (32 per tile), with a new width and height if you give one.
+
+Text with counters in it also takes `{Player 1}` for a player's name and `{Player 1's
+colour}` to switch to that player's colour, and the colour and effect buttons in the text
+box insert the game's own codes.
+
+The Build dialog has a few map-wide things too, chosen once per map: **the camera follows
+a location** for everyone, gliding with an inertia and a top speed (the cammove plugin).
+It follows while a switch named `cammove` is set, so triggers turn it on and off with Set
+Switch; Magenta names a free switch, makes the helper location `cammoveLoc` the plugin needs,
+and adds a trigger that sets the switch at the start unless you untick that;
+**a sound looped as background music** (the bgmplayer plugin; a plain WAV's length is read
+from the file, otherwise type the seconds); **air units pass through one another**
+(noAirCollision); and **lifting the sprite and image limits** (unlimiter).
 
 In the map these are one private counter cell each: the trigger sets it (an action) or reads
 it (a condition), so it stays an ordinary trigger everywhere. **⋯ ▸ Build EUD map…** sends

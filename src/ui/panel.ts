@@ -245,7 +245,7 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
         item(t("Run triggers every frame"), () => setEveryFrame(!everyFrame()), { checked: everyFrame() }),
         item(t("Counters…"), () => countersDialog()),
         sep(),
-        item(t("Build EUD map…"), () => openBuildDialog(api, s, everyFrame())),
+        item(t("Build EUD map…"), () => openBuildDialog(api, h, s, everyFrame())),
         item(t("Build server…"), () => { void api.ui.prompt(t("The scmjs.dev server that builds EUD maps"), { title: t("Build server"), value: serverUrl(api) }).then((v) => { if (typeof v === "string") setServerUrl(api, v); }); }),
         sep(),
         item(t("Show every trigger"), () => { filter = "all"; render(); }, { checked: filter === "all" }),

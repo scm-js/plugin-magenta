@@ -13,8 +13,8 @@
  */
 import type { Cell } from "./counters";
 
-/** A piece of a text hook: words, or a counter's value. */
-export type TextPart = { text: string } | { counter: Cell };
+/** A piece of a text hook: words, a counter's value, a player's name, or the switch to a player's colour. */
+export type TextPart = { text: string } | { counter: Cell } | { player: number } | { color: number };
 
 /** A unit's field a pass can read or test. */
 export type UnitField = "hp" | "shields" | "energy" | "kills" | "x" | "y";
@@ -45,6 +45,8 @@ export type BuildRecord =
   | ({ id: string; kind: "count"; flag: Cell; to: Cell } & UnitFilter)
   /** Read a field of the first matching unit into a counter (0 when there is none). */
   | ({ id: string; kind: "read"; flag: Cell; field: UnitField; to: Cell } & UnitFilter)
+  /** Move a location by numbers: its top-left to (x, y) map pixels, keeping its size unless one is given. */
+  | { id: string; kind: "setloc"; flag: Cell; location: number; x: number; y: number; width: number | null; height: number | null }
   /** Every cycle: 1 in `cell` while some matching unit's field compares so, else 0. A condition reads the cell. */
   | ({ id: string; kind: "scan"; cell: Cell; field: UnitField; cmp: "<" | ">" | "="; value: number } & UnitFilter)
   /** A chat command: the chat plugin writes `value` into the map's chat cell when a message matches. */
@@ -77,6 +79,20 @@ export interface Msqc {
   /** Counter units for the selected unit: MSQC delivers the pointer, the hook writes the type + 1. */
   select: { ptr: number; type: number } | null;
 }
+
+/** Map-wide things a build can add, chosen in the Build dialog. */
+export interface BuildOptions {
+  /** The camera glides after this location for everyone (the cammove plugin, which finds it by name); the helper location it needs is made at build time. */
+  camera: { location: number; name: string; inertia: number; maxspeed: number } | null;
+  /** A sound in the map, looped (the bgmplayer plugin): its string index and length in seconds. */
+  bgm: { path: string; length: number } | null;
+  /** Air units pass through one another (the noAirCollision plugin). */
+  noAirCollision: boolean;
+  /** Lift the sprite and image limits (the unlimiter plugin). */
+  unlimiter: boolean;
+}
+
+export const DEFAULT_OPTIONS: BuildOptions = { camera: null, bgm: null, noAirCollision: false, unlimiter: false };
 
 export const DEFAULT_MSQC: Msqc = { qcUnit: 58, qcLoc: 62, qcPlayer: 10, keys: {}, clicks: {}, mouseBase: null, mouseIn: {}, select: null };
 
@@ -112,8 +128,12 @@ export function msqcKeyName(code: number): string {
 export const usesMsqc = (m: Msqc | null): m is Msqc => !!m && (Object.keys(m.keys).length > 0 || Object.keys(m.clicks).length > 0 || Object.keys(m.mouseIn).length > 0 || m.select !== null);
 
 /** The plugin sections for a build: the chat plugin's, MSQC's, Magenta's own, and turbo when the map runs every frame. */
-export function composePlugins(builds: BuildRecord[], chat: ChatCell | null, everyFrame: boolean, msqc: Msqc | null = null): BuildPlugins {
+export function composePlugins(builds: BuildRecord[], chat: ChatCell | null, everyFrame: boolean, msqc: Msqc | null = null, options: BuildOptions = DEFAULT_OPTIONS, cammoveLoc: number | null = null): BuildPlugins {
   const plugins: BuildPlugins = {};
+  if (options.camera && cammoveLoc !== null) plugins.cammove = { targetloc: options.camera.name, inertia: options.camera.inertia, maxspeed: options.camera.maxspeed };
+  if (options.bgm) plugins.bgmplayer = { path: options.bgm.path, length: options.bgm.length };
+  if (options.noAirCollision) plugins.noAirCollision = {};
+  if (options.unlimiter) plugins.unlimiter = {};
   const chats = builds.filter((b): b is Extract<BuildRecord, { kind: "chat" }> => b.kind === "chat");
   if (chats.length && chat) {
     const section: Record<string, string | number> = { __addr__: `0x${cellAddress(chat.cell).toString(16).toUpperCase()}` };

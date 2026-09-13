@@ -13,6 +13,11 @@ describe("text parts", () => {
     expect(text).toBe("Score: {Score} points");
     expect(textToParts(text, names)).toEqual(parts);
   });
+  it("writes players and their colours as {Player N} and {Player N's colour}", () => {
+    const parts = [{ color: 0 }, { player: 0 }, { text: " wins" }];
+    expect(partsToText(parts as never, names)).toBe("{Player 1's colour}{Player 1} wins");
+    expect(textToParts("{Player 1's colour}{player 1} wins", names)).toEqual(parts);
+  });
   it("keeps an unnamed cell as player:unit, and braces that are not a counter as text", () => {
     expect(partsToText([{ counter: [1, 182] }], names)).toBe("{1:182}");
     expect(textToParts("{1:182}", names)).toEqual([{ counter: [1, 182] }]);

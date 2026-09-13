@@ -3000,6 +3000,85 @@ function slotsOf(unitIds) {
   return unitIds.map((id) => id === START_LOCATION ? -1 : slotOfCreated(n++));
 }
 
+// src/model/counters.ts
+var PLAYER_SLOTS = 12;
+var UNIT_CLASS_FIRST = 228;
+var cellKey = (player, unit) => unit * PLAYER_SLOTS + player;
+function playerSlots(player, triggerOwners) {
+  if (player < PLAYER_SLOTS) return [player];
+  if (player >= PLAYER_GROUP_COUNT) return [];
+  if (player === PlayerGroup.None) return [];
+  if (player === PlayerGroup.CurrentPlayer) {
+    const out = /* @__PURE__ */ new Set();
+    for (const o of triggerOwners) for (const p of playerSlots(o, [])) out.add(p);
+    return [...out].sort((a2, b) => a2 - b);
+  }
+  return Array.from({ length: PLAYER_SLOTS }, (_, i) => i);
+}
+function usage(list) {
+  const cells = /* @__PURE__ */ new Set();
+  const switches = /* @__PURE__ */ new Set();
+  for (const t of list) {
+    const own = owners(t);
+    for (const c2 of t.conditions) {
+      if (c2.type === ConditionType.Deaths && c2.unitId < UNIT_CLASS_FIRST) for (const p of playerSlots(c2.player, own)) cells.add(cellKey(p, c2.unitId));
+      if (c2.type === ConditionType.Switch) switches.add(c2.resource);
+    }
+    for (const a2 of t.actions) {
+      if (a2.type === ActionType.SetDeaths && a2.unitId < UNIT_CLASS_FIRST) for (const p of playerSlots(a2.player, own)) cells.add(cellKey(p, a2.unitId));
+      if (a2.type === ActionType.SetSwitch) switches.add(a2.target);
+    }
+  }
+  return { cells, switches };
+}
+var COUNTER_UNITS = [
+  181,
+  182,
+  179,
+  180,
+  183,
+  184,
+  185,
+  186,
+  187,
+  204,
+  91,
+  92,
+  119,
+  121,
+  145,
+  153,
+  158,
+  161,
+  191,
+  192,
+  193,
+  194,
+  195,
+  196,
+  197,
+  198,
+  199,
+  215,
+  216,
+  217,
+  219,
+  128,
+  129,
+  173,
+  101,
+  214
+];
+function allocate(used, placedUnitIds = /* @__PURE__ */ new Set()) {
+  for (const unit of COUNTER_UNITS) {
+    if (placedUnitIds.has(unit)) continue;
+    for (let player = 0; player < PLAYER_SLOTS; player++) {
+      if (!used.has(cellKey(player, unit))) return [player, unit];
+    }
+  }
+  return null;
+}
+
 // src/ui/host.ts
 var Host = class {
   api;
@@ -3076,7 +3155,7 @@ var Host = class {
     const out = [];
     scn.locations.forEach((l, i) => {
       const n = i + 1;
-      if (i === 63 || l.left !== l.right || l.top !== l.bottom) out.push({ value: n, label: names.location(n), hint: i === 63 ? "" : `${Math.floor(l.left / 32)},${Math.floor(l.top / 32)}` });
+      if (i === 63 || l.left !== l.right || l.top !== l.bottom) out.push({ value: n, label: names.location(n), hint: i === 63 ? "" : `${Math.floor(l.left / 32)},${Math.floor(l.top / 32)}`, named: l.nameIndex !== 0 });
     });
     return out;
   }
@@ -3107,6 +3186,57 @@ var Host = class {
   }
   sounds() {
     return this.api.settings.sounds().map((s) => ({ value: s.stringIndex, label: s.path.split("\\").pop() ?? s.path, hint: s.present ? void 0 : "missing" }));
+  }
+  /** Seconds of a PCM WAV in the archive, from its header; null when it is not there or not plain PCM. */
+  wavSeconds(path) {
+    const bytes = this.api.document.extras.get(path) ?? this.api.document.extras.get(path.replace(/\//g, "\\"));
+    if (!bytes || bytes.length < 44) return null;
+    const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    if (String.fromCharCode(...bytes.subarray(0, 4)) !== "RIFF" || String.fromCharCode(...bytes.subarray(8, 12)) !== "WAVE") return null;
+    let at = 12, rate = 0, block = 0;
+    while (at + 8 <= bytes.length) {
+      const id = String.fromCharCode(...bytes.subarray(at, at + 4));
+      const size = v.getUint32(at + 4, true);
+      if (id === "fmt ") {
+        rate = v.getUint32(at + 12, true);
+        block = v.getUint16(at + 20, true);
+      }
+      if (id === "data" && rate && block) return size / (rate * block);
+      at += 8 + size + (size & 1);
+    }
+    return null;
+  }
+  /** The 1-based number of a location by exact name, making an empty one when the map has none; null when every slot is taken. */
+  ensureLocation(name) {
+    const scn = this.api.document.scenario();
+    if (!scn) return null;
+    const names = this.api.triggers.names();
+    for (let i = 0; i < 63; i++) if (names.location(i + 1) === name && this.locationExists(i + 1)) return i + 1;
+    let made = -1;
+    this.api.document.edit(`Add ${name}`, (tx) => {
+      made = tx.addLocation({ left: 0, top: 0, right: 64, bottom: 64 }, name);
+    });
+    return made >= 0 ? made + 1 : null;
+  }
+  /** The 0-based index of a switch by exact name, naming a free one when the map has none; null when all 256 are used. */
+  ensureSwitch(name) {
+    const names = this.api.triggers.switchNames();
+    const at = names.indexOf(name);
+    if (at >= 0) return at;
+    const used = usage(this.api.triggers.list()).switches;
+    let free = -1;
+    for (let i = 0; i < 256; i++) {
+      const n = names[i] ?? "";
+      if (!used.has(i) && (n === "" || /^Switch \d+$/.test(n))) {
+        free = i;
+        break;
+      }
+    }
+    if (free < 0) return null;
+    this.api.document.update(`Name switch ${name}`, (tx) => {
+      tx.switches.setName(free, name);
+    });
+    return free;
   }
   wavPresent(index) {
     const row = this.api.settings.sounds().find((s) => s.stringIndex === index);
@@ -3442,6 +3572,7 @@ function recipeContext(intern, locations) {
 }
 
 // src/model/builds.ts
+var DEFAULT_OPTIONS = { camera: null, bgm: null, noAirCollision: false, unlimiter: false };
 var DEFAULT_MSQC = { qcUnit: 58, qcLoc: 62, qcPlayer: 10, keys: {}, clicks: {}, mouseBase: null, mouseIn: {}, select: null };
 var MAGENTA_SPEC_VERSION = 2;
 var cellAddress = (cell) => 5808996 + cell[0] * 4 + cell[1] * 48;
@@ -3453,8 +3584,12 @@ function msqcKeyName(code) {
   return named[code] ?? `0x${code.toString(16).toUpperCase()}`;
 }
 var usesMsqc = (m) => !!m && (Object.keys(m.keys).length > 0 || Object.keys(m.clicks).length > 0 || Object.keys(m.mouseIn).length > 0 || m.select !== null);
-function composePlugins(builds, chat, everyFrame, msqc = null) {
+function composePlugins(builds, chat, everyFrame, msqc = null, options = DEFAULT_OPTIONS, cammoveLoc = null) {
   const plugins = {};
+  if (options.camera && cammoveLoc !== null) plugins.cammove = { targetloc: options.camera.name, inertia: options.camera.inertia, maxspeed: options.camera.maxspeed };
+  if (options.bgm) plugins.bgmplayer = { path: options.bgm.path, length: options.bgm.length };
+  if (options.noAirCollision) plugins.noAirCollision = {};
+  if (options.unlimiter) plugins.unlimiter = {};
   const chats = builds.filter((b) => b.kind === "chat");
   if (chats.length && chat) {
     const section = { __addr__: `0x${cellAddress(chat.cell).toString(16).toUpperCase()}` };
@@ -3501,6 +3636,8 @@ function checkChatMessage(text) {
 }
 
 // src/ui/build.ts
+var CAMMOVE_LOC = "cammoveLoc";
+var CAMMOVE_SWITCH = "cammove";
 var DEFAULT_SERVER = "https://api.scmjs.dev";
 var SERVER_KEY = "server";
 var serverUrl = (api) => api.storage.get(SERVER_KEY, DEFAULT_SERVER).replace(/\/+$/, "");
@@ -3513,14 +3650,51 @@ var toBase64 = (bytes) => {
   return btoa(s);
 };
 var fromBase64 = (b64) => Uint8Array.from(atob(b64), (c2) => c2.charCodeAt(0));
-function openBuildDialog(api, store, everyFrame) {
+function openBuildDialog(api, host, store, everyFrame) {
   const t = api.i18n.t;
   const el = api.ui.el;
   const w = api.ui.widgets;
   const builds = store.sidecar.builds;
   const chats = builds.filter((b) => b.kind === "chat").length;
   const hooks = builds.length - chats;
-  const plugins = composePlugins(builds, store.sidecar.chat, everyFrame, store.sidecar.msqc);
+  const options = { ...DEFAULT_OPTIONS, ...store.sidecar.settings.build };
+  const saveOptions = () => store.updateSidecar(t("Build options"), { settings: { ...store.sidecar.settings, build: options } });
+  const plugins = () => composePlugins(builds, store.sidecar.chat, everyFrame, store.sidecar.msqc, options, options.camera ? 0 : null);
+  const locations = host.locations().filter((l) => l.value !== 64 && l.named);
+  const cameraOn = w.checkbox(t("The camera follows a location, for everyone"), { value: !!options.camera });
+  const cameraLoc = w.select(locations.map((l) => ({ value: l.value, label: l.label })), { value: options.camera?.location ?? locations[0]?.value ?? 0 });
+  const inertia = w.number({ value: options.camera?.inertia ?? 5, min: 1, max: 60 });
+  const maxspeed = w.number({ value: options.camera?.maxspeed ?? 48, min: 1, max: 999 });
+  const cameraStart = w.checkbox(t("Start following at once (a trigger sets the cammove switch)"), { value: true });
+  const readCamera = () => {
+    const loc = locations.find((l) => l.value === Number(cameraLoc.value));
+    options.camera = cameraOn.input.checked && loc ? { location: loc.value, name: loc.label, inertia: Number(inertia.value) || 5, maxspeed: Number(maxspeed.value) || 48 } : null;
+  };
+  const sounds = host.sounds().filter((s) => s.value !== 0);
+  const bgmOn = w.checkbox(t("Loop a sound as background music"), { value: !!options.bgm });
+  const bgmPath = w.select(sounds.map((s) => ({ value: s.value, label: s.label })), { value: sounds.find((s) => api.names.string(s.value) === options.bgm?.path)?.value ?? sounds[0]?.value ?? 0 });
+  const bgmLen = w.number({ value: options.bgm?.length ?? 60, min: 1, max: 3600, step: 0.5 });
+  const readBgm = () => {
+    if (!bgmOn.input.checked || !sounds.length) {
+      options.bgm = null;
+      return;
+    }
+    const path = api.names.string(Number(bgmPath.value)) ?? "";
+    options.bgm = { path, length: Number(bgmLen.value) || 60 };
+  };
+  bgmPath.addEventListener("change", () => {
+    const path = api.names.string(Number(bgmPath.value)) ?? "";
+    const secs = host.wavSeconds(path);
+    if (secs) bgmLen.value = String(Math.round(secs * 2) / 2);
+  });
+  const noAir = w.checkbox(t("Air units pass through one another"), { value: options.noAirCollision });
+  const unlimiter = w.checkbox(t("Lift the sprite and image limits"), { value: options.unlimiter });
+  const readAll = () => {
+    readCamera();
+    readBgm();
+    options.noAirCollision = noAir.input.checked;
+    options.unlimiter = unlimiter.input.checked;
+  };
   const info = api.document.info();
   const stem2 = (info?.fileName ?? "map").replace(/\.(scx|scm|chk)$/i, "");
   const server = w.text({ value: serverUrl(api), placeholder: DEFAULT_SERVER });
@@ -3531,10 +3705,10 @@ function openBuildDialog(api, store, everyFrame) {
     {},
     el("li", {}, chats ? t("{n, plural, one {# chat command} other {# chat commands}}", { n: chats }) : t("No chat commands")),
     el("li", {}, hooks ? t("{n, plural, one {# build row} other {# build rows}} (text, maths, unit passes, checks)", { n: hooks }) : t("No build rows")),
-    el("li", {}, plugins.MSQC ? t("Synced input (keys, clicks, mouse) through MSQC") : t("No synced input")),
+    el("li", {}, plugins().MSQC ? t("Synced input (keys, clicks, mouse) through MSQC") : t("No synced input")),
     el("li", {}, everyFrame ? t("Triggers run every frame (turbo)") : t("Triggers run every two seconds"))
   );
-  const nothing = !Object.keys(plugins).length;
+  const nothing = !Object.keys(plugins()).length;
   api.ui.dialog({
     title: t("Build EUD map"),
     size: "md",
@@ -3542,15 +3716,49 @@ function openBuildDialog(api, store, everyFrame) {
       body.append(
         w.hint(t("The map goes to the build server as it stands, euddraft adds the code for the rows below, and the built map comes back as a file to save. The server keeps nothing. Only StarCraft: Remastered plays the result, and this editor cannot open it yet: keep this map as the source.")),
         summary,
+        w.group(
+          t("Map-wide"),
+          w.column(cameraOn, w.form([{ label: t("Location"), field: cameraLoc }, { label: t("Inertia"), field: inertia }, { label: t("Max speed"), field: maxspeed }]), cameraStart),
+          w.column(bgmOn, w.form([{ label: t("Sound"), field: bgmPath }, { label: t("Seconds"), field: bgmLen }])),
+          noAir,
+          unlimiter,
+          w.hint(t("The camera follows a location by its name, so only named locations are offered. It follows while a switch named cammove is set, so a trigger can turn it on and off; the switch and a helper location named cammoveLoc are made in this map at build time. A looped sound needs its length; a plain WAV's is read from the file."))
+        ),
         w.form([{ label: t("Build server"), field: server }]),
         status,
         log
       );
-      if (nothing) status.set(t("Nothing in this map needs a build; a plain save is all it takes."), "warn");
+      if (nothing && !locations.length) status.set(t("Nothing in this map needs a build; a plain save is all it takes."), "warn");
     },
     buttons: [
       { label: t("Build\u2026"), primary: true, closes: false, run: async () => {
         setServerUrl(api, server.value);
+        readAll();
+        saveOptions();
+        let cammove = null;
+        if (options.camera) {
+          cammove = host.ensureLocation(CAMMOVE_LOC);
+          if (cammove === null) {
+            status.set(t("The camera needs one free location slot for its helper location."), "error");
+            return;
+          }
+          const sw = host.ensureSwitch(CAMMOVE_SWITCH);
+          if (sw === null) {
+            status.set(t("The camera needs one free switch to turn it on and off."), "error");
+            return;
+          }
+          store.reload();
+          const sets = store.list.some((tr) => tr.actions.some((a2) => a2.type === 13 && a2.target === sw));
+          if (cameraStart.input.checked && !sets) {
+            store.commit(t("Start the camera"), (intern) => {
+              const tr = api.triggers.newTrigger([17]);
+              tr.conditions = [api.triggers.newCondition(22)];
+              tr.actions = [{ ...api.triggers.newAction(47), text: intern("Camera: start following") }, { ...api.triggers.newAction(13), target: sw, modifier: 4 }];
+              return [...store.list, tr];
+            });
+          }
+        }
+        const plugins2 = composePlugins(builds, store.sidecar.chat, everyFrame, store.sidecar.msqc, options, cammove);
         const file = await api.document.export();
         if (!file) {
           status.set(t("No map is open."), "error");
@@ -3560,7 +3768,7 @@ function openBuildDialog(api, store, everyFrame) {
         log.style.display = "none";
         try {
           const bytes = new Uint8Array(await file.arrayBuffer());
-          const res = await fetch(`${serverUrl(api)}/v1/eud/build`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ map: toBase64(bytes), plugins }) });
+          const res = await fetch(`${serverUrl(api)}/v1/eud/build`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ map: toBase64(bytes), plugins: plugins2 }) });
           const answer = await res.json().catch(() => null);
           if (!res.ok || !answer?.map) {
             const e = answer?.error;
@@ -3890,85 +4098,6 @@ function pickPlacedUnit(api, host, anchor, current2, onPick) {
       });
     } }]
   });
-}
-
-// src/model/counters.ts
-var PLAYER_SLOTS = 12;
-var UNIT_CLASS_FIRST = 228;
-var cellKey = (player, unit) => unit * PLAYER_SLOTS + player;
-function playerSlots(player, triggerOwners) {
-  if (player < PLAYER_SLOTS) return [player];
-  if (player >= PLAYER_GROUP_COUNT) return [];
-  if (player === PlayerGroup.None) return [];
-  if (player === PlayerGroup.CurrentPlayer) {
-    const out = /* @__PURE__ */ new Set();
-    for (const o of triggerOwners) for (const p of playerSlots(o, [])) out.add(p);
-    return [...out].sort((a2, b) => a2 - b);
-  }
-  return Array.from({ length: PLAYER_SLOTS }, (_, i) => i);
-}
-function usage(list) {
-  const cells = /* @__PURE__ */ new Set();
-  const switches = /* @__PURE__ */ new Set();
-  for (const t of list) {
-    const own = owners(t);
-    for (const c2 of t.conditions) {
-      if (c2.type === ConditionType.Deaths && c2.unitId < UNIT_CLASS_FIRST) for (const p of playerSlots(c2.player, own)) cells.add(cellKey(p, c2.unitId));
-      if (c2.type === ConditionType.Switch) switches.add(c2.resource);
-    }
-    for (const a2 of t.actions) {
-      if (a2.type === ActionType.SetDeaths && a2.unitId < UNIT_CLASS_FIRST) for (const p of playerSlots(a2.player, own)) cells.add(cellKey(p, a2.unitId));
-      if (a2.type === ActionType.SetSwitch) switches.add(a2.target);
-    }
-  }
-  return { cells, switches };
-}
-var COUNTER_UNITS = [
-  181,
-  182,
-  179,
-  180,
-  183,
-  184,
-  185,
-  186,
-  187,
-  204,
-  91,
-  92,
-  119,
-  121,
-  145,
-  153,
-  158,
-  161,
-  191,
-  192,
-  193,
-  194,
-  195,
-  196,
-  197,
-  198,
-  199,
-  215,
-  216,
-  217,
-  219,
-  128,
-  129,
-  173,
-  101,
-  214
-];
-function allocate(used, placedUnitIds = /* @__PURE__ */ new Set()) {
-  for (const unit of COUNTER_UNITS) {
-    if (placedUnitIds.has(unit)) continue;
-    for (let player = 0; player < PLAYER_SLOTS; player++) {
-      if (!used.has(cellKey(player, unit))) return [player, unit];
-    }
-  }
-  return null;
 }
 
 // src/model/checks.ts
@@ -4352,6 +4481,7 @@ function paletteItems(kind) {
     items.push({ label: "For each unit of a kind", aliases: ["all units", "every unit", "loop", "set hp of all", "give units with colour"], group: "Build", value: { kind: "build", what: "foreach" } });
     items.push({ label: "Count units into a counter", aliases: ["number of", "how many", "tally"], group: "Build", value: { kind: "build", what: "count" } });
     items.push({ label: "Read a unit's stat into a counter", aliases: ["get hp", "read health", "unit's kills", "position into"], group: "Build", value: { kind: "build", what: "read" } });
+    items.push({ label: "Move a location to coordinates", aliases: ["set location", "place location", "location xy", "pixels"], group: "Build", value: { kind: "build", what: "setloc" } });
     items.push({ label: "Copy a counter into another", aliases: ["set variable", "assign", "transfer"], group: "Counters", value: { kind: "expansion", what: "copy" } });
     items.push({ label: "Add a counter to another", aliases: ["sum", "plus", "variable"], group: "Counters", value: { kind: "expansion", what: "add" } });
     items.push({ label: "Subtract a counter from another", aliases: ["minus", "difference", "variable"], group: "Counters", value: { kind: "expansion", what: "subtract" } });
@@ -4881,7 +5011,12 @@ function newCounterStep(store, host, what) {
 
 // src/model/textParts.ts
 function partsToText(parts, names) {
-  return parts.map((p) => "text" in p ? p.text.replace(/[{}]/g, (c2) => `\\${c2}`) : `{${names.name(p.counter) ?? `${p.counter[0]}:${p.counter[1]}`}}`).join("");
+  return parts.map((p) => {
+    if ("text" in p) return p.text.replace(/[{}]/g, (c2) => `\\${c2}`);
+    if ("player" in p) return `{Player ${p.player + 1}}`;
+    if ("color" in p) return `{Player ${p.color + 1}'s colour}`;
+    return `{${names.name(p.counter) ?? `${p.counter[0]}:${p.counter[1]}`}}`;
+  }).join("");
 }
 function textToParts(text, names) {
   const out = [];
@@ -4903,6 +5038,13 @@ function textToParts(text, names) {
       const end = text.indexOf("}", i + 1);
       if (end > i) {
         const inner = text.slice(i + 1, end).trim();
+        const player = /^player\s*(\d{1,2})('s)?\s*(colou?r)?$/i.exec(inner);
+        if (player && Number(player[1]) >= 1 && Number(player[1]) <= 12) {
+          flush();
+          out.push(player[3] ? { color: Number(player[1]) - 1 } : { player: Number(player[1]) - 1 });
+          i = end;
+          continue;
+        }
         const raw = /^(\d{1,2}):(\d{1,3})$/.exec(inner);
         const cell = raw ? [Number(raw[1]), Number(raw[2])] : names.cell(inner);
         if (cell) {
@@ -4984,7 +5126,7 @@ function renderHook(api, host, store, hook, into) {
   if (hook.kind === "text") {
     const names = counterNames(store, host);
     const text = chip2(api, partsToText(hook.parts, names), "text");
-    text.addEventListener("click", () => pickText(api, text, partsToText(hook.parts, names), (value) => update({ parts: textToParts(value, names) }), { title: t("Write {Counter name} where a counter's value goes") }));
+    text.addEventListener("click", () => pickText(api, text, partsToText(hook.parts, names), (value) => update({ parts: textToParts(value, names) }), { title: t("{Counter name} for a counter's value, {Player 1} for a name, {Player 1's colour} to switch colour; the buttons insert the game's own codes") }));
     const to = chip2(api, hook.to === "all" ? t("everyone") : namer.player(hook.to), "");
     to.addEventListener("click", () => pickChoice(api, to, [{ value: -1, label: t("everyone") }, ...Array.from({ length: 8 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null }))], (v) => update({ to: v < 0 ? "all" : v }), { current: hook.to === "all" ? -1 : hook.to }));
     into.append(t("Show "), text, t(" to "), to, tag(api));
@@ -5019,6 +5161,21 @@ function renderHook(api, host, store, hook, into) {
     const field = chip2(api, FIELDS.find((f) => f.field === hook.field)?.label ?? hook.field, "");
     field.addEventListener("click", () => pickChoice(api, field, FIELDS, (v) => update({ field: FIELDS[v].field }), { current: FIELDS.findIndex((f) => f.field === hook.field) }));
     into.append(t("Set "), to, t(" to the "), field, t(" of the first "), ...filterChips(api, host, store, hook, update), tag(api));
+    return;
+  }
+  if (hook.kind === "setloc") {
+    const loc = chip2(api, namer.location(hook.location), "");
+    loc.addEventListener("click", () => pickLocation(api, host, loc, hook.location, (v) => {
+      if (v > 0 && v < 64) update({ location: v });
+    }));
+    const x = chip2(api, String(hook.x), "");
+    x.addEventListener("click", () => pickNumber(api, x, hook.x, (v) => update({ x: v }), { min: 0, max: 65535, unit: "px" }));
+    const y = chip2(api, String(hook.y), "");
+    y.addEventListener("click", () => pickNumber(api, y, hook.y, (v) => update({ y: v }), { min: 0, max: 65535, unit: "px" }));
+    const size = chip2(api, hook.width === null || hook.height === null ? t("its size") : `${hook.width} \xD7 ${hook.height}`, "");
+    size.title = t("Width \xD7 height in map pixels, 32 per tile; 0 keeps the location's own size");
+    size.addEventListener("click", () => pickNumber(api, size, hook.width ?? 0, (wv) => pickNumber(api, size, hook.height ?? 0, (hv) => update({ width: wv > 0 ? wv : null, height: hv > 0 ? hv : null }), { min: 0, max: 65535, unit: t("px high") }), { min: 0, max: 65535, unit: t("px wide") }));
+    into.append(t("Move "), loc, t(" to "), x, ", ", y, t(" keeping "), size, tag(api));
     return;
   }
   const DOS = [
@@ -5199,7 +5356,7 @@ function newHook(host, store, what, query = "") {
   const a2 = named[0] ? [named[0].player, named[0].unit] : freeCell(store, host, [flag]) ?? [0, 181];
   const id = `b${Date.now().toString(36)}`;
   const filter = { unit: 0, owner: PlayerGroup.Player1, location: null };
-  const record = what === "text" ? { id, kind: "text", flag, parts: [{ text: "Score: " }, { counter: a2 }], to: "all" } : what === "math" ? { id, kind: "math", flag, op: /random/i.test(query) ? "rand" : /divid/i.test(query) ? "div" : /modul|remainder/i.test(query) ? "mod" : "mul", a: a2, b: /random/i.test(query) ? 100 : 2, to: a2 } : what === "count" ? { id, kind: "count", flag, ...filter, to: a2 } : what === "read" ? { id, kind: "read", flag, ...filter, field: "hp", to: a2 } : { id, kind: "foreach", flag, ...filter, do: /give/i.test(query) ? { give: 1 } : /kill/i.test(query) ? { kill: true } : { set: "hp", value: 100 } };
+  const record = what === "text" ? { id, kind: "text", flag, parts: [{ text: "Score: " }, { counter: a2 }], to: "all" } : what === "math" ? { id, kind: "math", flag, op: /random/i.test(query) ? "rand" : /divid/i.test(query) ? "div" : /modul|remainder/i.test(query) ? "mod" : "mul", a: a2, b: /random/i.test(query) ? 100 : 2, to: a2 } : what === "count" ? { id, kind: "count", flag, ...filter, to: a2 } : what === "read" ? { id, kind: "read", flag, ...filter, field: "hp", to: a2 } : what === "setloc" ? { id, kind: "setloc", flag, location: host.locations().find((l) => l.value !== 64)?.value ?? 1, x: 0, y: 0, width: null, height: null } : { id, kind: "foreach", flag, ...filter, do: /give/i.test(query) ? { give: 1 } : /kill/i.test(query) ? { kill: true } : { set: "hp", value: 100 } };
   return { action: flagAction({ cell: flag }), builds: [...store.sidecar.builds, record] };
 }
 function needsBuild(store, trigger3) {
@@ -6109,7 +6266,7 @@ function createPanel(api, hooks = {}) {
         item(t("Run triggers every frame"), () => setEveryFrame(!everyFrame()), { checked: everyFrame() }),
         item(t("Counters\u2026"), () => countersDialog()),
         sep(),
-        item(t("Build EUD map\u2026"), () => openBuildDialog(api, s, everyFrame())),
+        item(t("Build EUD map\u2026"), () => openBuildDialog(api, h, s, everyFrame())),
         item(t("Build server\u2026"), () => {
           void api.ui.prompt(t("The scmjs.dev server that builds EUD maps"), { title: t("Build server"), value: serverUrl(api) }).then((v) => {
             if (typeof v === "string") setServerUrl(api, v);

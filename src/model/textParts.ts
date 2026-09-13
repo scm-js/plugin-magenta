@@ -14,7 +14,12 @@ export interface CounterNames {
 }
 
 export function partsToText(parts: TextPart[], names: CounterNames): string {
-  return parts.map((p) => ("text" in p ? p.text.replace(/[{}]/g, (c) => `\\${c}`) : `{${names.name(p.counter) ?? `${p.counter[0]}:${p.counter[1]}`}}`)).join("");
+  return parts.map((p) => {
+    if ("text" in p) return p.text.replace(/[{}]/g, (c) => `\\${c}`);
+    if ("player" in p) return `{Player ${p.player + 1}}`;
+    if ("color" in p) return `{Player ${p.color + 1}'s colour}`;
+    return `{${names.name(p.counter) ?? `${p.counter[0]}:${p.counter[1]}`}}`;
+  }).join("");
 }
 
 export function textToParts(text: string, names: CounterNames): TextPart[] {
@@ -28,6 +33,8 @@ export function textToParts(text: string, names: CounterNames): TextPart[] {
       const end = text.indexOf("}", i + 1);
       if (end > i) {
         const inner = text.slice(i + 1, end).trim();
+        const player = /^player\s*(\d{1,2})('s)?\s*(colou?r)?$/i.exec(inner);
+        if (player && Number(player[1]) >= 1 && Number(player[1]) <= 12) { flush(); out.push(player[3] ? { color: Number(player[1]) - 1 } : { player: Number(player[1]) - 1 }); i = end; continue; }
         const raw = /^(\d{1,2}):(\d{1,3})$/.exec(inner);
         const cell = raw ? ([Number(raw[1]), Number(raw[2])] as Cell) : names.cell(inner);
         if (cell) { flush(); out.push({ counter: cell }); i = end; continue; }

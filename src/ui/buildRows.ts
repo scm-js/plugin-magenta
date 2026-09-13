@@ -100,7 +100,7 @@ export function renderHook(api: PluginApi, host: Host, store: Store, hook: HookR
   if (hook.kind === "text") {
     const names = counterNames(store, host);
     const text = chip(api, partsToText(hook.parts, names), "text");
-    text.addEventListener("click", () => pickText(api, text, partsToText(hook.parts, names), (value) => update({ parts: textToParts(value, names) }), { title: t("Write {Counter name} where a counter's value goes") }));
+    text.addEventListener("click", () => pickText(api, text, partsToText(hook.parts, names), (value) => update({ parts: textToParts(value, names) }), { title: t("{Counter name} for a counter's value, {Player 1} for a name, {Player 1's colour} to switch colour; the buttons insert the game's own codes") }));
     const to = chip(api, hook.to === "all" ? t("everyone") : namer.player(hook.to), "");
     to.addEventListener("click", () => pickChoice(api, to, [{ value: -1, label: t("everyone") }, ...Array.from({ length: 8 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null }))], (v) => update({ to: v < 0 ? "all" : v }), { current: hook.to === "all" ? -1 : hook.to }));
     into.append(t("Show "), text, t(" to "), to, tag(api));
@@ -135,6 +135,19 @@ export function renderHook(api: PluginApi, host: Host, store: Store, hook: HookR
     const field = chip(api, FIELDS.find((f) => f.field === hook.field)?.label ?? hook.field, "");
     field.addEventListener("click", () => pickChoice(api, field, FIELDS, (v) => update({ field: FIELDS[v].field }), { current: FIELDS.findIndex((f) => f.field === hook.field) }));
     into.append(t("Set "), to, t(" to the "), field, t(" of the first "), ...filterChips(api, host, store, hook, update), tag(api));
+    return;
+  }
+  if (hook.kind === "setloc") {
+    const loc = chip(api, namer.location(hook.location), "");
+    loc.addEventListener("click", () => pickLocation(api, host, loc, hook.location, (v) => { if (v > 0 && v < 64) update({ location: v }); }));
+    const x = chip(api, String(hook.x), "");
+    x.addEventListener("click", () => pickNumber(api, x, hook.x, (v) => update({ x: v }), { min: 0, max: 65535, unit: "px" }));
+    const y = chip(api, String(hook.y), "");
+    y.addEventListener("click", () => pickNumber(api, y, hook.y, (v) => update({ y: v }), { min: 0, max: 65535, unit: "px" }));
+    const size = chip(api, hook.width === null || hook.height === null ? t("its size") : `${hook.width} × ${hook.height}`, "");
+    size.title = t("Width × height in map pixels, 32 per tile; 0 keeps the location's own size");
+    size.addEventListener("click", () => pickNumber(api, size, hook.width ?? 0, (wv) => pickNumber(api, size, hook.height ?? 0, (hv) => update({ width: wv > 0 ? wv : null, height: hv > 0 ? hv : null }), { min: 0, max: 65535, unit: t("px high") }), { min: 0, max: 65535, unit: t("px wide") }));
+    into.append(t("Move "), loc, t(" to "), x, ", ", y, t(" keeping "), size, tag(api));
     return;
   }
   // foreach
@@ -298,7 +311,7 @@ export function newScan(host: Host, store: Store): { condition: ConditionRecord;
 }
 
 /** A new action hook: a flag cell, the record, and the flag action to insert. */
-export function newHook(host: Host, store: Store, what: "text" | "math" | "foreach" | "count" | "read", query = ""): { action: ActionRecord; builds: BuildRecord[] } | null {
+export function newHook(host: Host, store: Store, what: "text" | "math" | "foreach" | "count" | "read" | "setloc", query = ""): { action: ActionRecord; builds: BuildRecord[] } | null {
   const flag = freeCell(store, host);
   if (!flag) return null;
   const named = store.sidecar.counters;
@@ -313,6 +326,8 @@ export function newHook(host: Host, store: Store, what: "text" | "math" | "forea
         ? { id, kind: "count", flag, ...filter, to: a }
         : what === "read"
           ? { id, kind: "read", flag, ...filter, field: "hp", to: a }
+          : what === "setloc"
+            ? { id, kind: "setloc", flag, location: host.locations().find((l) => l.value !== 64)?.value ?? 1, x: 0, y: 0, width: null, height: null }
           : { id, kind: "foreach", flag, ...filter, do: /give/i.test(query) ? { give: 1 } : /kill/i.test(query) ? { kill: true } : { set: "hp", value: 100 } };
   return { action: flagAction({ cell: flag }), builds: [...store.sidecar.builds, record] };
 }
