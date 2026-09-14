@@ -3858,7 +3858,7 @@ function closePopover() {
 function openPopover(anchor, build, options = {}) {
   closePopover();
   const root = document.createElement("div");
-  root.className = "mg-pop";
+  root.className = options.menu ? "mg-pop menu" : "mg-pop";
   if (options.width) root.style.width = `${options.width}px`;
   let closed = false;
   const handle = {
@@ -5949,6 +5949,27 @@ function renderList(deps, root, onMove) {
   root.querySelector(".mg-item.selected")?.scrollIntoView({ block: "nearest" });
 }
 
+// src/ui/settings.ts
+function openSettingsDialog(api) {
+  const t = api.i18n.t;
+  const w = api.ui.widgets;
+  const server = w.text({ value: serverUrl(api), placeholder: DEFAULT_SERVER });
+  api.ui.dialog({
+    title: t("Magenta Settings"),
+    size: "sm",
+    mount(body) {
+      body.append(
+        w.form([{ label: t("Build server"), field: server }]),
+        w.hint(t("The server that builds EUD maps (\u22EF \u25B8 Build EUD map\u2026). Leave it empty for the scmjs.dev one; a server of your own is the eud-server container."))
+      );
+    },
+    buttons: [
+      { label: t("OK"), primary: true, run: () => setServerUrl(api, server.value) },
+      { label: t("Cancel") }
+    ]
+  });
+}
+
 // src/ui/store.ts
 var Store = class {
   host;
@@ -6208,9 +6229,11 @@ var STYLE = `
 .mg-pop .mg-pop-foot .grow { flex: 1; }
 .mg-pop .mg-codes { display: flex; flex-wrap: wrap; gap: 3px; }
 .mg-pop .mg-code { width: 18px; height: 18px; border-radius: 2px; border: 1px solid var(--border-strong); cursor: pointer; padding: 0; font-size: 9px; }
-.mg-pop .mg-menu-item { flex: none; display: flex; align-items: center; gap: 8px; height: 24px; padding: 0 10px; border: 0; background: none; color: var(--text); text-align: left; cursor: pointer; border-radius: 2px; font: inherit; }
+.mg-pop.menu { gap: 0; max-height: calc(100vh - 16px); overflow-y: auto; }
+.mg-pop .mg-menu-item { flex: none; display: flex; align-items: center; gap: 8px; height: 24px; padding: 0 10px; border: 0; background: none; color: var(--text); text-align: left; cursor: pointer; border-radius: 2px; font: inherit; white-space: nowrap; overflow: hidden; }
+.mg-pop .mg-menu-item .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .mg-pop .mg-menu-item:hover { background: var(--sel); color: #fff; }
-.mg-pop .mg-menu-item .shortcut { margin-left: auto; padding-left: 20px; color: var(--text-faint); font-size: var(--fs-xs); }
+.mg-pop .mg-menu-item .shortcut { flex: none; margin-left: auto; padding-left: 20px; color: var(--text-faint); font-size: var(--fs-xs); }
 .mg-pop .mg-menu-item:hover .shortcut { color: rgba(255,255,255,0.7); }
 .mg-pop .mg-menu-item[disabled] { color: var(--text-faint); pointer-events: none; }
 .mg-pop .mg-menu-sep { height: 1px; background: var(--border); margin: 3px 0; }
@@ -6410,7 +6433,7 @@ function createPanel(api, hooks = {}) {
           for (const [i, x] of s.folders) if (x === id) folders.delete(i);
           s.commit(t("Remove folder"), () => s.list, { folders, sidecar: { folders: s.sidecar.folders.filter((x) => x.id !== id) } });
         } }, t("Remove folder (keep triggers)"))
-      ], { width: 200 });
+      ], { width: 200, menu: true });
     }
     const timerEntry = entry("game.triggerTimer");
     const isFrameTrigger = (tr) => {
@@ -6447,7 +6470,7 @@ function createPanel(api, hooks = {}) {
     }
     function menu(anchor) {
       const item = (label, run, options = {}) => {
-        const b = el("button", { type: "button", className: "mg-menu-item", disabled: options.disabled ?? false }, options.checked !== void 0 ? options.checked ? "\u2611 " : "\u2610 " : "", label, options.shortcut ? el("span", { className: "shortcut" }, options.shortcut) : null);
+        const b = el("button", { type: "button", className: "mg-menu-item", disabled: options.disabled ?? false }, el("span", { className: "label" }, options.checked !== void 0 ? options.checked ? "\u2611 " : "\u2610 " : "", label), options.shortcut ? el("span", { className: "shortcut" }, options.shortcut) : null);
         b.addEventListener("click", () => {
           closePopover();
           run();
@@ -6473,11 +6496,7 @@ function createPanel(api, hooks = {}) {
         item(t("Counters\u2026"), () => countersDialog()),
         sep(),
         item(t("Build EUD map\u2026"), () => openBuildDialog(api, h, s, everyFrame())),
-        item(t("Build server\u2026"), () => {
-          void api.ui.prompt(t("The scmjs.dev server that builds EUD maps"), { title: t("Build server"), value: serverUrl(api) }).then((v) => {
-            if (typeof v === "string") setServerUrl(api, v);
-          });
-        }),
+        item(t("Settings\u2026"), () => openSettingsDialog(api)),
         sep(),
         item(t("Show every trigger"), () => {
           filter = "all";
@@ -6491,7 +6510,7 @@ function createPanel(api, hooks = {}) {
           filter = "eud";
           render();
         }, { checked: filter === "eud" })
-      ], { width: 260 });
+      ], { width: 260, menu: true });
     }
     function perPlayerItem() {
       const i = s.selected;
@@ -6620,7 +6639,9 @@ function activate(api) {
       };
     }
   });
+  api.commands.register({ id: "settings", title: "Magenta Settings", run: () => openSettingsDialog(api) });
   api.menu.add("Triggers", { label: t("Magenta\u2026"), shortcut: "Ctrl+Shift+M", icon: "plugin", after: "Text Trigger Editor\u2026", enabled: () => api.document.isOpen(), command: "open" });
+  api.menu.add("Plugins", { label: t("Magenta Settings\u2026"), icon: "plugin", command: "settings" });
   api.hotkeys.add("Ctrl+Shift+M", { command: "open" });
   claims = installClaims(api, (index) => panel.open({ index }));
   return () => {

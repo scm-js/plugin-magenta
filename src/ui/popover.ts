@@ -1,6 +1,7 @@
 /**
  * A small box anchored to an element, over everything: the chips' pickers, the ⋯ menu,
- * the add row's hits. One at a time; it closes on Escape, a click outside, or `close()`,
+ * the add row's hits. A `menu` one is a column of items that scrolls when it is taller
+ * than the window, instead of the pickers' fixed height. One at a time; it closes on Escape, a click outside, or `close()`,
  * and gives focus back to the anchor.
  */
 let current: { close: () => void } | null = null;
@@ -14,10 +15,10 @@ export function closePopover(): void {
   current?.close();
 }
 
-export function openPopover(anchor: HTMLElement, build: (handle: PopoverHandle) => HTMLElement | HTMLElement[], options: { width?: number; returnFocus?: boolean; onClose?: () => void } = {}): PopoverHandle {
+export function openPopover(anchor: HTMLElement, build: (handle: PopoverHandle) => HTMLElement | HTMLElement[], options: { width?: number; menu?: boolean; returnFocus?: boolean; onClose?: () => void } = {}): PopoverHandle {
   closePopover();
   const root = document.createElement("div");
-  root.className = "mg-pop";
+  root.className = options.menu ? "mg-pop menu" : "mg-pop";
   if (options.width) root.style.width = `${options.width}px`;
   let closed = false;
   const handle: PopoverHandle = {

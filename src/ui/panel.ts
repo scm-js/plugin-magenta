@@ -11,11 +11,12 @@ import type { Folder } from "../model/sidecar";
 import { setOwners } from "../model/records";
 import { DEFAULT_PLACEHOLDER, HUMAN_PLAYERS } from "../model/sync";
 import { RECIPES, recipeContext } from "../model/recipes";
-import { openBuildDialog, serverUrl, setServerUrl } from "./build";
+import { openBuildDialog } from "./build";
 import { pickChoice } from "./chips";
 import { renderEditor } from "./editor";
 import { Host } from "./host";
 import { renderList } from "./list";
+import { openSettingsDialog } from "./settings";
 import { closePopover, openPopover } from "./popover";
 import { Store } from "./store";
 import { STYLE } from "./styles";
@@ -190,7 +191,7 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
       openPopover(anchor, (p) => [
         el("button", { type: "button", className: "mg-menu-item", onclick: () => { p.close(); void api.ui.prompt(t("Folder name"), { title: t("Rename folder"), value: f.name }).then((name) => { if (name?.trim()) s.updateSidecar(t("Rename folder"), { folders: s.sidecar.folders.map((x) => (x.id === id ? { ...x, name: name.trim() } : x)) }); }); } }, t("Rename…")),
         el("button", { type: "button", className: "mg-menu-item", onclick: () => { p.close(); const folders = new Map(s.folders); for (const [i, x] of s.folders) if (x === id) folders.delete(i); s.commit(t("Remove folder"), () => s.list, { folders, sidecar: { folders: s.sidecar.folders.filter((x) => x.id !== id) } }); } }, t("Remove folder (keep triggers)")),
-      ], { width: 200 });
+      ], { width: 200, menu: true });
     }
 
     /* ── The every-frame switch ── */
@@ -223,7 +224,7 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
     /* ── ⋯ ── */
     function menu(anchor: HTMLElement): void {
       const item = (label: string, run: () => void, options: { shortcut?: string; disabled?: boolean; checked?: boolean } = {}) => {
-        const b = el("button", { type: "button", className: "mg-menu-item", disabled: options.disabled ?? false }, options.checked !== undefined ? (options.checked ? "☑ " : "☐ ") : "", label, options.shortcut ? el("span", { className: "shortcut" }, options.shortcut) : null) as HTMLButtonElement;
+        const b = el("button", { type: "button", className: "mg-menu-item", disabled: options.disabled ?? false }, el("span", { className: "label" }, options.checked !== undefined ? (options.checked ? "☑ " : "☐ ") : "", label), options.shortcut ? el("span", { className: "shortcut" }, options.shortcut) : null) as HTMLButtonElement;
         b.addEventListener("click", () => { closePopover(); run(); });
         return b;
       };
@@ -246,12 +247,12 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
         item(t("Counters…"), () => countersDialog()),
         sep(),
         item(t("Build EUD map…"), () => openBuildDialog(api, h, s, everyFrame())),
-        item(t("Build server…"), () => { void api.ui.prompt(t("The scmjs.dev server that builds EUD maps"), { title: t("Build server"), value: serverUrl(api) }).then((v) => { if (typeof v === "string") setServerUrl(api, v); }); }),
+        item(t("Settings…"), () => openSettingsDialog(api)),
         sep(),
         item(t("Show every trigger"), () => { filter = "all"; render(); }, { checked: filter === "all" }),
         item(t("Show only triggers with a problem"), () => { filter = "problems"; render(); }, { checked: filter === "problems" }),
         item(t("Show only EUD triggers"), () => { filter = "eud"; render(); }, { checked: filter === "eud" }),
-      ], { width: 260 });
+      ], { width: 260, menu: true });
     }
     function perPlayerItem(): HTMLElement {
       const i = s.selected;

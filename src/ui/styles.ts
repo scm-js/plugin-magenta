@@ -78,9 +78,11 @@ export const STYLE = `
 .mg-pop .mg-pop-foot .grow { flex: 1; }
 .mg-pop .mg-codes { display: flex; flex-wrap: wrap; gap: 3px; }
 .mg-pop .mg-code { width: 18px; height: 18px; border-radius: 2px; border: 1px solid var(--border-strong); cursor: pointer; padding: 0; font-size: 9px; }
-.mg-pop .mg-menu-item { flex: none; display: flex; align-items: center; gap: 8px; height: 24px; padding: 0 10px; border: 0; background: none; color: var(--text); text-align: left; cursor: pointer; border-radius: 2px; font: inherit; }
+.mg-pop.menu { gap: 0; max-height: calc(100vh - 16px); overflow-y: auto; }
+.mg-pop .mg-menu-item { flex: none; display: flex; align-items: center; gap: 8px; height: 24px; padding: 0 10px; border: 0; background: none; color: var(--text); text-align: left; cursor: pointer; border-radius: 2px; font: inherit; white-space: nowrap; overflow: hidden; }
+.mg-pop .mg-menu-item .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .mg-pop .mg-menu-item:hover { background: var(--sel); color: #fff; }
-.mg-pop .mg-menu-item .shortcut { margin-left: auto; padding-left: 20px; color: var(--text-faint); font-size: var(--fs-xs); }
+.mg-pop .mg-menu-item .shortcut { flex: none; margin-left: auto; padding-left: 20px; color: var(--text-faint); font-size: var(--fs-xs); }
 .mg-pop .mg-menu-item:hover .shortcut { color: rgba(255,255,255,0.7); }
 .mg-pop .mg-menu-item[disabled] { color: var(--text-faint); pointer-events: none; }
 .mg-pop .mg-menu-sep { height: 1px; background: var(--border); margin: 3px 0; }
