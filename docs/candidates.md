@@ -207,12 +207,15 @@ lockdown energy cost (2), the name from a map string (3, with a question: the re
 the invincible flag on a zergling made afterwards (4), the colour group (5), supply provided
 and cap (6: 7/200), the looks entry (a marine drawn as a zealot, and marines trained later
 keep the look), the build time (8: trained in a second), gas and the upgrade level (9), a
-placed zealot's shields (0). Fail: the ghost's energy (0: unchanged after a write of 250 —
-its maximum is 200; retry with 100). Unreported: every "Read" and "Read back" line (the speed
-read-back did not show, as in probe 5; the frame counter, the clock, the slot and race bytes,
-the supply-used read, the cloak, position and screen reads were not mentioned), the armor
-level cap, max HP / sight / weapon range and cooldown (8), the alliance (9). Probe 9 will carry
-a control line for the read construct itself.
+placed zealot's shields (0). Second report, same day: the "Read" lines did show (the frame
+counter at 10 s, the clock at 15 s, the speed read-back), only the marines were named Gunner
+(the name write is per type), the key 7 marine drew as a zealot and marines trained after it
+kept the look, the key 8 marine had 100 HP and shot from farther, and the ghost's energy
+flashed to 250 and settled at 200/200 — the write takes and the game clamps to the maximum.
+Fail: the armor level cap (Infantry Armor still stopped at 3 with max level 10 written), so
+`upgrade.maxLevel` is a read only. Likely: the alliance write (the marines seemed to stop
+shooting the tanks). Unreported: the slot type and race lines, the supply-used read-back, the
+size read-back, sight, cooldown, the cloak, position and screen reads.
 
 ## After the play-through
 

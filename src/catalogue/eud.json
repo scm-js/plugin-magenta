@@ -52,7 +52,9 @@
         "read": true,
         "write": true
       },
-      "source": "units.dat hitpoints (eud-book)"
+      "source": "units.dat hitpoints (eud-book)",
+      "verified": true,
+      "note": "Verified: a marine made after the write had 100 HP (probe 8)."
     },
     {
       "id": "unit.maxShields",
@@ -621,7 +623,7 @@
         "write": true
       },
       "source": "flingy.dat movement control, top speed, acceleration, halt distance (DatEdit's layout)",
-      "note": "Four records: the unit's flingy is switched to table control and given this top speed, with acceleration and stopping distance to match. Units made after this move at the new speed; the ones already on the map keep theirs. A Marine walks at 4, a Vulture at 6.7. Hero units that share a type's flingy change with it. Reading the top speed back through a condition never fired in two runs, so treat the movement tables as write-only.",
+      "note": "Four records: the unit's flingy is switched to table control and given this top speed, with acceleration and stopping distance to match. Units made after this move at the new speed; the ones already on the map keep theirs. A Marine walks at 4, a Vulture at 6.7. Hero units that share a type's flingy change with it.",
       "verified": true
     },
     {
@@ -664,7 +666,7 @@
         "write": true
       },
       "source": "units.dat map string index (Remastered's unit names from the map's strings)",
-      "note": "The name comes from one of the map's strings, shown wherever the unit's name appears. Remastered only. Probe 8 reported other units showing the name too; whether the write reaches more than the one type is being checked.",
+      "note": "The name comes from one of the map's strings, shown wherever the unit's name appears; the one type only. Remastered only.",
       "verified": true
     },
     {
@@ -1493,7 +1495,8 @@
         "write": true
       },
       "source": "weapons.dat maximum range (eud-book)",
-      "note": "In pixels: 32 per tile."
+      "note": "In pixels, 32 a tile. Verified: marines shot from farther (probe 8).",
+      "verified": true
     },
     {
       "id": "weapon.minRange",
@@ -1669,7 +1672,7 @@
     },
     {
       "id": "upgrade.maxLevel",
-      "kind": "both",
+      "kind": "condition",
       "group": "Upgrades",
       "name": "Maximum level of an upgrade",
       "aliases": [
@@ -1678,7 +1681,6 @@
         "level cap"
       ],
       "sentence": {
-        "action": "Set the maximum level of {upgrade} {mod} {value}",
         "condition": "The maximum level of {upgrade} is {cmp} {value}"
       },
       "args": [
@@ -1706,10 +1708,10 @@
       },
       "remastered": {
         "read": true,
-        "write": true
+        "write": false
       },
       "source": "upgrades.dat max repeats (DatEdit's layout)",
-      "note": "How many times the upgrade can be researched. Not yet seen working in Remastered."
+      "note": "How many times the upgrade can be researched. Writing it did nothing in Remastered (probe 8: Infantry Armor still stopped at 3), so it is a read only."
     },
     {
       "id": "tech.mineralCost",
@@ -2148,7 +2150,7 @@
         "write": true
       },
       "source": "player alliances 0x58D634 (eud-book)",
-      "note": "As a condition this reads what Set Alliance Status wrote; the game has no native way to test it. The catalogue had this at 0x58D6F8 until 2026-09-14, which is the game clock; not yet seen working in Remastered."
+      "note": "As a condition this reads what Set Alliance Status wrote; the game has no native way to test it. The catalogue had this at 0x58D6F8 until 2026-09-14, which is the game clock. Probe 8: after the write, the marines seemed to stop shooting the allied tanks — a likely pass, not yet certain."
     },
     {
       "id": "player.vision",
@@ -3005,7 +3007,8 @@
         "write": false
       },
       "source": "elapsed time in game ticks 0x57F23C (eud-book)",
-      "note": "About 24 a second at Fastest, 15 at Normal. Not yet seen working in Remastered."
+      "note": "About 24 a second at Fastest, 15 at Normal. Verified: a line at 10 s (probe 8).",
+      "verified": true
     },
     {
       "id": "game.seconds",
@@ -3036,7 +3039,8 @@
         "write": false
       },
       "source": "elapsed time in game seconds 0x58D6F8 (eud-book)",
-      "note": "The seconds the in-game clock shows. The earlier entry at 0x58D6F4 never fired; this one is the next dword. Not yet seen working in Remastered."
+      "note": "The seconds the in-game clock shows. The earlier entry at 0x58D6F4 (the countdown timer) never fired; this one is the next dword. Verified: a line at 15 s (probe 8).",
+      "verified": true
     },
     {
       "id": "cunit.hp",
@@ -3165,7 +3169,8 @@
         "write": true
       },
       "source": "CUnit energy at +0xA2 (community CUnit layout)",
-      "note": "A write of 250 energy to a placed Ghost did nothing in probe 8 (its maximum is 200 without the upgrade); not yet seen working."
+      "note": "Verified (probe 8). A value past the unit's maximum shows for a frame and is clamped back by the game, so 250 on a Ghost reads 200/200.",
+      "verified": true
     },
     {
       "id": "cunit.owner",
