@@ -2171,7 +2171,9 @@ var eud_default = {
         read: true,
         write: true
       },
-      source: "player gas (eud-book)"
+      source: "player gas (eud-book)",
+      verified: true,
+      note: "Verified: +500 gas (probe 8)."
     },
     {
       id: "player.upgradeLevel",
@@ -2224,7 +2226,8 @@ var eud_default = {
         write: true
       },
       source: "current upgrade level, the 46 original upgrades (eud-book)",
-      note: "The Brood War upgrades (46 and up) live in a second table this entry does not reach."
+      note: "Verified: Infantry Weapons set to 3 showed on the marines (probe 8).",
+      verified: true
     },
     {
       id: "player.techResearched",
@@ -2284,7 +2287,8 @@ var eud_default = {
         write: true
       },
       source: "tech researched, the 24 original technologies (eud-book)",
-      note: "The Brood War technologies (24 and up) live in a second table this entry does not reach."
+      note: "Verified: Lockdown and Personnel Cloaking researched at the start of probe 8, and the ghost could cast.",
+      verified: true
     },
     {
       id: "player.alliance",
@@ -2976,7 +2980,8 @@ var eud_default = {
         write: true
       },
       source: "trigger cycle countdown (eud-book)",
-      note: "Frames until the next trigger cycle. Setting it to 0 at the end of every cycle runs triggers every frame \u2014 the every-frame switch in the \u22EF menu does exactly that."
+      note: "Set to 0 every cycle by the every-frame switch; every probe map runs on it.",
+      verified: true
     },
     {
       id: "game.localPlayer",
