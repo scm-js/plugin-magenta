@@ -220,6 +220,26 @@ Rifle). Your marines start at 10 HP and your vulture at 20; personnel cloaking i
 | — | reads at start | your slot type (2), Player 3's (0), your race (1), supply used ≥ 1 |
 | — | reads on your doing | cloak the ghost; walk it east and south past the middle; scroll the screen right and down |
 
+**Probe 10 — presentation** (`magenta-probe-10-presentation-eud.scx`, built through the
+spec-4 server; written 2026-09-14, not yet played). Slice 4's two candidates as hooks in
+`plugins/magenta.py`: `terrain` rewrites every tile under a location in the MTXM array the
+game draws from (walkability does not follow), and the `tint` verb rewrites the draw
+function of every image of a unit's sprite — the look of a cloaked unit, of a hallucination,
+of the warp flash — without the state behind it.
+
+| Key | Does | Pass looks like |
+| --- | --- | --- |
+| 1 | the ground under Home becomes another terrain's tile | the tiles change (scroll away and back if not at once) |
+| 2 | the ground under the Pen becomes a third terrain's tile | the tiles change |
+| 3 | the Beacon's tiles become tile 0 | black, or the tileset's tile 0 |
+| 4 | marines drawn with the cloaked look (draw function 6) | see-through marines |
+| 5 | marines with the hallucination look (16) | blue marines |
+| 6 | marines with the warp flash (17) | a white flash, then whatever the game does next |
+| 7 | marines back to normal (0) | plain marines |
+| 8 | the enemy zerglings with the hallucination look | blue zerglings |
+
+For each: does the look show, and does it stay (an animation frame may reset it).
+
 **Probe 9, played 2026-09-14.** Passes: size class (1: a vulture took 5 off a marine, the
 read-back showed), the organic and mechanical flags (2: the medic healed, the SCV repaired),
 unit costs and supply (3), the ground weapon swap (5: marines fired the tank's cannon), the

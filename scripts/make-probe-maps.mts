@@ -22,8 +22,12 @@
  *      alliance both ways, the hallucination flag, and the slot, race, supply-used, cloak,
  *      position and screen reads again.
  *
- * Maps 6 and 7 need the build server (`--build http://localhost:8085`, the eud-server
- * container with the spec-3 plugin); their built copies end in `-eud.scx`, and those are
+ *  10  presentation (slice 4): the terrain under a location rewritten in the MTXM array the
+ *      game draws from, and a unit's look through its images' draw functions — the
+ *      see-through of a cloaked unit, the blue of a hallucination, the warp flash.
+ *
+ * Maps 6, 7 and 10 need the build server (`--build http://localhost:8085`, the eud-server
+ * container with the spec-4 plugin); their built copies end in `-eud.scx`, and those are
  * the ones to play. Maps 5, 8 and 9 play as written.
  *
  *   npx tsx scripts/make-probe-maps.mts [--build URL] [../scm-js]
@@ -675,6 +679,52 @@ const MAPS: ProbeMap[] = [
         h.once(27, [eudIs("game.screenY", {}, 1024, Comparison.AtLeast)], "Read: the screen scrolled below the middle (screen y ≥ 1024)."),
         h.trigger([P1], [always()], [h.comment("Magenta: run triggers every frame"), everyFrame(), preserve()]),
       ]);
+    },
+  },
+  /* ────────────────────────────────────────────────────────────────────────────── */
+  {
+    name: "Magenta probe 10 — presentation", file: "magenta-probe-10-presentation.scx",
+    place(place) {
+      for (let i = 0; i < 4; i++) place(MARINE, 0, 12.5 + i, 12.5);
+      place(ZERGLING, 1, 38.5, 14.5); place(ZERGLING, 1, 40.5, 14.5);
+      place(BEACON_UNIT, 11, 20, 10);
+    },
+    build(scn, h) {
+      const cell = (u: number): [number, number] => [11, u];
+      const F = { dirt: cell(181), water: cell(182), black: cell(183), cloaked: cell(184), halluc: cell(185), flash: cell(186), normal: cell(187), enemy: cell(188) };
+      const flag = (c: [number, number]) => setDeaths(c, 1);
+      // Tiles of other terrains of the tileset, for a change that shows: the flat map is terrain 2.
+      const tileOf = (isomId: number) => (jungle ? flatTerrain(2, 2, baseTerrain(jungle, isomId), jungle, () => 0.5, ERA_JUNGLE).tiles[0] : isomId * 16);
+      const other = tileOf(3), water = tileOf(4);
+      const P1MARINE = { unit: MARINE, owner: 0, location: null };
+      const hooks = [
+        { id: "t1", kind: "terrain", flag: F.dirt, location: HOME, tile: other },
+        { id: "t2", kind: "terrain", flag: F.water, location: PEN, tile: water },
+        { id: "t3", kind: "terrain", flag: F.black, location: BEACON, tile: 0 },
+        { id: "c", kind: "foreach", flag: F.cloaked, ...P1MARINE, do: { tint: "cloaked" } },
+        { id: "h", kind: "foreach", flag: F.halluc, ...P1MARINE, do: { tint: "hallucination" } },
+        { id: "f", kind: "foreach", flag: F.flash, ...P1MARINE, do: { tint: "flash" } },
+        { id: "n", kind: "foreach", flag: F.normal, ...P1MARINE, do: { tint: "normal" } },
+        { id: "e", kind: "foreach", flag: F.enemy, unit: ZERGLING, owner: 1, location: null, do: { tint: "hallucination" } },
+      ];
+      applyTriggers(scn, [
+        h.trigger([P1], [always()], [
+          h.comment("start"),
+          h.text(`Probe 10, presentation. Terrain: 1 rewrites the ground under Home (your yard) to tile ${other}, 2 the Pen (enemy yard, east) to tile ${water}, 3 the Beacon's tiles to 0. Scroll away and back if nothing changes at once.`),
+          h.text("Looks: 4 your marines drawn see-through (cloaked look), 5 blue (hallucination look), 6 white flash, 7 back to normal, 8 the enemy zerglings blue. Say for each whether the look shows, and whether it stays."),
+        ]),
+        ...onKey(h, "1", `terrain under Home = tile ${other}. Expect: the ground there changes.`, [flag(F.dirt)]),
+        ...onKey(h, "2", `terrain under the Pen = tile ${water}. Expect: the ground there changes (pinged).`, [flag(F.water), ping(PEN)]),
+        ...onKey(h, "3", "terrain under the Beacon = tile 0. Expect: black, or the tileset's tile 0.", [flag(F.black)]),
+        ...onKey(h, "4", "marines: cloaked look (draw function 6).", [flag(F.cloaked)]),
+        ...onKey(h, "5", "marines: hallucination look (16).", [flag(F.halluc)]),
+        ...onKey(h, "6", "marines: warp flash look (17).", [flag(F.flash)]),
+        ...onKey(h, "7", "marines: normal look (0).", [flag(F.normal)]),
+        ...onKey(h, "8", "enemy zerglings: hallucination look.", [flag(F.enemy)]),
+        h.trigger([P1], [always()], [h.comment("Magenta: run triggers every frame"), everyFrame(), preserve()]),
+      ]);
+      const spec = { version: 4, everyFrame: true, chat: null, hooks, scans: [], msqc: null };
+      return { plugins: { magenta: { spec: JSON.stringify(spec) }, eudTurbo: {} } };
     },
   },
 ];
