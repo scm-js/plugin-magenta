@@ -160,7 +160,7 @@ like the catalogue.
 ### Rows that need a Build
 
 Some rows have no record in the game's own trigger set and only work in a map built by
-[euddraft](https://github.com/armoha/euddraft), which the scmjs.dev server runs for you.
+[euddraft](https://github.com/armoha/euddraft), which the scmjs.dev build server runs for you.
 They read like any other row, with a **BUILD** tag, and the trigger that carries one shows
 a BUILD badge in the list.
 
@@ -214,15 +214,17 @@ the map as it stands to the server, which adds the code behind the rows and hand
 built map to save beside the source, `name-eud.scx`. Nothing about the map is kept on the
 server. Only StarCraft: Remastered plays a built map, and this editor cannot open one yet,
 so keep the source map: the built one is what players get, the way a compiled program is.
-**⋯ ▸ Build server…** changes the server address (`https://api.scmjs.dev` by default).
+The **Build server** field of the dialog is the server address (`https://eud.scmjs.dev` by
+default; a build server of your own is the [eud-server](https://github.com/scm-js/eud-server)
+container).
 
 An action row does its work right after the map's triggers in the cycle its trigger fired;
 a chat command or an input fires once per message, press or click, and a check is fresh
 every cycle. Synced input needs a few things of its own in the map, which Magenta takes:
 one location slot for MSQC, eight in a row for the players' mice, a player slot nobody
 uses (Player 11) and a unit type that must not appear in the map (the Valkyrie by default). The code behind them is the Magenta plugin of the
-server's build box, `euddraft/plugins/magenta.py` in the ai-server repository, which turns
-the rows into eudplib code; nothing you write in a row is code.
+build server, `plugins/magenta.py` in the eud-server repository, which turns the rows into
+eudplib code; nothing you write in a row is code.
 
 ### What Magenta keeps with the map
 

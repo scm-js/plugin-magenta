@@ -3638,7 +3638,7 @@ function checkChatMessage(text) {
 // src/ui/build.ts
 var CAMMOVE_LOC = "cammoveLoc";
 var CAMMOVE_SWITCH = "cammove";
-var DEFAULT_SERVER = "https://api.scmjs.dev";
+var DEFAULT_SERVER = "https://eud.scmjs.dev";
 var SERVER_KEY = "server";
 var serverUrl = (api) => api.storage.get(SERVER_KEY, DEFAULT_SERVER).replace(/\/+$/, "");
 var setServerUrl = (api, url) => {
@@ -3768,7 +3768,7 @@ function openBuildDialog(api, host, store, everyFrame) {
         log.style.display = "none";
         try {
           const bytes = new Uint8Array(await file.arrayBuffer());
-          const res = await fetch(`${serverUrl(api)}/v1/eud/build`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ map: toBase64(bytes), plugins: plugins2 }) });
+          const res = await fetch(`${serverUrl(api)}/build`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ map: toBase64(bytes), plugins: plugins2 }) });
           const answer = await res.json().catch(() => null);
           if (!res.ok || !answer?.map) {
             const e = answer?.error;

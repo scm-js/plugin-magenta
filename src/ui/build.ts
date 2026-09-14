@@ -1,8 +1,9 @@
 /**
  * The Build step: the map as it stands, plus the sidecar's build records, sent to the
- * scmjs.dev server's euddraft box, and the built map saved beside the source. Nothing
- * about the map is kept on the server; the built file is what players get, the source
- * map stays the editor's. The server address is the plugin's own setting.
+ * eud-server (scm-js/eud-server, euddraft behind one route), and the built map saved
+ * beside the source. Nothing about the map is kept on the server; the built file is what
+ * players get, the source map stays the editor's. The server address is the plugin's own
+ * setting, the Build server field of the dialog.
  */
 import type { PluginApi } from "@scm-js/plugin-api";
 import { composePlugins, DEFAULT_OPTIONS, type BuildOptions } from "../model/builds";
@@ -13,7 +14,7 @@ const CAMMOVE_LOC = "cammoveLoc";
 /** The plugin follows only while a switch of this name is set, so triggers can turn the camera on and off. */
 const CAMMOVE_SWITCH = "cammove";
 
-export const DEFAULT_SERVER = "https://api.scmjs.dev";
+export const DEFAULT_SERVER = "https://eud.scmjs.dev";
 const SERVER_KEY = "server";
 
 export const serverUrl = (api: PluginApi): string => api.storage.get(SERVER_KEY, DEFAULT_SERVER).replace(/\/+$/, "");
@@ -122,7 +123,7 @@ export function openBuildDialog(api: PluginApi, host: Host, store: Store, everyF
         log.style.display = "none";
         try {
           const bytes = new Uint8Array(await file.arrayBuffer());
-          const res = await fetch(`${serverUrl(api)}/v1/eud/build`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ map: toBase64(bytes), plugins }) });
+          const res = await fetch(`${serverUrl(api)}/build`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ map: toBase64(bytes), plugins }) });
           const answer = (await res.json().catch(() => null)) as ({ map?: string; bytes?: number; log?: string } & BuildError) | null;
           if (!res.ok || !answer?.map) {
             const e = answer?.error;

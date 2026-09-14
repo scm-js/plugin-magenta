@@ -4,8 +4,8 @@
  * input, text with numbers in it, a pass over every unit of a kind, counter maths.
  * Each lives in the sidecar as a `BuildRecord`; in the map it is a private counter cell
  * the trigger sets (an action) or reads (a condition), so the trigger stays an ordinary
- * trigger and every editor can show it. The build box's Magenta plugin (`magenta.py` in
- * ai-server's euddraft image) turns the records into eudplib code that watches the cells:
+ * trigger and every editor can show it. The build server's Magenta plugin (`plugins/magenta.py`
+ * in scm-js/eud-server) turns the records into eudplib code that watches the cells:
  * an action hook runs after the map's triggers in the cycle its flag went up and clears
  * it; a scan runs every cycle and leaves its answer in a cell; input arrives through the
  * MSQC plugin, which turns each player's local keys, clicks, mouse and selection into
@@ -96,7 +96,7 @@ export const DEFAULT_OPTIONS: BuildOptions = { camera: null, bgm: null, noAirCol
 
 export const DEFAULT_MSQC: Msqc = { qcUnit: 58, qcLoc: 62, qcPlayer: 10, keys: {}, clicks: {}, mouseBase: null, mouseIn: {}, select: null };
 
-/** How a value is sent to the box: `plugins` for `POST /v1/eud/build`. */
+/** How a value is sent to the build server: `plugins` for `POST /build`. */
 export interface BuildPlugins {
   [plugin: string]: Record<string, string | number>;
 }
