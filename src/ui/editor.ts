@@ -75,11 +75,13 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
   const title = el("input", { className: "input", type: "text", placeholder: t("Untitled trigger — type a name"), value: titleText, title: t("The trigger's name, kept as its Comment action so every editor shows it") }) as HTMLInputElement;
   const commitTitle = () => {
     const text = title.value.trim();
-    if (text === titleText) return;
+    if (text === titleText || (!text && ci < 0)) return;
     store.commit(t("Rename trigger"), (intern) => store.list.map((tr, i) => {
       if (i !== index) return tr;
-      const actions = tr.actions.filter((a) => a.type !== ActionType.Comment);
-      if (text) actions.unshift({ ...api.triggers.newAction(ActionType.Comment), text: intern(text) });
+      const actions = [...tr.actions];
+      if (ci < 0) actions.unshift({ ...api.triggers.newAction(ActionType.Comment), text: intern(text) });
+      else if (text) actions[ci] = { ...actions[ci], text: intern(text) };
+      else actions.splice(ci, 1);
       return { ...tr, actions };
     }));
   };
@@ -172,7 +174,7 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
 
   /* ── Actions ── */
   const actions = liveActions(trigger);
-  const shownActions = actions.map((a, i) => ({ a, i })).filter(({ a }) => a.type !== ActionType.Comment);
+  const shownActions = actions.map((a, i) => ({ a, i })).filter(({ i }) => i !== ci);
   const actSection = el("div", { className: "mg-section" }, el("div", { className: "mg-section-head" }, t("Actions"), el("span", { className: "grow" }), el("span", { className: "hint" }, `${actions.length}/${MAX_ACTIONS}`)));
   const writeActions = (label: string, next: ActionRecord[]) => replace(label, { ...trigger, actions: next });
   for (const { a, i } of shownActions) {
@@ -222,6 +224,14 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
       const made = newCounterStep(store, host, pick.what);
       if (!made) { api.ui.toast({ kind: "error", title: t("No free counter cells for the step") }); return; }
       store.commit(t("Add counter step"), () => store.list.map((tr, j) => (j !== index ? tr : { ...tr, actions: [...actions, flagAction({ cell: made.flag })] })), { sidecar: { expansions: [...store.sidecar.expansions, made.expansion] } });
+      return;
+    }
+    if (pick.kind === "native" && pick.type === ActionType.Comment) {
+      // The first Comment is the title, so an empty one would only vanish into an empty title field.
+      void api.ui.prompt(ci < 0 ? t("The trigger's name, shown by every trigger editor") : t("A note on this trigger; the game does nothing with it"), { title: t("Comment") }).then((text) => {
+        if (!text?.trim()) return;
+        store.commit(t("Add action"), (intern) => store.list.map((tr, j) => (j !== index ? tr : { ...tr, actions: [...liveActions(tr), { ...api.triggers.newAction(ActionType.Comment), text: intern(text.trim()) }] })));
+      });
       return;
     }
     writeActions(t("Add action"), [...actions, newAction(api, pick, entities, query)]);

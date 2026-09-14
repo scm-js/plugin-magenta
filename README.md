@@ -30,8 +30,9 @@ and can be resized from its corner; the map stays in reach while it is open.
 ### The list
 
 The left pane is the map's triggers in the order the game runs them. A trigger's title is its
-Comment action, the convention SCMDraft uses, so a title given here shows in every editor. A
-trigger without one shows its sentences. Badges say what is special about a row: **EUD** for a
+first Comment action, the convention SCMDraft uses, so a title given here shows in every editor.
+Any further Comment is a note and shows among the actions. A trigger without one shows its
+sentences. Badges say what is special about a row: **EUD** for a
 trigger that reads or writes memory, **+34** for one that Magenta generated triggers for, a
 lock for a run another plugin owns, **!** for a problem.
 
