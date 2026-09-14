@@ -3638,7 +3638,7 @@ function checkChatMessage(text) {
 // src/ui/build.ts
 var CAMMOVE_LOC = "cammoveLoc";
 var CAMMOVE_SWITCH = "cammove";
-var DEFAULT_SERVER = "https://eud.scmjs.dev";
+var DEFAULT_SERVER = "https://eud-server-516992750679.us-central1.run.app";
 var SERVER_KEY = "server";
 var serverUrl = (api) => api.storage.get(SERVER_KEY, DEFAULT_SERVER).replace(/\/+$/, "");
 var setServerUrl = (api, url) => {
