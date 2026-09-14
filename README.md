@@ -214,7 +214,9 @@ the map as it stands to the server, which adds the code behind the rows and hand
 built map to save beside the source, `name-eud.scx`. Nothing about the map is kept on the
 server. Only StarCraft: Remastered plays a built map. Keep the source map: the built one is
 what players get, the way a compiled program is, and while the editor opens it, the rows
-behind its triggers are gone into eudplib's code.
+behind its triggers are gone into eudplib's code. The dialog's **Build server** field is
+the server address (the scmjs.dev one by default; a server of your own is the
+[eud-server](https://github.com/scm-js/eud-server) container).
 
 An action row does its work right after the map's triggers in the cycle its trigger fired;
 a chat command or an input fires once per message, press or click, and a check is fresh
