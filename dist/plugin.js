@@ -2897,12 +2897,19 @@ function decodeSidecar(bytes) {
       settings: parsed.settings && typeof parsed.settings === "object" ? parsed.settings : {},
       expansions: Array.isArray(parsed.expansions) ? parsed.expansions.filter((x) => x && typeof x.id === "string" && typeof x.kind === "string") : [],
       builds: Array.isArray(parsed.builds) ? parsed.builds.filter((x) => x && typeof x.id === "string" && typeof x.kind === "string") : [],
-      chat: parsed.chat && Array.isArray(parsed.chat.cell) ? { cell: [Number(parsed.chat.cell[0]), Number(parsed.chat.cell[1])] } : null,
+      chat: parsed.chat && Array.isArray(parsed.chat.cell) ? { cell: [Number(parsed.chat.cell[0]), Number(parsed.chat.cell[1])], args: decodeArgs(parsed.chat.args) } : null,
       msqc: parsed.msqc && typeof parsed.msqc === "object" ? { keys: {}, clicks: {}, mouseIn: {}, select: null, mouseBase: null, qcUnit: 58, qcLoc: 62, qcPlayer: 10, ...parsed.msqc } : null
     };
   } catch {
     return emptySidecar();
   }
+}
+function decodeArgs(args) {
+  if (!args || typeof args !== "object") return null;
+  const a2 = args;
+  const cell = (v) => Array.isArray(v) && v.length === 2 ? [Number(v[0]), Number(v[1])] : null;
+  const ptr = cell(a2.ptr), len = cell(a2.len), pattern = cell(a2.pattern), number = cell(a2.number);
+  return ptr && len && pattern && number ? { ptr, len, pattern, number } : null;
 }
 function encodeSidecar(sidecar) {
   return new TextEncoder().encode(JSON.stringify(sidecar, null, 2));
@@ -3572,9 +3579,48 @@ function recipeContext(intern, locations) {
 }
 
 // src/model/builds.ts
+var UNIT_FIELDS = [
+  { field: "hp", label: "hit points" },
+  { field: "shields", label: "shields" },
+  { field: "energy", label: "energy" },
+  { field: "kills", label: "kills" },
+  { field: "x", label: "x" },
+  { field: "y", label: "y" },
+  { field: "order", label: "order id" },
+  { field: "hasTarget", label: "targeting something", yesNo: true },
+  { field: "underAttack", label: "under attack", yesNo: true },
+  { field: "burrowed", label: "burrowed", yesNo: true },
+  { field: "inTransport", label: "in a transport", yesNo: true },
+  { field: "speed", label: "moving", yesNo: true },
+  { field: "buildTime", label: "remaining build time" },
+  { field: "resources", label: "resources" },
+  { field: "cooldown", label: "weapon cooldown" }
+];
+var TIMERS = [
+  { timer: "stim", label: "stim" },
+  { timer: "ensnare", label: "ensnare" },
+  { timer: "plague", label: "plague" },
+  { timer: "lockdown", label: "lockdown" },
+  { timer: "stasis", label: "stasis" },
+  { timer: "maelstrom", label: "maelstrom" },
+  { timer: "irradiate", label: "irradiate" },
+  { timer: "matrix", label: "a defensive matrix" }
+];
+var TIMER_TICKS_PER_SECOND = 3;
+var HOLD_FIRE_COOLDOWN = 250;
+var isChatPattern = (c2) => c2.arg === "number" || c2.message.startsWith("^") && c2.message.endsWith("$");
+function chatKey(c2) {
+  if (c2.arg === "number") return `^${c2.message} .*.*$`;
+  if (c2.message.startsWith("^") && c2.message.endsWith("$")) {
+    const parts = c2.message.slice(1, -1).split(".*");
+    if (parts.length === 2) return `^${parts[0]}.*.*${parts[1]}$`;
+    return c2.message;
+  }
+  return c2.message;
+}
 var DEFAULT_OPTIONS = { camera: null, bgm: null, noAirCollision: false, unlimiter: false };
 var DEFAULT_MSQC = { qcUnit: 58, qcLoc: 62, qcPlayer: 10, keys: {}, clicks: {}, mouseBase: null, mouseIn: {}, select: null };
-var MAGENTA_SPEC_VERSION = 2;
+var MAGENTA_SPEC_VERSION = 3;
 var cellAddress = (cell) => 5808996 + cell[0] * 4 + cell[1] * 48;
 function msqcKeyName(code) {
   if (code >= 65 && code <= 90) return String.fromCharCode(code);
@@ -3593,7 +3639,12 @@ function composePlugins(builds, chat, everyFrame, msqc = null, options = DEFAULT
   const chats = builds.filter((b) => b.kind === "chat");
   if (chats.length && chat) {
     const section = { __addr__: `0x${cellAddress(chat.cell).toString(16).toUpperCase()}` };
-    for (const c2 of chats) section[c2.message] = c2.value;
+    if (chat.args && chats.some(isChatPattern)) {
+      section.__patternAddr__ = `0x${cellAddress(chat.args.pattern).toString(16).toUpperCase()}`;
+      section.__ptrAddr__ = `0x${cellAddress(chat.args.ptr).toString(16).toUpperCase()}`;
+      section.__lenAddr__ = `0x${cellAddress(chat.args.len).toString(16).toUpperCase()}`;
+    }
+    for (const c2 of chats) section[chatKey(c2)] = c2.value;
     plugins.chatEvent = section;
   }
   let msqcSpec = null;
@@ -3616,7 +3667,7 @@ function composePlugins(builds, chat, everyFrame, msqc = null, options = DEFAULT
   }
   const hooks = builds.filter((b) => "flag" in b);
   const scans = builds.filter((b) => b.kind === "scan");
-  const spec = { version: MAGENTA_SPEC_VERSION, everyFrame, chat: chats.length && chat ? { cell: chat.cell } : null, hooks, scans, msqc: msqcSpec };
+  const spec = { version: MAGENTA_SPEC_VERSION, everyFrame, chat: chats.length && chat ? { cell: chat.cell, args: chats.some(isChatPattern) ? chat.args ?? null : null } : null, hooks, scans, msqc: msqcSpec };
   if (hooks.length || scans.length || spec.chat || msqcSpec) plugins.magenta = { spec: JSON.stringify(spec) };
   if (everyFrame) plugins.eudTurbo = {};
   return plugins;
@@ -3631,14 +3682,18 @@ function checkChatMessage(text) {
   if (!text.trim()) return "Type the message players will send.";
   if (/[\r\n]/.test(text)) return "One line.";
   if (new TextEncoder().encode(text).length > 78) return "Up to 78 bytes, which is what the game lets a player type.";
-  if (/[:=]/.test(text) && !text.startsWith("^")) return "A message cannot contain : or =.";
+  if (/[:=]/.test(text)) return "A message cannot contain : or =.";
+  if (text.startsWith("^") && text.endsWith("$")) {
+    const n = text.slice(1, -1).split(".*").length - 1;
+    if (n < 1 || n > 2) return "A pattern is ^start.*end$ or ^start.*middle.*end$.";
+  }
   return null;
 }
 
 // src/ui/build.ts
 var CAMMOVE_LOC = "cammoveLoc";
 var CAMMOVE_SWITCH = "cammove";
-var DEFAULT_SERVER = "https://eud-server-516992750679.us-central1.run.app";
+var DEFAULT_SERVER = "https://eud.scmjs.dev";
 var SERVER_KEY = "server";
 var serverUrl = (api) => api.storage.get(SERVER_KEY, DEFAULT_SERVER).replace(/\/+$/, "");
 var setServerUrl = (api, url) => {
@@ -4123,6 +4178,10 @@ function check(trigger3, ctx = {}) {
     if (lo && hi && lo.amount > hi.amount) out.push({ level: "warn", text: `Conditions ${enabledConditions[i].index + 1} and ${enabledConditions[j].index + 1} contradict each other: at least ${lo.amount} and at most ${hi.amount}.` });
     if (a2.comparison === Comparison.Exactly && b.comparison === Comparison.Exactly && a2.amount !== b.amount) out.push({ level: "warn", text: `Conditions ${enabledConditions[i].index + 1} and ${enabledConditions[j].index + 1} contradict each other: exactly ${a2.amount} and exactly ${b.amount}.` });
   }
+  const sharedOwner = own.some((o) => o >= 12);
+  const perPlayer = enabledConditions.some(({ c: c2 }) => c2.type === ConditionType.Deaths && c2.player === 13);
+  const usesSwitch = enabledConditions.some(({ c: c2 }) => c2.type === ConditionType.Switch) && actions.some((a2) => a2.type === ActionType.SetSwitch && !isActionDisabled(a2));
+  if (sharedOwner && perPlayer && usesSwitch) out.push({ level: "warn", text: "Every owner runs this trigger, and its switch is shared: when the Current Player condition is false for one of them, that run can flip the switch for the others. Guard with a death counter of the Current Player instead." });
   const preserved = (trigger3.flags & TriggerFlag.Preserve) !== 0 || actions.some((a2) => a2.type === ActionType.PreserveTrigger && !isActionDisabled(a2));
   actions.forEach((a2, index) => {
     if (isActionDisabled(a2)) return;
@@ -4470,15 +4529,16 @@ function paletteItems(kind) {
   for (const e of entriesFor(kind)) items.push({ label: e.name, aliases: e.aliases, group: e.group, value: { kind: "eud", entry: e } });
   if (kind === "condition") {
     items.push({ label: "Compare two counters", aliases: ["greater", "less", "equal", "variable"], group: "Counters", value: { kind: "expansion", what: "compare" } });
-    items.push({ label: "The chat said a command", aliases: ["chat", "typed", "command", "message", "-heal"], group: "Build", value: { kind: "build", what: "chat" } });
+    items.push({ label: "The chat said a command", aliases: ["chat", "typed", "command", "message", "-heal", "-set with a number", "argument"], group: "Build", value: { kind: "build", what: "chat" } });
     items.push({ label: "A player pressed a key (synced)", aliases: ["keyboard", "hotkey", "press", "input"], group: "Build", value: { kind: "build", what: "key" } });
     items.push({ label: "A player clicked (synced)", aliases: ["mouse button", "left click", "right click", "input"], group: "Build", value: { kind: "build", what: "click" } });
     items.push({ label: "A player's mouse is over a location (synced)", aliases: ["hover", "cursor", "pointer", "mouse at"], group: "Build", value: { kind: "build", what: "mouseIn" } });
-    items.push({ label: "Any unit of a kind has a stat below or above", aliases: ["hp check", "low health", "any unit", "damaged", "scan"], group: "Build", value: { kind: "build", what: "scan" } });
+    items.push({ label: "Any unit of a kind has a stat below or above", aliases: ["hp check", "low health", "any unit", "damaged", "scan", "is attacking", "under attack", "burrowed", "moving", "has a target"], group: "Build", value: { kind: "build", what: "scan" } });
   } else {
     items.push({ label: "Show text with numbers in it", aliases: ["display counter", "print score", "dynamic text", "message with value"], group: "Build", value: { kind: "build", what: "text" } });
     items.push({ label: "Multiply, divide or randomize a counter", aliases: ["times", "random", "modulo", "remainder", "maths"], group: "Build", value: { kind: "build", what: "math" } });
-    items.push({ label: "For each unit of a kind", aliases: ["all units", "every unit", "loop", "set hp of all", "give units with colour"], group: "Build", value: { kind: "build", what: "foreach" } });
+    items.push({ label: "For each unit of a kind", aliases: ["all units", "every unit", "loop", "set hp of all", "give units with colour", "order all", "stun", "stim", "ensnare", "plague", "lockdown", "hold fire", "no-clip", "set minerals of field"], group: "Build", value: { kind: "build", what: "foreach" } });
+    items.push({ label: "The weakest, strongest or nearest unit of a kind", aliases: ["pick", "lowest hp", "closest", "nearest", "most kills", "find unit", "one unit"], group: "Build", value: { kind: "build", what: "pick" } });
     items.push({ label: "Count units into a counter", aliases: ["number of", "how many", "tally"], group: "Build", value: { kind: "build", what: "count" } });
     items.push({ label: "Read a unit's stat into a counter", aliases: ["get hp", "read health", "unit's kills", "position into"], group: "Build", value: { kind: "build", what: "read" } });
     items.push({ label: "Move a location to coordinates", aliases: ["set location", "place location", "location xy", "pixels"], group: "Build", value: { kind: "build", what: "setloc" } });
@@ -5066,9 +5126,13 @@ var hookOf = (store, a2) => store.sidecar.builds.find((b) => "flag" in b && isFl
 function conditionRowOf(store, c2) {
   if (c2.type !== ConditionType.Deaths) return null;
   const chat = store.sidecar.chat;
-  if (chat && c2.player === chat.cell[0] && c2.unitId === chat.cell[1] && c2.comparison === Comparison.Exactly) {
-    const record = store.sidecar.builds.find((b) => b.kind === "chat" && b.value === c2.amount);
-    return record ? { kind: "chat", record } : null;
+  if (chat && c2.comparison === Comparison.Exactly) {
+    const onCell = c2.player === chat.cell[0] && c2.unitId === chat.cell[1];
+    const onPattern = !!chat.args && c2.player === chat.args.pattern[0] && c2.unitId === chat.args.pattern[1];
+    if (onCell || onPattern) {
+      const record = store.sidecar.builds.find((b) => b.kind === "chat" && b.value === c2.amount && isChatPattern(b) === onPattern);
+      return record ? { kind: "chat", record } : null;
+    }
   }
   const scan = store.sidecar.builds.find((b) => b.kind === "scan" && b.cell[0] === c2.player && b.cell[1] === c2.unitId);
   if (scan) return { kind: "scan", record: scan };
@@ -5081,7 +5145,7 @@ function conditionRowOf(store, c2) {
   return null;
 }
 var deathsIs2 = (cell, comparison, amount) => ({ location: 0, player: cell[0], amount, unitId: cell[1], comparison, type: ConditionType.Deaths, resource: 0, flags: 0, mask: 0 });
-var chatCondition = (cell, value) => deathsIs2(cell, Comparison.Exactly, value);
+var chatCondition = (chat, record) => deathsIs2(isChatPattern(record) && chat.args ? chat.args.pattern : chat.cell, Comparison.Exactly, record.value);
 function counterNames(store, host) {
   const namer = host.namer(store.sidecar);
   return {
@@ -5100,14 +5164,23 @@ function chip2(api, label, className = "counter") {
 var BUILD_NOTE = "Needs a Build (\u22EF menu): the game's own triggers cannot do this, so the built map carries the code that does. The source map stays as it is.";
 var INPUT_NOTE = "Needs a Build (\u22EF menu). The MSQC plugin in the built map turns each player's input into a game command, so every client sees it in the same cycle; the cell is cleared after the triggers have read it.";
 var tag = (api, title = BUILD_NOTE) => api.ui.el("span", { className: "mg-tag", title }, "BUILD");
-var FIELDS = [
-  { value: 0, label: "hit points", field: "hp" },
-  { value: 1, label: "shields", field: "shields" },
-  { value: 2, label: "energy", field: "energy" },
-  { value: 3, label: "kills", field: "kills" },
-  { value: 4, label: "x", field: "x" },
-  { value: 5, label: "y", field: "y" }
-];
+var FIELDS = UNIT_FIELDS.map((f, value) => ({ value, label: f.label, field: f.field, yesNo: f.yesNo === true }));
+var fieldIndex = (field) => Math.max(0, FIELDS.findIndex((f) => f.field === field));
+var CHAT_NUMBER_NAME = "Chat number";
+function ensureChatArgs(host, store) {
+  const have = store.sidecar.chat?.args;
+  if (have) return { args: have, counters: store.sidecar.counters };
+  const taken = [];
+  const next = () => {
+    const c2 = freeCell(store, host, taken);
+    if (c2) taken.push(c2);
+    return c2;
+  };
+  const ptr = next(), len = next(), pattern = next(), number = next();
+  if (!ptr || !len || !pattern || !number) return null;
+  const counters = store.sidecar.counters.some((c2) => c2.name === CHAT_NUMBER_NAME) ? store.sidecar.counters : [...store.sidecar.counters, { player: number[0], unit: number[1], name: CHAT_NUMBER_NAME }];
+  return { args: { ptr, len, pattern, number }, counters };
+}
 function filterChips(api, host, store, f, update) {
   const t = api.i18n.t;
   const namer = host.namer(store.sidecar);
@@ -5158,9 +5231,13 @@ function renderHook(api, host, store, hook, into) {
   if (hook.kind === "read") {
     const to = chip2(api, cellLabel(hook.to, namer));
     to.addEventListener("click", () => pickCell(api, host, store, to, hook.to, (cell) => update({ to: cell })));
-    const field = chip2(api, FIELDS.find((f) => f.field === hook.field)?.label ?? hook.field, "");
-    field.addEventListener("click", () => pickChoice(api, field, FIELDS, (v) => update({ field: FIELDS[v].field }), { current: FIELDS.findIndex((f) => f.field === hook.field) }));
+    const field = chip2(api, FIELDS[fieldIndex(hook.field)].label, "");
+    field.addEventListener("click", () => pickChoice(api, field, FIELDS, (v) => update({ field: FIELDS[v].field }), { current: fieldIndex(hook.field) }));
     into.append(t("Set "), to, t(" to the "), field, t(" of the first "), ...filterChips(api, host, store, hook, update), tag(api));
+    return;
+  }
+  if (hook.kind === "pick") {
+    renderPick(api, host, store, hook, into, update);
     return;
   }
   if (hook.kind === "setloc") {
@@ -5178,6 +5255,13 @@ function renderHook(api, host, store, hook, into) {
     into.append(t("Move "), loc, t(" to "), x, ", ", y, t(" keeping "), size, tag(api));
     return;
   }
+  into.append(t("For each "), ...filterChips(api, host, store, hook, update), ": ", ...doChips(api, host, store, hook.do, (d) => update({ do: d })), tag(api));
+}
+function doChips(api, host, store, d, onChange, allowNothing = false) {
+  const t = api.i18n.t;
+  const namer = host.namer(store.sidecar);
+  const scratch = () => host.ensureLocation("Magenta scratch");
+  const firstLocation = () => host.locations().find((l) => l.value !== 64)?.value ?? 1;
   const DOS = [
     { value: 0, label: t("set hit points"), make: () => ({ set: "hp", value: 100 }) },
     { value: 1, label: t("set shields"), make: () => ({ set: "shields", value: 100 }) },
@@ -5192,27 +5276,107 @@ function renderHook(api, host, store, hook, into) {
     { value: 10, label: t("give the speed upgrade"), make: () => ({ speed: true }) },
     { value: 11, label: t("take the speed upgrade"), make: () => ({ speed: false }) },
     { value: 12, label: t("give to"), make: () => ({ give: 1 }) },
-    { value: 13, label: t("center a location on it"), make: () => ({ locate: 1 }) }
+    { value: 13, label: t("center a location on it"), make: () => ({ locate: firstLocation() }) },
+    { value: 14, label: t("order to move to"), make: () => {
+      const sc = scratch();
+      return sc ? { order: "move", location: firstLocation(), scratch: sc } : null;
+    } },
+    { value: 15, label: t("order to patrol to"), make: () => {
+      const sc = scratch();
+      return sc ? { order: "patrol", location: firstLocation(), scratch: sc } : null;
+    } },
+    { value: 16, label: t("order to attack-move to"), make: () => {
+      const sc = scratch();
+      return sc ? { order: "attack", location: firstLocation(), scratch: sc } : null;
+    } },
+    { value: 17, label: t("apply a spell effect"), make: () => ({ timer: "stim", value: 10 * TIMER_TICKS_PER_SECOND }) },
+    { value: 18, label: t("hold fire"), make: () => ({ cooldown: HOLD_FIRE_COOLDOWN }) },
+    { value: 19, label: t("set the resources"), make: () => ({ set: "resources", value: 1500 }) },
+    { value: 20, label: t("set the remaining build time"), make: () => ({ set: "buildTime", value: 0 }) },
+    { value: 21, label: t("set the rank"), make: () => ({ set: "rank", value: 0 }) },
+    { value: 22, label: t("walk through anything"), make: () => ({ status: "noclip", on: true }) },
+    { value: 23, label: t("collide again"), make: () => ({ status: "noclip", on: false }) },
+    ...allowNothing ? [{ value: 24, label: t("do nothing to it"), make: () => null }] : []
   ];
-  const d = hook.do;
-  const current2 = "set" in d ? { hp: 0, shields: 1, energy: 2, kills: 3 }[d.set] : "kill" in d ? 4 : "remove" in d ? 5 : "invincible" in d ? d.invincible ? 6 : 7 : "hallucination" in d ? d.hallucination ? 8 : 9 : "speed" in d ? d.speed ? 10 : 11 : "give" in d ? 12 : 13;
-  const what = chip2(api, DOS[current2].label, "");
-  what.addEventListener("click", () => pickChoice(api, what, DOS, (v) => update({ do: DOS[v].make() }), { current: current2 }));
-  into.append(t("For each "), ...filterChips(api, host, store, hook, update), ": ", what);
+  const current2 = d === null ? 24 : "set" in d ? { hp: 0, shields: 1, energy: 2, kills: 3, resources: 19, buildTime: 20, rank: 21 }[d.set] : "kill" in d ? 4 : "remove" in d ? 5 : "invincible" in d ? d.invincible ? 6 : 7 : "hallucination" in d ? d.hallucination ? 8 : 9 : "speed" in d ? d.speed ? 10 : 11 : "give" in d ? 12 : "locate" in d ? 13 : "order" in d ? { move: 14, patrol: 15, attack: 16 }[d.order] : "timer" in d ? 17 : "cooldown" in d ? 18 : d.on ? 22 : 23;
+  const what = chip2(api, DOS.find((x) => x.value === current2)?.label ?? "?", "");
+  what.addEventListener("click", () => pickChoice(api, what, DOS, (v) => {
+    const entry2 = DOS.find((x) => x.value === v);
+    const made = entry2.make();
+    if (made === null && v !== 24) {
+      api.ui.toast({ kind: "error", title: t("No free location slot"), detail: t("Ordering one unit at a time needs a location of Magenta's own; free a location slot first.") });
+      return;
+    }
+    onChange(made);
+  }, { current: current2 }));
+  const out = [what];
+  if (d === null) return out;
   if ("set" in d) {
     const value = chip2(api, String(d.value), "");
-    value.addEventListener("click", () => pickNumber(api, value, d.value, (v) => update({ do: { set: d.set, value: v } }), { min: 0, max: 65535 }));
-    into.append(t(" to "), value);
+    value.addEventListener("click", () => pickNumber(api, value, d.value, (v) => onChange({ set: d.set, value: v }), { min: 0, max: 65535 }));
+    out.push(t(" to "), value);
   } else if ("give" in d) {
     const p = chip2(api, namer.player(d.give), "");
-    p.addEventListener("click", () => pickChoice(api, p, Array.from({ length: 12 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null })), (v) => update({ do: { give: v } }), { current: d.give }));
-    into.append(" ", p);
+    p.addEventListener("click", () => pickChoice(api, p, Array.from({ length: 12 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null })), (v) => onChange({ give: v }), { current: d.give }));
+    out.push(" ", p);
   } else if ("locate" in d) {
     const l = chip2(api, namer.location(d.locate), "");
     l.addEventListener("click", () => pickLocation(api, host, l, d.locate, (v) => {
-      if (v > 0 && v < 64) update({ do: { locate: v } });
+      if (v > 0 && v < 64) onChange({ locate: v });
     }));
-    into.append(": ", l);
+    out.push(": ", l);
+  } else if ("order" in d) {
+    const l = chip2(api, namer.location(d.location), "");
+    l.addEventListener("click", () => pickLocation(api, host, l, d.location, (v) => {
+      if (v > 0 && v < 64) onChange({ ...d, location: v });
+    }));
+    l.title = t("The destination. The order goes to one unit at a time through the location named Magenta scratch, which is Magenta's to move.");
+    out.push(" ", l);
+  } else if ("timer" in d) {
+    const which = chip2(api, TIMERS.find((x) => x.timer === d.timer)?.label ?? d.timer, "");
+    which.addEventListener("click", () => pickChoice(api, which, TIMERS.map((x, value) => ({ value, label: x.label })), (v) => onChange({ timer: TIMERS[v].timer, value: d.value }), { current: Math.max(0, TIMERS.findIndex((x) => x.timer === d.timer)) }));
+    const seconds = chip2(api, String(Math.round(d.value / TIMER_TICKS_PER_SECOND)), "");
+    seconds.title = t("Seconds at the fastest speed; the game counts these timers in ticks of about eight frames. The effect applies without the spell's overlay graphic.");
+    seconds.addEventListener("click", () => pickNumber(api, seconds, Math.round(d.value / TIMER_TICKS_PER_SECOND), (v) => onChange({ timer: d.timer, value: Math.max(1, Math.min(255, v * TIMER_TICKS_PER_SECOND)) }), { min: 1, max: 85, unit: "s" }));
+    out.push(": ", which, t(" for "), seconds, t(" s"));
+  } else if ("cooldown" in d) {
+    const note = api.ui.el("span", { className: "hint", title: t("The cooldowns are written each time the trigger fires; to keep a unit from firing, the trigger must fire every cycle (preserved, with triggers running every frame).") }, t(" (each cycle)"));
+    out.push(note);
+  }
+  return out;
+}
+function renderPick(api, host, store, hook, into, update) {
+  const t = api.i18n.t;
+  const namer = host.namer(store.sidecar);
+  const BY = [{ value: 0, label: t("with the least"), by: "min" }, { value: 1, label: t("with the greatest"), by: "max" }, { value: 2, label: t("nearest to"), by: "nearest" }];
+  const by = chip2(api, BY.find((b) => b.by === hook.by).label, "");
+  by.addEventListener("click", () => pickChoice(api, by, BY, (v) => update({ by: BY[v].by, near: BY[v].by === "nearest" ? hook.near ?? host.locations().find((l) => l.value !== 64)?.value ?? 1 : hook.near }), { current: BY.findIndex((b) => b.by === hook.by) }));
+  into.append(t("Take the "), ...filterChips(api, host, store, hook, update), " ", by, " ");
+  if (hook.by === "nearest") {
+    const near = chip2(api, hook.near ? namer.location(hook.near) : t("a location"), "");
+    near.addEventListener("click", () => pickLocation(api, host, near, hook.near ?? 1, (v) => {
+      if (v > 0 && v < 64) update({ near: v });
+    }));
+    into.append(near);
+  } else {
+    const numeric = FIELDS.filter((f) => !f.yesNo);
+    const field = chip2(api, FIELDS[fieldIndex(hook.field)].label, "");
+    field.addEventListener("click", () => pickChoice(api, field, numeric, (v) => update({ field: FIELDS[v].field }), { current: fieldIndex(hook.field) }));
+    into.append(field);
+  }
+  into.append(t(": "), ...doChips(api, host, store, hook.do, (d) => update({ do: d }), true));
+  const locate = chip2(api, hook.locate ? namer.location(hook.locate) : t("no location"), "");
+  locate.title = t("A small box is centred on the unit, so the trigger's other actions \u2014 or the next trigger's \u2014 can act on it through the location.");
+  locate.addEventListener("click", () => pickLocation(api, host, locate, hook.locate ?? 64, (v) => update({ locate: v > 0 && v < 64 ? v : null })));
+  const to = chip2(api, hook.to ? cellLabel(hook.to, namer) : t("no counter"));
+  to.title = t("The field's value \u2014 or the distance, for the nearest \u2014 goes into this counter; 0 when nothing matched.");
+  to.addEventListener("click", () => pickCell(api, host, store, to, hook.to ?? store.sidecar.chat?.cell ?? [0, 181], (cell) => update({ to: cell })));
+  into.append(t(", center "), locate, t(" on it, value into "), to);
+  if (hook.to) {
+    const clear = chip2(api, "\xD7", "");
+    clear.title = t("No counter");
+    clear.addEventListener("click", () => update({ to: null }));
+    into.append(clear);
   }
   into.append(tag(api));
 }
@@ -5226,29 +5390,62 @@ function renderConditionRow(api, host, store, row, into, replace) {
   };
   if (row.kind === "chat") {
     const chat = row.record;
-    const msg = chip2(api, chat.message, "text");
-    msg.addEventListener("click", () => pickText(api, msg, chat.message, (value) => {
+    const setMessage = (value) => {
       const problem = checkChatMessage(value);
       if (problem) {
         api.ui.toast({ kind: "error", title: problem });
         return;
       }
-      store.updateSidecar(t("Edit chat command"), { builds: store.sidecar.builds.map((b) => b.id === chat.id ? { ...b, message: value.trim() } : b) });
-    }, { title: t("What a player types in chat; ^\u2026$ for a pattern, as in ^-give .*$") }));
-    into.append(t("The chat said "), msg, tag(api, t("Needs a Build (\u22EF menu): the chat plugin in the built map writes the command's number into a cell this condition reads, in the cycle the message arrives, for every player at once.")));
+      const next = { ...chat, message: value.trim() };
+      const needArgs = isChatPattern(next) && !store.sidecar.chat?.args;
+      const made = needArgs ? ensureChatArgs(host, store) : null;
+      if (needArgs && !made) {
+        api.ui.toast({ kind: "error", title: t("No free counter cells for a chat pattern") });
+        return;
+      }
+      const chatCell = { ...store.sidecar.chat ?? { cell: [0, 181] }, ...made ? { args: made.args } : {} };
+      store.commit(t("Edit chat command"), () => store.list, { sidecar: { builds: store.sidecar.builds.map((b) => b.id === chat.id ? next : b), chat: chatCell, ...made ? { counters: made.counters } : {} } });
+      replace(chatCondition(chatCell, next));
+    };
+    const msg = chip2(api, chat.message, "text");
+    msg.addEventListener("click", () => pickText(api, msg, chat.message, setMessage, { title: chat.arg === "number" ? t("The command before the number: -set matches -set 250, and the number lands in the counter named Chat number") : t("What a player types in chat; ^\u2026$ writes a pattern, as in ^-give .*$") }));
+    const ARG = [{ value: 0, label: t("exactly") }, { value: 1, label: t("followed by a number") }];
+    const arg = chip2(api, chat.arg === "number" ? ARG[1].label : ARG[0].label, "");
+    arg.title = t("With a number, the message is a prefix and the number typed after it goes into the counter named Chat number.");
+    arg.addEventListener("click", () => pickChoice(api, arg, ARG, (v) => {
+      const next = v === 1 ? { ...chat, arg: "number", message: chat.message.startsWith("^") ? chat.message.replace(/^\^|\.\*|\$$/g, "").trim() || "-set" : chat.message } : { id: chat.id, kind: "chat", message: chat.message, value: chat.value };
+      const made = v === 1 && !store.sidecar.chat?.args ? ensureChatArgs(host, store) : null;
+      if (v === 1 && !store.sidecar.chat?.args && !made) {
+        api.ui.toast({ kind: "error", title: t("No free counter cells for the number") });
+        return;
+      }
+      const chatCell = { ...store.sidecar.chat ?? { cell: [0, 181] }, ...made ? { args: made.args } : {} };
+      store.commit(t("Edit chat command"), () => store.list, { sidecar: { builds: store.sidecar.builds.map((b) => b.id === chat.id ? next : b), chat: chatCell, ...made ? { counters: made.counters } : {} } });
+      replace(chatCondition(chatCell, next));
+    }, { current: chat.arg === "number" ? 1 : 0 }));
+    into.append(t("The chat said "), msg, " ", arg, tag(api, t("Needs a Build (\u22EF menu): the chat plugin in the built map writes the command's number into a cell this condition reads, in the cycle the message arrives, for every player at once. A message with a number is matched as a pattern and the number is parsed out for you.")));
     return;
   }
   if (row.kind === "scan") {
     const s = row.record;
     const update = (patch) => store.updateSidecar(t("Edit unit check"), { builds: store.sidecar.builds.map((b) => b.id === s.id ? { ...b, ...patch } : b) });
-    const field = chip2(api, FIELDS.find((f) => f.field === s.field)?.label ?? s.field, "");
-    field.addEventListener("click", () => pickChoice(api, field, FIELDS, (v) => update({ field: FIELDS[v].field }), { current: FIELDS.findIndex((f) => f.field === s.field) }));
+    const fi = FIELDS[fieldIndex(s.field)];
+    const field = chip2(api, fi.label, "");
+    field.addEventListener("click", () => pickChoice(api, field, FIELDS, (v) => update(FIELDS[v].yesNo ? { field: FIELDS[v].field, cmp: "=", value: s.cmp === "=" && s.value === 0 ? 0 : 1 } : { field: FIELDS[v].field }), { current: fieldIndex(s.field) }));
+    const note = tag(api, t("Needs a Build (\u22EF menu): the built map checks this every cycle and leaves the answer in a cell this condition reads."));
+    if (fi.yesNo) {
+      const IS = [{ value: 1, label: t("is") }, { value: 0, label: t("is not") }];
+      const is = chip2(api, s.value === 0 ? IS[1].label : IS[0].label, "");
+      is.addEventListener("click", () => pickChoice(api, is, IS, (v) => update({ cmp: "=", value: v }), { current: s.value === 0 ? 0 : 1 }));
+      into.append(t("Any "), ...filterChips(api, host, store, s, update), " ", is, " ", field, note);
+      return;
+    }
     const CMP = [{ value: 0, label: t("below"), cmp: "<" }, { value: 1, label: t("above"), cmp: ">" }, { value: 2, label: t("exactly"), cmp: "=" }];
     const cmp = chip2(api, CMP.find((c2) => c2.cmp === s.cmp)?.label ?? s.cmp, "");
     cmp.addEventListener("click", () => pickChoice(api, cmp, CMP, (v) => update({ cmp: CMP[v].cmp }), { current: CMP.findIndex((c2) => c2.cmp === s.cmp) }));
     const value = chip2(api, String(s.value), "");
     value.addEventListener("click", () => pickNumber(api, value, s.value, (v) => update({ value: v }), { min: 0, max: 65535 }));
-    into.append(t("Any "), ...filterChips(api, host, store, s, update), t(" has "), field, " ", cmp, " ", value, tag(api, t("Needs a Build (\u22EF menu): the built map checks this every cycle and leaves the answer in a cell this condition reads.")));
+    into.append(t("Any "), ...filterChips(api, host, store, s, update), t(" has "), field, " ", cmp, " ", value, note);
     return;
   }
   const m = store.sidecar.msqc ?? DEFAULT_MSQC;
@@ -5285,15 +5482,23 @@ function renderConditionRow(api, host, store, row, into, replace) {
   }));
   into.append(playerChip(row.player, (p) => replace(deathsIs2([p, m.mouseIn[String(row.location)]], Comparison.Exactly, 1))), t("'s mouse is over "), loc, tag(api, INPUT_NOTE));
 }
-function newChat(host, store, message = "-command") {
+function newChat(host, store, message = "-command", arg = null) {
   const chat = store.sidecar.chat ?? (() => {
     const cell = freeCell(store, host);
-    return cell ? { cell } : null;
+    return cell ? { cell, args: null } : null;
   })();
   if (!chat) return null;
   const value = nextChatValue(store.sidecar.builds);
-  const record = { id: `h${Date.now().toString(36)}`, kind: "chat", message, value };
-  return { condition: chatCondition(chat.cell, value), builds: [...store.sidecar.builds, record], chat };
+  const record = { id: `h${Date.now().toString(36)}`, kind: "chat", message, value, ...arg ? { arg } : {} };
+  let counters;
+  let withArgs = chat;
+  if (isChatPattern(record) && !chat.args) {
+    const made = ensureChatArgs(host, { ...store, sidecar: { ...store.sidecar, chat } });
+    if (!made) return null;
+    withArgs = { ...chat, args: made.args };
+    counters = made.counters;
+  }
+  return { condition: chatCondition(withArgs, record), builds: [...store.sidecar.builds, record], chat: withArgs, ...counters ? { counters } : {} };
 }
 function withMsqc(host, store, needMouse) {
   const m = store.sidecar.msqc ? { ...store.sidecar.msqc } : { ...DEFAULT_MSQC, keys: {}, clicks: {}, mouseIn: {} };
@@ -5304,14 +5509,14 @@ function withMsqc(host, store, needMouse) {
   }
   if (needMouse && m.mouseBase === null) {
     const free = new Set(host.freeLocationSlots().filter((i) => i !== m.qcLoc));
-    for (let base = 0; base + 8 <= 63; base++) {
+    for (let slot = 0; slot + 8 <= 63; slot++) {
       let ok = true;
-      for (let p = 0; p < 8; p++) if (!free.has(base + p)) {
+      for (let p = 0; p < 8; p++) if (!free.has(slot + p)) {
         ok = false;
         break;
       }
       if (ok) {
-        m.mouseBase = base;
+        m.mouseBase = slot + 1;
         break;
       }
     }
@@ -5356,7 +5561,7 @@ function newHook(host, store, what, query = "") {
   const a2 = named[0] ? [named[0].player, named[0].unit] : freeCell(store, host, [flag]) ?? [0, 181];
   const id = `b${Date.now().toString(36)}`;
   const filter = { unit: 0, owner: PlayerGroup.Player1, location: null };
-  const record = what === "text" ? { id, kind: "text", flag, parts: [{ text: "Score: " }, { counter: a2 }], to: "all" } : what === "math" ? { id, kind: "math", flag, op: /random/i.test(query) ? "rand" : /divid/i.test(query) ? "div" : /modul|remainder/i.test(query) ? "mod" : "mul", a: a2, b: /random/i.test(query) ? 100 : 2, to: a2 } : what === "count" ? { id, kind: "count", flag, ...filter, to: a2 } : what === "read" ? { id, kind: "read", flag, ...filter, field: "hp", to: a2 } : what === "setloc" ? { id, kind: "setloc", flag, location: host.locations().find((l) => l.value !== 64)?.value ?? 1, x: 0, y: 0, width: null, height: null } : { id, kind: "foreach", flag, ...filter, do: /give/i.test(query) ? { give: 1 } : /kill/i.test(query) ? { kill: true } : { set: "hp", value: 100 } };
+  const record = what === "text" ? { id, kind: "text", flag, parts: [{ text: "Score: " }, { counter: a2 }], to: "all" } : what === "math" ? { id, kind: "math", flag, op: /random/i.test(query) ? "rand" : /divid/i.test(query) ? "div" : /modul|remainder/i.test(query) ? "mod" : "mul", a: a2, b: /random/i.test(query) ? 100 : 2, to: a2 } : what === "count" ? { id, kind: "count", flag, ...filter, to: a2 } : what === "read" ? { id, kind: "read", flag, ...filter, field: "hp", to: a2 } : what === "setloc" ? { id, kind: "setloc", flag, location: host.locations().find((l) => l.value !== 64)?.value ?? 1, x: 0, y: 0, width: null, height: null } : what === "pick" ? { id, kind: "pick", flag, ...filter, by: /near|clos/i.test(query) ? "nearest" : /strong|most|great|high/i.test(query) ? "max" : "min", field: /kill/i.test(query) ? "kills" : "hp", near: /near|clos/i.test(query) ? host.locations().find((l) => l.value !== 64)?.value ?? 1 : null, locate: null, to: null, do: /kill/i.test(query) ? { kill: true } : null } : { id, kind: "foreach", flag, ...filter, do: /give/i.test(query) ? { give: 1 } : /kill/i.test(query) ? { kill: true } : { set: "hp", value: 100 } };
   return { action: flagAction({ cell: flag }), builds: [...store.sidecar.builds, record] };
 }
 function needsBuild(store, trigger3) {
@@ -5482,13 +5687,14 @@ function renderEditor(deps, root) {
     if (pick.kind === "build") {
       const insert = (label, condition, sidecar) => store.commit(label, () => store.list.map((tr, j) => j !== index ? tr : { ...tr, conditions: [...conditions, condition] }), { sidecar });
       if (pick.what === "chat") {
-        const message = /^"?(.+?)"?$/.exec(query.replace(/^(the )?chat (said|command)\s*/i, "").trim())?.[1];
-        const made = newChat(host, store, message && message !== query.trim() ? message : void 0);
+        const withNumber = /\b(number|argument|amount|value)\b/i.test(query);
+        const message = /^"?(.+?)"?$/.exec(query.replace(/^(the )?chat (said|command)\s*/i, "").replace(/\b(with|followed by) a (number|argument|amount|value)\b/i, "").trim())?.[1];
+        const made = newChat(host, store, message && message !== query.trim() ? message : withNumber ? "-set" : void 0, withNumber ? "number" : null);
         if (!made) {
           api.ui.toast({ kind: "error", title: t("No free counter cell for the chat command") });
           return;
         }
-        insert(t("Add chat command"), made.condition, { builds: made.builds, chat: made.chat });
+        insert(t("Add chat command"), made.condition, { builds: made.builds, chat: made.chat, ...made.counters ? { counters: made.counters } : {} });
       } else if (pick.what === "scan") {
         const made = newScan(host, store);
         if (!made) {

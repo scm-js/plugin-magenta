@@ -56,6 +56,13 @@ export function check(trigger: TriggerRecord, ctx: CheckContext = {}): Problem[]
     if (a.comparison === Comparison.Exactly && b.comparison === Comparison.Exactly && a.amount !== b.amount) out.push({ level: "warn", text: `Conditions ${enabledConditions[i].index + 1} and ${enabledConditions[j].index + 1} contradict each other: exactly ${a.amount} and exactly ${b.amount}.` });
   }
 
+  // A switch is one flag for everyone; a trigger every player runs, guarding per-player conditions
+  // with it, lets one player's run flip it for the rest (a computer's run cleared the probe's guard).
+  const sharedOwner = own.some((o) => o >= 12);
+  const perPlayer = enabledConditions.some(({ c }) => c.type === ConditionType.Deaths && c.player === 13);
+  const usesSwitch = enabledConditions.some(({ c }) => c.type === ConditionType.Switch) && actions.some((a) => a.type === ActionType.SetSwitch && !isActionDisabled(a));
+  if (sharedOwner && perPlayer && usesSwitch) out.push({ level: "warn", text: "Every owner runs this trigger, and its switch is shared: when the Current Player condition is false for one of them, that run can flip the switch for the others. Guard with a death counter of the Current Player instead." });
+
   const preserved = (trigger.flags & TriggerFlag.Preserve) !== 0 || actions.some((a) => a.type === ActionType.PreserveTrigger && !isActionDisabled(a));
   actions.forEach((a, index) => {
     if (isActionDisabled(a)) return;

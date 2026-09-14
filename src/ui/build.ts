@@ -14,7 +14,7 @@ const CAMMOVE_LOC = "cammoveLoc";
 /** The plugin follows only while a switch of this name is set, so triggers can turn the camera on and off. */
 const CAMMOVE_SWITCH = "cammove";
 
-export const DEFAULT_SERVER = "https://eud-server-516992750679.us-central1.run.app";
+export const DEFAULT_SERVER = "https://eud.scmjs.dev";
 const SERVER_KEY = "server";
 
 export const serverUrl = (api: PluginApi): string => api.storage.get(SERVER_KEY, DEFAULT_SERVER).replace(/\/+$/, "");

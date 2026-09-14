@@ -10,7 +10,7 @@ import { search, type SearchItem } from "../model/search";
 import { parseQuery, type Entity, type ParseNames } from "../model/parse";
 import { openPopover, type PopoverHandle } from "./popover";
 
-export type Pick = { kind: "native"; type: number } | { kind: "eud"; entry: Entry } | { kind: "expansion"; what: "copy" | "add" | "subtract" | "compare" } | { kind: "build"; what: "chat" | "text" | "math" | "foreach" | "count" | "read" | "setloc" | "scan" | "key" | "click" | "mouseIn" };
+export type Pick = { kind: "native"; type: number } | { kind: "eud"; entry: Entry } | { kind: "expansion"; what: "copy" | "add" | "subtract" | "compare" } | { kind: "build"; what: "chat" | "text" | "math" | "foreach" | "count" | "read" | "setloc" | "pick" | "scan" | "key" | "click" | "mouseIn" };
 
 const NATIVE_ALIASES: Record<string, string[]> = {
   "Create Unit": ["spawn", "make"], "Kill Unit": ["destroy"], "Kill Unit At Location": ["destroy"], "Remove Unit": ["delete", "vanish"], "Remove Unit At Location": ["delete"],
@@ -31,15 +31,16 @@ export function paletteItems(kind: "condition" | "action"): SearchItem<Pick>[] {
   for (const e of entriesFor(kind)) items.push({ label: e.name, aliases: e.aliases, group: e.group, value: { kind: "eud", entry: e } });
   if (kind === "condition") {
     items.push({ label: "Compare two counters", aliases: ["greater", "less", "equal", "variable"], group: "Counters", value: { kind: "expansion", what: "compare" } });
-    items.push({ label: "The chat said a command", aliases: ["chat", "typed", "command", "message", "-heal"], group: "Build", value: { kind: "build", what: "chat" } });
+    items.push({ label: "The chat said a command", aliases: ["chat", "typed", "command", "message", "-heal", "-set with a number", "argument"], group: "Build", value: { kind: "build", what: "chat" } });
     items.push({ label: "A player pressed a key (synced)", aliases: ["keyboard", "hotkey", "press", "input"], group: "Build", value: { kind: "build", what: "key" } });
     items.push({ label: "A player clicked (synced)", aliases: ["mouse button", "left click", "right click", "input"], group: "Build", value: { kind: "build", what: "click" } });
     items.push({ label: "A player's mouse is over a location (synced)", aliases: ["hover", "cursor", "pointer", "mouse at"], group: "Build", value: { kind: "build", what: "mouseIn" } });
-    items.push({ label: "Any unit of a kind has a stat below or above", aliases: ["hp check", "low health", "any unit", "damaged", "scan"], group: "Build", value: { kind: "build", what: "scan" } });
+    items.push({ label: "Any unit of a kind has a stat below or above", aliases: ["hp check", "low health", "any unit", "damaged", "scan", "is attacking", "under attack", "burrowed", "moving", "has a target"], group: "Build", value: { kind: "build", what: "scan" } });
   } else {
     items.push({ label: "Show text with numbers in it", aliases: ["display counter", "print score", "dynamic text", "message with value"], group: "Build", value: { kind: "build", what: "text" } });
     items.push({ label: "Multiply, divide or randomize a counter", aliases: ["times", "random", "modulo", "remainder", "maths"], group: "Build", value: { kind: "build", what: "math" } });
-    items.push({ label: "For each unit of a kind", aliases: ["all units", "every unit", "loop", "set hp of all", "give units with colour"], group: "Build", value: { kind: "build", what: "foreach" } });
+    items.push({ label: "For each unit of a kind", aliases: ["all units", "every unit", "loop", "set hp of all", "give units with colour", "order all", "stun", "stim", "ensnare", "plague", "lockdown", "hold fire", "no-clip", "set minerals of field"], group: "Build", value: { kind: "build", what: "foreach" } });
+    items.push({ label: "The weakest, strongest or nearest unit of a kind", aliases: ["pick", "lowest hp", "closest", "nearest", "most kills", "find unit", "one unit"], group: "Build", value: { kind: "build", what: "pick" } });
     items.push({ label: "Count units into a counter", aliases: ["number of", "how many", "tally"], group: "Build", value: { kind: "build", what: "count" } });
     items.push({ label: "Read a unit's stat into a counter", aliases: ["get hp", "read health", "unit's kills", "position into"], group: "Build", value: { kind: "build", what: "read" } });
     items.push({ label: "Move a location to coordinates", aliases: ["set location", "place location", "location xy", "pixels"], group: "Build", value: { kind: "build", what: "setloc" } });

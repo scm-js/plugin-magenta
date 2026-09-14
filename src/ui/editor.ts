@@ -141,10 +141,11 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
     if (pick.kind === "build") {
       const insert = (label: string, condition: ConditionRecord, sidecar: Record<string, unknown>) => store.commit(label, () => store.list.map((tr, j) => (j !== index ? tr : { ...tr, conditions: [...conditions, condition] })), { sidecar });
       if (pick.what === "chat") {
-        const message = /^"?(.+?)"?$/.exec(query.replace(/^(the )?chat (said|command)\s*/i, "").trim())?.[1];
-        const made = newChat(host, store, message && message !== query.trim() ? message : undefined);
+        const withNumber = /\b(number|argument|amount|value)\b/i.test(query);
+        const message = /^"?(.+?)"?$/.exec(query.replace(/^(the )?chat (said|command)\s*/i, "").replace(/\b(with|followed by) a (number|argument|amount|value)\b/i, "").trim())?.[1];
+        const made = newChat(host, store, message && message !== query.trim() ? message : withNumber ? "-set" : undefined, withNumber ? "number" : null);
         if (!made) { api.ui.toast({ kind: "error", title: t("No free counter cell for the chat command") }); return; }
-        insert(t("Add chat command"), made.condition, { builds: made.builds, chat: made.chat });
+        insert(t("Add chat command"), made.condition, { builds: made.builds, chat: made.chat, ...(made.counters ? { counters: made.counters } : {}) });
       } else if (pick.what === "scan") {
         const made = newScan(host, store);
         if (!made) { api.ui.toast({ kind: "error", title: t("No free counter cell for the check") }); return; }
@@ -210,7 +211,7 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
   if (actions.length < MAX_ACTIONS) actSection.append(addRow(api, "action", ({ pick, entities, query }: Picked) => {
     if (pick.kind === "build") {
       if (pick.what === "chat" || pick.what === "scan" || pick.what === "key" || pick.what === "click" || pick.what === "mouseIn") return;
-      // setloc, text, math, foreach, count, read
+      // setloc, text, math, foreach, count, read, pick
       const made = newHook(host, store, pick.what, query);
       if (!made) { api.ui.toast({ kind: "error", title: t("No free counter cell for the build row") }); return; }
       store.commit(t("Add build row"), () => store.list.map((tr, j) => (j !== index ? tr : { ...tr, actions: [...actions, made.action] })), { sidecar: { builds: made.builds } });

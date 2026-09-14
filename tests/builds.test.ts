@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkChatMessage, composePlugins, msqcKeyName, nextChatValue, type BuildRecord, type Msqc } from "../src/model/builds";
+import { chatKey, checkChatMessage, composePlugins, isChatPattern, msqcKeyName, nextChatValue, type BuildRecord, type ChatRecord, type Msqc } from "../src/model/builds";
 
 describe("build plugins", () => {
   it("composes the chat plugin, Magenta's spec and turbo from the records", () => {
@@ -9,11 +9,13 @@ describe("build plugins", () => {
       { id: "t1", kind: "text", flag: [0, 181], parts: [{ text: "Score: " }, { counter: [7, 181] }], to: "all" },
       { id: "m1", kind: "math", flag: [1, 181], op: "mul", a: [7, 181], b: 2, to: [7, 181] },
     ];
-    const p = composePlugins(builds, { cell: [11, 181] }, true);
-    expect(p.chatEvent).toEqual({ __addr__: "0x58C580", "-heal": 2, "^-give .*$": 3 });
+    // A pattern needs the args cells; the chat plugin takes a pattern only with two `.*`, so the typed one gains a second.
+    const args = { ptr: [11, 182] as const, len: [11, 183] as const, pattern: [11, 184] as const, number: [11, 185] as const };
+    const p = composePlugins(builds, { cell: [11, 181], args }, true);
+    expect(p.chatEvent).toEqual({ __addr__: "0x58C580", __patternAddr__: "0x58C610", __ptrAddr__: "0x58C5B0", __lenAddr__: "0x58C5E0", "-heal": 2, "^-give .*.*$": 3 });
     expect(p.eudTurbo).toEqual({});
     const spec = JSON.parse(p.magenta.spec as string);
-    expect(spec).toMatchObject({ version: 2, everyFrame: true, chat: { cell: [11, 181] } });
+    expect(spec).toMatchObject({ version: 3, everyFrame: true, chat: { cell: [11, 181], args } });
     expect(spec.hooks).toHaveLength(2);
     expect(spec.hooks[0].kind).toBe("text");
     expect(spec.scans).toEqual([]);
@@ -47,6 +49,30 @@ describe("build plugins", () => {
     expect(composePlugins([], null, false)).toEqual({});
     expect(Object.keys(composePlugins([{ id: "m", kind: "math", flag: [0, 181], op: "rand", a: [0, 181], b: 100, to: [0, 181] }], null, false))).toEqual(["magenta"]);
   });
+  it("writes a prefix with a number as the chat plugin's two-star pattern, and reads the pattern cell", () => {
+    const plain: ChatRecord = { id: "a", kind: "chat", message: "-heal", value: 2 };
+    const withNumber: ChatRecord = { id: "b", kind: "chat", message: "-set", value: 3, arg: "number" };
+    const typed: ChatRecord = { id: "c", kind: "chat", message: "^-give .*$", value: 4 };
+    const two: ChatRecord = { id: "d", kind: "chat", message: "^-tp .*to.*$", value: 5 };
+    expect([plain, withNumber, typed, two].map(isChatPattern)).toEqual([false, true, true, true]);
+    expect([plain, withNumber, typed, two].map(chatKey)).toEqual(["-heal", "^-set .*.*$", "^-give .*.*$", "^-tp .*to.*$"]);
+    // Without a pattern the args stay out of the section and the spec.
+    const p = composePlugins([plain], { cell: [11, 181], args: { ptr: [11, 182], len: [11, 183], pattern: [11, 184], number: [11, 185] } }, false);
+    expect(Object.keys(p.chatEvent)).toEqual(["__addr__", "-heal"]);
+    expect(JSON.parse(p.magenta.spec as string).chat.args).toBeNull();
+  });
+  it("composes the pick row and the new pass verbs as data", () => {
+    const builds: BuildRecord[] = [
+      { id: "p", kind: "pick", flag: [0, 181], unit: 0, owner: 0, location: null, by: "min", field: "hp", near: null, locate: 5, to: [1, 181], do: { kill: true } },
+      { id: "f", kind: "foreach", flag: [2, 181], unit: 37, owner: 1, location: 2, do: { order: "move", location: 1, scratch: 4 } },
+      { id: "g", kind: "foreach", flag: [3, 181], unit: 0, owner: 0, location: null, do: { timer: "stim", value: 30 } },
+      { id: "s", kind: "scan", cell: [4, 181], unit: 0, owner: 0, location: null, field: "underAttack", cmp: ">", value: 0 },
+    ];
+    const spec = JSON.parse(composePlugins(builds, null, false).magenta.spec as string);
+    expect(spec.hooks.map((h: { kind: string }) => h.kind)).toEqual(["pick", "foreach", "foreach"]);
+    expect(spec.hooks[0]).toMatchObject({ by: "min", field: "hp", locate: 5, to: [1, 181], do: { kill: true } });
+    expect(spec.scans[0]).toMatchObject({ field: "underAttack", cmp: ">", value: 0 });
+  });
   it("numbers chat commands from 2 and checks the message", () => {
     expect(nextChatValue([])).toBe(2);
     expect(nextChatValue([{ id: "a", kind: "chat", message: "x", value: 2 }, { id: "b", kind: "chat", message: "y", value: 4 }])).toBe(3);
@@ -54,5 +80,8 @@ describe("build plugins", () => {
     expect(checkChatMessage("")).not.toBeNull();
     expect(checkChatMessage("a:b")).not.toBeNull();
     expect(checkChatMessage("x".repeat(79))).not.toBeNull();
+    expect(checkChatMessage("^-give .*$")).toBeNull();
+    expect(checkChatMessage("^-give$")).not.toBeNull();
+    expect(checkChatMessage("^a.*b.*c.*d$")).not.toBeNull();
   });
 });

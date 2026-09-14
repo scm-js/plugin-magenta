@@ -166,8 +166,11 @@ a BUILD badge in the list.
 
 Conditions:
 
-- **The chat said `-heal`**: fires in the cycle a player sends that message, for every
-  player at once. `^…$` writes a pattern, as in `^-give .*$`.
+- **The chat said `-heal` exactly**: fires in the cycle a player sends that message, for
+  every player at once. **The chat said `-set` followed by a number** matches `-set 250`
+  and puts the 250 in a counter named *Chat number*, for the trigger's other rows to use.
+  `^…$` writes a pattern of your own, as in `^-give .*$`; the chat plugin wants two `.*` in
+  one, and Magenta adds the second.
 - **Player 1 pressed A**, **Player 1 clicked the left button**, **Player 1's mouse is over
   Beacon**: input that works in multiplayer. Each player's keys, clicks and mouse go out
   as game commands (the MSQC plugin), so every client agrees on them in the same cycle;
@@ -175,7 +178,10 @@ Conditions:
   *Current Player* as the player, one trigger serves everyone. Typing in chat does not
   count as key presses.
 - **Any Marine owned by Player 1 at Beacon has hit points below 20**: a check over every
-  unit of a kind, every cycle; also shields, energy, kills, x or y, below, above or exactly.
+  unit of a kind, every cycle; also shields, energy, kills, x or y, the order id, remaining
+  build time, resources and weapon cooldown, below, above or exactly; and **Any Marine owned
+  by Player 1 is under attack**, *is targeting something*, *is burrowed*, *is in a
+  transport*, *is moving* — or is not.
 
 Actions:
 
@@ -189,9 +195,22 @@ Actions:
   colour, selection and control groups following (which the owner byte in the catalogue
   does not), and **center a location on it**, so the trigger's other actions can act on
   that unit through the location. Any unit, anyone and anywhere are the wide settings.
+  Since 0.2: **order to move / patrol / attack-move to** a location (the game's own order,
+  one unit at a time through a location named *Magenta scratch* that Magenta makes and
+  moves), **apply a spell effect** — stim, ensnare, plague, lockdown, stasis, maelstrom,
+  irradiate or a defensive matrix — for so many seconds (the effect without the spell's
+  overlay graphic), **hold fire** (its cooldowns rewritten each cycle, so put it in a
+  trigger that runs every frame), **set the resources** of mineral fields and geysers, the
+  remaining build time, the rank, and **walk through anything** or collide again.
+- **Take the Marine owned by Player 1 with the least hit points: kill it, center Pick on it,
+  value into Weakest**: the one unit with the least or greatest of a stat, or the **nearest
+  to** a location. It does the pass verb you choose to that unit, centres a location on it
+  for the trigger's other actions, and puts the value (the distance, for the nearest) in a
+  counter — each of those optional.
 - **Set A to the number of Marines owned by Player 1 at Beacon**: a count into a counter.
 - **Set A to the hit points of the first Marine owned by Player 1 at Beacon**: a read
-  into a counter; also shields, energy, kills, x, y.
+  into a counter; also shields, energy, kills, x, y, the order id, remaining build time,
+  resources, weapon cooldown, and the yes-or-no fields as 1 or 0.
 - **Move Beacon to 640, 320 keeping its size**: a location placed by numbers, in map
   pixels (32 per tile), with a new width and height if you give one.
 
@@ -222,7 +241,9 @@ An action row does its work right after the map's triggers in the cycle its trig
 a chat command or an input fires once per message, press or click, and a check is fresh
 every cycle. Synced input needs a few things of its own in the map, which Magenta takes:
 one location slot for MSQC, eight in a row for the players' mice, a player slot nobody
-uses (Player 11) and a unit type that must not appear in the map (the Valkyrie by default). The code behind them is the Magenta plugin of the
+uses (Player 11) and a unit type that must not appear in the map (the Valkyrie by default).
+A key press arrives once per press, the way Remastered reports it; there is no "while the
+key is held", so a map that moves a unit while a key is down works from repeated presses. The code behind them is the Magenta plugin of the
 build server, `plugins/magenta.py` in the eud-server repository, which turns the rows into
 eudplib code; nothing you write in a row is code.
 
@@ -246,6 +267,17 @@ EUD maps. Each says on screen what to look for. All four were played on 2026-09-
 | `magenta-eud-2-bits-placed-units.scx` | The unit table by slot (the first placed marine gets 5 HP and invincibility, then Player 2 on the beacon), one bit of a dword (vision), a tech byte (Stim Packs), and a read of the slot's unit type. |
 | `magenta-eud-3-reads.scx` | Triggers every frame; reads of the local player, the game speed, the mouse crossing the middle of the screen, and the A key's states. |
 | `magenta-aplus-counters.scx` | A comparison (A > B) at start, a copy of A into B on the beacon, then B = 1234 and A = B: the generated runs, 153 triggers in all. |
+
+Three more, the **probe maps**, test the candidates in `docs/candidates.md` — one key per
+candidate, and each map says on screen what to press and what to look for. `npx tsx
+scripts/make-probe-maps.mts --build URL` writes them; 6 and 7 need the build server (a local
+eud-server container with the spec-3 plugin), and their `-eud.scx` copies are the ones to play.
+
+| Map | What it probes |
+| --- | --- |
+| `magenta-probe-5-tables.scx` | Fixed-address writes and reads, no build: flingy speed, upgrade and tech costs, units.dat flags, the unit's name from the map's strings, player colour (two routes), supply, game speed, the frame counter, slot types. |
+| `magenta-probe-6-units-eud.scx` | The per-unit verbs and reads of the build server's plugin: orders (two routes), spell timers, cooldown lock, resource amounts, cloak, no-clip, position, the weakest and nearest unit, and scans for attacking, under attack, target, burrowed, moving. |
+| `magenta-probe-7-input-eud.scx` | Held keys and the mouse through MSQC, chat commands with a number in them. |
 
 What a run of these settles, in the catalogue: the `verified` flag on each entry that worked,
 which way round the vision bit goes (map 2 with two players), and what the key states 1 and 2

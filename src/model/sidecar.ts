@@ -8,7 +8,8 @@
 import type { TriggerRecord } from "../../vendor/triggers";
 import { fingerprint } from "./records";
 import type { ExpansionRecord } from "./sync";
-import type { BuildOptions, BuildRecord, ChatCell, Msqc } from "./builds";
+import type { BuildOptions, BuildRecord, ChatArgs, ChatCell, Msqc } from "./builds";
+import type { Cell } from "./counters";
 
 export const MEMBER = "magenta\\magenta.json";
 
@@ -60,12 +61,20 @@ export function decodeSidecar(bytes: Uint8Array | null): Sidecar {
       settings: parsed.settings && typeof parsed.settings === "object" ? parsed.settings : {},
       expansions: Array.isArray(parsed.expansions) ? parsed.expansions.filter((x) => x && typeof x.id === "string" && typeof x.kind === "string") : [],
       builds: Array.isArray(parsed.builds) ? parsed.builds.filter((x) => x && typeof x.id === "string" && typeof x.kind === "string") : [],
-      chat: parsed.chat && Array.isArray(parsed.chat.cell) ? { cell: [Number(parsed.chat.cell[0]), Number(parsed.chat.cell[1])] } : null,
+      chat: parsed.chat && Array.isArray(parsed.chat.cell) ? { cell: [Number(parsed.chat.cell[0]), Number(parsed.chat.cell[1])], args: decodeArgs(parsed.chat.args) } : null,
       msqc: parsed.msqc && typeof parsed.msqc === "object" ? { keys: {}, clicks: {}, mouseIn: {}, select: null, mouseBase: null, qcUnit: 58, qcLoc: 62, qcPlayer: 10, ...(parsed.msqc as Partial<Msqc>) } : null,
     };
   } catch {
     return emptySidecar();
   }
+}
+
+function decodeArgs(args: unknown): ChatArgs | null {
+  if (!args || typeof args !== "object") return null;
+  const a = args as Record<string, unknown>;
+  const cell = (v: unknown): Cell | null => (Array.isArray(v) && v.length === 2 ? [Number(v[0]), Number(v[1])] : null);
+  const ptr = cell(a.ptr), len = cell(a.len), pattern = cell(a.pattern), number = cell(a.number);
+  return ptr && len && pattern && number ? { ptr, len, pattern, number } : null;
 }
 
 export function encodeSidecar(sidecar: Sidecar): Uint8Array {

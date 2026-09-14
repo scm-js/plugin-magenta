@@ -33,6 +33,14 @@ describe("counters", () => {
 });
 
 describe("checks", () => {
+  it("warns when a trigger every player runs guards Current Player conditions with a shared switch", () => {
+    const shared = trig([PlayerGroup.AllPlayers], [{ type: ConditionType.Deaths, player: PlayerGroup.CurrentPlayer, unitId: 181, comparison: Comparison.AtLeast, amount: 1 }, { type: ConditionType.Switch, resource: 1, comparison: 3 }], [{ type: ActionType.SetSwitch, target: 1, modifier: 4 }, { type: ActionType.PreserveTrigger }]);
+    expect(check(shared).some((p) => p.text.includes("switch is shared"))).toBe(true);
+    const own = trig([0], [{ type: ConditionType.Deaths, player: PlayerGroup.CurrentPlayer, unitId: 181, comparison: Comparison.AtLeast, amount: 1 }, { type: ConditionType.Switch, resource: 1, comparison: 3 }], [{ type: ActionType.SetSwitch, target: 1, modifier: 4 }, { type: ActionType.PreserveTrigger }]);
+    expect(check(own).some((p) => p.text.includes("switch is shared"))).toBe(false);
+    const counter = trig([PlayerGroup.AllPlayers], [{ type: ConditionType.Deaths, player: PlayerGroup.CurrentPlayer, unitId: 181, comparison: Comparison.AtLeast, amount: 1 }, { type: ConditionType.Deaths, player: PlayerGroup.CurrentPlayer, unitId: 182, comparison: Comparison.Exactly, amount: 0 }], [{ type: ActionType.SetDeaths, player: PlayerGroup.CurrentPlayer, unitId: 182, target: 1 }, { type: ActionType.PreserveTrigger }]);
+    expect(check(counter).some((p) => p.text.includes("switch is shared"))).toBe(false);
+  });
   it("finds the trigger that never fires and the Wait in a preserved trigger", () => {
     const t = trig([0], [{ type: ConditionType.Never }, { type: ConditionType.Bring, player: 0, comparison: Comparison.AtLeast, amount: 5, location: 1 }, { type: ConditionType.Bring, player: 0, comparison: Comparison.AtMost, amount: 3, location: 1 }], [{ type: ActionType.Wait, time: 1000 }, { type: ActionType.PreserveTrigger }]);
     const texts = check(t).map((p) => p.text);
