@@ -57,6 +57,7 @@ export const STYLE = `
 .mg .mg-chip .mg-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; border: 1px solid rgba(0,0,0,0.5); }
 .mg .mg-tag { display: inline-block; vertical-align: middle; margin-left: 6px; font-size: 9px; letter-spacing: 0.08em; padding: 1px 4px; border-radius: 2px; background: rgba(79, 209, 197, 0.18); color: var(--teal); cursor: help; }
 .mg .mg-tag.ro { background: rgba(224, 165, 69, 0.18); color: var(--warn); }
+.mg .mg-tag.unverified { background: transparent; outline: 1px dashed rgba(79, 209, 197, 0.6); outline-offset: -1px; }
 
 .mg .mg-add { display: flex; align-items: center; gap: 6px; padding: 2px 6px; }
 .mg .mg-add .input { flex: 1; height: 24px; }

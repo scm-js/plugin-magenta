@@ -4,7 +4,7 @@
  * entry rather than a field of the record, and the row's editor lowers the whole row
  * again after any of them changes.
  */
-import { enumerated } from "../catalogue";
+import { enumerated, RACES } from "../catalogue";
 import type { EntryArg } from "../catalogue/types";
 import type { EudRow } from "./eud";
 import type { Namer } from "./names";
@@ -31,17 +31,19 @@ export function eudArgLabel(arg: EntryArg, value: number, namer: Namer, extra: {
     case "tech": return extra.tech(value);
     case "key": return extra.key(value);
     case "unitIndex": return extra.slot ? extra.slot(value) : `slot ${value}`;
+    case "race": return RACES.find((r) => r.value === value)?.label ?? String(value);
     default: return String(value);
   }
 }
 
-/** The words for the value: a choice's label, an id's name, or the number with its unit. */
+/** The words for the value: a choice's label, an id's name, a string of the map's, or the number with its unit. */
 export function eudValueLabel(row: EudRow, namer: Namer, extra: { weapon(id: number): string }): string {
   const v = row.entry.value;
   if (v?.choices) return v.choices.find((c) => c.value === row.value)?.label ?? String(row.value);
   if (v?.kind === "unit") return namer.unit(row.value);
   if (v?.kind === "player") return namer.player(row.value);
   if (v?.kind === "weapon") return extra.weapon(row.value);
+  if (v?.kind === "string") { const s = namer.string(row.value); return s === null ? (row.value === 0 ? "(no text)" : `string ${row.value}`) : s; }
   const n = Number.isInteger(row.value) ? String(row.value) : row.value.toFixed(2).replace(/\.?0+$/, "");
   return v?.unit ? `${n} ${v.unit}` : n;
 }

@@ -41,7 +41,8 @@ function scoreText(text: string, query: string, words: string[]): number {
   return 0;
 }
 
-export function search<T>(items: readonly SearchItem<T>[], query: string, options: { limit?: number; recent?: (value: T) => number } = {}): SearchHit<T>[] {
+/** `recent` and `prefer` add to a hit's score: what was picked lately, and what the query's named things point at (a technology named → the technology rows). */
+export function search<T>(items: readonly SearchItem<T>[], query: string, options: { limit?: number; recent?: (value: T) => number; prefer?: (value: T) => number } = {}): SearchHit<T>[] {
   const q = norm(query);
   const hits: SearchHit<T>[] = [];
   if (!q) {
@@ -59,7 +60,7 @@ export function search<T>(items: readonly SearchItem<T>[], query: string, option
     }
     if (item.group) score = Math.max(score, scoreText(item.group, q, words) - 30);
     if (score <= 0) continue;
-    score += options.recent?.(item.value) ?? 0;
+    score += (options.recent?.(item.value) ?? 0) + (options.prefer?.(item.value) ?? 0);
     hits.push({ item, score });
   }
   // On a tie, the shorter label is the closer match ("Damage of a weapon" over "Damage bonus per upgrade of a weapon").

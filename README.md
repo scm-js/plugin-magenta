@@ -101,10 +101,12 @@ and write it, and the entry's notes. What is there today:
 
 | Group | Entries |
 | --- | --- |
-| Units | max hit points, max shields, armor, build time, mineral and gas cost, supply used and provided, sight range, target acquisition range, ground and air weapon — per unit type |
+| Units | max hit points, max shields, armor, build time, mineral and gas cost, supply used and provided, sight range, target acquisition range, ground and air weapon — per unit type. Since 0.3: the **speed** of a unit type, its **name** from one of the map's strings, its **size** (small, medium, large), what it **looks like** (another type's graphics), and its flags: detector, permanently cloaked, able to cloak or burrow, regenerating, invincible, hero, organic, mechanical, robotic |
 | Weapons | damage, damage bonus per upgrade, cooldown, damage factor, range, minimum range |
-| Players | minerals, gas, an upgrade's level, whether a technology is researched, the stance toward another player, shared vision |
-| Game | game speed, the trigger timer, the local player, the mouse's position on screen, the screen's position on the map, a keyboard key's state |
+| Upgrades | mineral and gas cost, research time, maximum level — per upgrade |
+| Technologies | mineral and gas cost, research time, energy cost — per technology |
+| Players | minerals, gas, an upgrade's level, whether a technology is researched, the stance toward another player, shared vision. Since 0.3: the player's **colour**, the **supply** provided, used and capped (by race), and as conditions what the player's **slot** holds, their **race**, and whether they have **left** |
+| Game | game speed (a read: writing it does nothing), the trigger timer, the local player, the mouse's position on screen, the screen's position on the map, a keyboard key's state, the frames the game has run, the seconds on the game clock |
 | Placed units | hit points, shields, energy, owner, type, position, invincibility, the hallucination flag, cloak — for the unit in a given slot of the game's unit table. The chip lists the map's units with their slots: the first placed unit takes slot 0 and every later one counts down from 1699, as seen in the game. Start locations take no slot, and a unit of a human player who is not in the game takes none either, so later slots shift when a player is missing |
 
 A few things to know:
@@ -122,10 +124,20 @@ A few things to know:
   trigger timer to 0 each cycle, so the whole list runs every frame instead of every two
   seconds — what a key or mouse read needs to catch anything. Every Wait and every preserved
   trigger in the map then runs on that clock.
+- A few entries are **several records in one row**: a unit type's speed is four fields of the
+  game's movement table (the row takes the top speed in pixels a frame and derives the rest),
+  and a player's colour is the unit byte and the minimap byte. The row reads as one and edits
+  as one; in another editor the records show one by one, and the row comes back when they
+  stand together in order. A unit type's speed and looks go through the game data (which
+  movement table a unit type uses), so they are offered once the editor has it.
+- What a unit type is named comes from the map's strings: the chip opens the text box, as a
+  Display Text row's does.
 - Each entry records where its address came from, and `verified` turns on once a map has shown
-  it working in Remastered; the first runs (2026-09-12) verified the units.dat writes, a weapon's
-  damage, a player's minerals and the placed-unit fields. Each address is from Armoha's eud-book
-  (see `ATTRIBUTION.md`).
+  it working in Remastered; an entry no game has shown yet wears a **dashed** EUD tag, and its
+  hover says so. The first runs (2026-09-12) verified the units.dat writes, a weapon's damage,
+  a player's minerals and the placed-unit fields; the probe maps (2026-09-14) the speed, name,
+  looks, flags, colour, supply, upgrade and technology rows. Each address is from Armoha's
+  eud-book (see `ATTRIBUTION.md`).
 
 A record whose address the catalogue does not know still reads: "memory at 0x…", with the
 numbers as chips. Maps made with other tools open with their EUD triggers translated where the
@@ -269,7 +281,7 @@ EUD maps. Each says on screen what to look for. All four were played on 2026-09-
 | `magenta-eud-3-reads.scx` | Triggers every frame; reads of the local player, the game speed, the mouse crossing the middle of the screen, and the A key's states. |
 | `magenta-aplus-counters.scx` | A comparison (A > B) at start, a copy of A into B on the beacon, then B = 1234 and A = B: the generated runs, 153 triggers in all. |
 
-Three more, the **probe maps**, test the candidates in `docs/candidates.md` — one key per
+Four more, the **probe maps**, test the candidates in `docs/candidates.md` — one key per
 candidate, and each map says on screen what to press and what to look for. `npx tsx
 scripts/make-probe-maps.mts --build URL` writes them; 6 and 7 need the build server (a local
 eud-server container with the spec-3 plugin), and their `-eud.scx` copies are the ones to play.
@@ -279,6 +291,7 @@ eud-server container with the spec-3 plugin), and their `-eud.scx` copies are th
 | `magenta-probe-5-tables.scx` | Fixed-address writes and reads, no build: flingy speed, upgrade and tech costs, units.dat flags, the unit's name from the map's strings, player colour (two routes), supply, game speed, the frame counter, slot types. |
 | `magenta-probe-6-units-eud.scx` | The per-unit verbs and reads of the build server's plugin: orders (two routes), spell timers, cooldown lock, resource amounts, cloak, no-clip, position, the weakest and nearest unit, and scans for attacking, under attack, target, burrowed, moving. |
 | `magenta-probe-7-input-eud.scx` | Held keys and the mouse through MSQC, chat commands with a number in them. |
+| `magenta-probe-8-catalogue.scx` | The 0.3 entries as the catalogue itself writes them (speed as four records, colour as two, the name from a string, the looks through units.dat, the flags, supply by race, upgrade and technology costs), the reads probe 5 left unreported (the frame counter, the clock, slot type and race), and the entries no map had touched: sight range, weapon range and cooldown, build time, gas, an upgrade's level, alliance, a placed unit's energy, shields, position and cloak, the screen. |
 
 What a run of these settles, in the catalogue: the `verified` flag on each entry that worked,
 which way round the vision bit goes (map 2 with two players), and what the key states 1 and 2

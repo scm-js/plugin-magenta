@@ -15,8 +15,9 @@
  * `magenta.describe` (a trigger record → its sentences as text).
  */
 import type { PluginApi, TriggerRecord } from "@scm-js/plugin-api";
+import { lookupOver, setGameLookup } from "./src/model/eud";
 import { liveActions, liveConditions } from "./src/model/records";
-import { actionText, conditionText } from "./src/ui/describe";
+import { actionsText, conditionText } from "./src/ui/describe";
 import { installClaims } from "./src/claims";
 import { Host } from "./src/ui/host";
 import { createPanel } from "./src/ui/panel";
@@ -26,6 +27,11 @@ export function activate(api: PluginApi): () => void {
   let claims: ReturnType<typeof installClaims> | null = null;
   const panel = createPanel(api, { afterCommit: () => claims?.refresh() });
   const t = api.i18n.t;
+  // The flingy tables are indexed by flingy, and units.dat says which one a unit type moves as: the
+  // speed and looks entries go through it, so they are offered once the game data is in.
+  const lookup = () => void api.data.load().then(() => { const units = api.data.units(); setGameLookup(units ? lookupOver(units.flingy) : null); }, () => setGameLookup(null));
+  lookup();
+  const onData = api.events.on("gameData", lookup);
   api.commands.register({ id: "open", title: "Magenta", enabled: () => api.document.isOpen(), run: (options) => panel.open(options && typeof options === "object" && typeof (options as { index?: unknown }).index === "number" ? { index: (options as { index: number }).index } : {}) });
   api.commands.register({
     id: "describe", title: "Magenta: describe a trigger",
@@ -36,7 +42,7 @@ export function activate(api: PluginApi): () => void {
       const extra = host.extra();
       return {
         conditions: liveConditions(tr).map((c) => conditionText(c, namer, extra)),
-        actions: liveActions(tr).map((a) => actionText(a, namer, extra)),
+        actions: actionsText(liveActions(tr), namer, extra).map((s) => s.text),
       };
     },
   });
@@ -45,5 +51,5 @@ export function activate(api: PluginApi): () => void {
   api.menu.add("Plugins", { label: t("Magenta Settings…"), icon: "plugin", command: "settings" });
   api.hotkeys.add("Ctrl+Shift+M", { command: "open" });
   claims = installClaims(api, (index) => panel.open({ index }));
-  return () => { claims?.dispose(); panel.close(); };
+  return () => { claims?.dispose(); panel.close(); onData.dispose(); setGameLookup(null); };
 }

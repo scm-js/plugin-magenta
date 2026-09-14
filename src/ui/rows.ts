@@ -6,8 +6,8 @@
 import type { PluginApi, ActionRecord, ConditionRecord } from "@scm-js/plugin-api";
 import { ActionType, ConditionType } from "../../vendor/triggers";
 import { AI_SCRIPT_CHOICES, aiScriptCode, type ArgKind } from "../../vendor/triggerDefs";
-import type { Entry } from "../catalogue";
-import { lowerAction, lowerCondition, recognizeAction, recognizeCondition, entryAddress, type EudRow } from "../model/eud";
+import { RACES, type Entry } from "../catalogue";
+import { lowerAction, lowerActions, lowerCondition, recognizeAction, recognizeCondition, entryAddress, type EudRow } from "../model/eud";
 import { describeEud, type EudSegment } from "../model/eudSentence";
 import type { Namer } from "../model/names";
 import { describeAction, describeCondition, type Segment } from "../model/sentences";
@@ -55,15 +55,39 @@ export function renderRow(ctx: RowContext, kind: "action", index: number, record
 export function renderRow(ctx: RowContext, kind: "condition" | "action", index: number, record: ConditionRecord | ActionRecord, problems: Problem[], h: RowHandlers<ConditionRecord> | RowHandlers<ActionRecord>): HTMLElement {
   const { api } = ctx;
   const el = api.ui.el;
-  const t = api.i18n.t;
   const disabled = kind === "condition" ? isConditionDisabled(record as ConditionRecord) : isActionDisabled(record as ActionRecord);
   const sentence = el("span", { className: "mg-sentence" });
   const eud = kind === "condition" ? recognizeCondition(record as ConditionRecord) : recognizeAction(record as ActionRecord);
+  const hh = h as RowHandlers<ConditionRecord | ActionRecord>;
+  const lower = (row: EudRow) => (kind === "condition" ? lowerCondition(row) : lowerAction(row));
 
-  if (eud) renderEud(ctx, kind, eud, sentence, (row) => (h as RowHandlers<ConditionRecord | ActionRecord>).onChange(kind === "condition" ? lowerCondition(row) : lowerAction(row)));
+  if (eud) renderEud(ctx, kind, eud, sentence, (row) => hh.onChange(lower(row)), (text, rowFor) => hh.onChangeWithText(text, (i) => lower(rowFor(i))));
   else if (kind === "condition") renderNative(ctx, "condition", record as ConditionRecord, describeCondition(record as ConditionRecord, ctx.namer).segments, sentence, h as RowHandlers<ConditionRecord>);
   else renderNative(ctx, "action", record as ActionRecord, describeAction(record as ActionRecord, ctx.namer).segments, sentence, h as RowHandlers<ActionRecord>);
 
+  return rowShell(ctx, kind, index, sentence, disabled, problems, h);
+}
+
+/** The handlers of a grouped entry's row: it stands for several records, and every change writes all of them. */
+export interface GroupHandlers {
+  onChange(records: ActionRecord[]): void;
+  onChangeWithText(text: string, apply: (index: number) => ActionRecord[]): void;
+  onRemove(): void;
+  onMove(delta: number): void;
+  onToggle(): void;
+}
+
+/** One row for a grouped entry (a unit type's speed, a player's colour) whose records stand at `index`. */
+export function renderGroupRow(ctx: RowContext, index: number, row: EudRow, records: ActionRecord[], problems: Problem[], h: GroupHandlers): HTMLElement {
+  const sentence = ctx.api.ui.el("span", { className: "mg-sentence" });
+  renderEud(ctx, "action", row, sentence, (next) => h.onChange(lowerActions(next)), (text, rowFor) => h.onChangeWithText(text, (i) => lowerActions(rowFor(i))));
+  return rowShell(ctx, "action", index, sentence, records.every(isActionDisabled), problems, h);
+}
+
+function rowShell(ctx: RowContext, kind: "condition" | "action", index: number, sentence: HTMLElement, disabled: boolean, problems: Problem[], h: { onRemove(): void; onMove(delta: number): void; onToggle(): void }): HTMLElement {
+  const { api } = ctx;
+  const el = api.ui.el;
+  const t = api.i18n.t;
   const tools = el("span", { className: "mg-tools" },
     api.ui.widgets.button(disabled ? "✓" : "⊘", { ghost: true, title: disabled ? t("Enable") : t("Disable"), onClick: () => h.onToggle() }),
     api.ui.widgets.button("↑", { ghost: true, title: t("Move up (Alt+Up)"), onClick: () => h.onMove(-1) }),
@@ -184,10 +208,12 @@ function pickCounter<R extends ConditionRecord | ActionRecord>(ctx: RowContext, 
 function eudTitle(entry: Entry, row: EudRow): string {
   const address = entryAddress(entry, row.args);
   const rw = entry.remastered.read && entry.remastered.write ? "read and write" : entry.remastered.read ? "read only" : "write only";
-  return [`${entry.name} — 0x${address.toString(16).toUpperCase()}, ${entry.width === "bit" ? "one bit" : `${entry.width} byte${entry.width > 1 ? "s" : ""}`}, Remastered: ${rw}.`, entry.note, `Source: ${entry.source}.`].filter(Boolean).join("\n");
+  const where = entry.parts?.length ? `${entry.parts.length} records from 0x${address.toString(16).toUpperCase()}` : `0x${address.toString(16).toUpperCase()}, ${entry.width === "bit" ? "one bit" : `${entry.width} byte${entry.width > 1 ? "s" : ""}`}`;
+  return [`${entry.name} — ${where}, Remastered: ${rw}.`, entry.note, entry.verified ? "Seen working in Remastered." : "Not yet seen working in Remastered.", `Source: ${entry.source}.`].filter(Boolean).join("\n");
 }
 
-function renderEud(ctx: RowContext, kind: "condition" | "action", row: EudRow, into: HTMLElement, onChange: (row: EudRow) => void): void {
+/** The sentence of a catalogue row with its chips. `onText` interns a string for a string-valued entry and writes the row `rowFor` makes of the index. */
+function renderEud(ctx: RowContext, kind: "condition" | "action", row: EudRow, into: HTMLElement, onChange: (row: EudRow) => void, onText?: (text: string, rowFor: (index: number) => EudRow) => void): void {
   const { api, host } = ctx;
   const t = api.i18n.t;
   const placed = new Map(host.placedUnits().map((u) => [u.slot, u]));
@@ -198,7 +224,8 @@ function renderEud(ctx: RowContext, kind: "condition" | "action", row: EudRow, i
   for (const seg of segments) {
     if (seg.kind === "text") { into.append(seg.text); continue; }
     if (seg.kind === "chip") { into.append(chipEl(api, seg.label, "")); continue; }
-    const chip = chipEl(api, seg.label, "eud", seg.slot !== "value" && seg.slot !== "op" && seg.slot.arg.kind === "player" ? ctx.namer.playerColor?.(seg.value) ?? null : entry.value?.kind === "player" && seg.slot === "value" ? ctx.namer.playerColor?.(seg.value) ?? null : null);
+    const isString = seg.slot === "value" && entry.value?.kind === "string";
+    const chip = chipEl(api, seg.label, isString ? "eud text" : "eud", seg.slot !== "value" && seg.slot !== "op" && seg.slot.arg.kind === "player" ? ctx.namer.playerColor?.(seg.value) ?? null : entry.value?.kind === "player" && seg.slot === "value" ? ctx.namer.playerColor?.(seg.value) ?? null : null);
     chip.addEventListener("click", () => {
       if (seg.slot === "op") {
         pickChoice(api, chip, choicesOf(api, kind === "condition" ? "comparison" : "modifier"), (v) => update({ op: v }), { current: row.op });
@@ -210,6 +237,7 @@ function renderEud(ctx: RowContext, kind: "condition" | "action", row: EudRow, i
         else if (v?.kind === "unit") pickUnitType(api, host, chip, row.value, (value) => update({ value }), { classes: false });
         else if (v?.kind === "player") pickPlayer(api, host, chip, row.value, (value) => update({ value }), { eud: false });
         else if (v?.kind === "weapon") pickNamed(api, chip, [...host.weapons(), { value: 130, label: t("No weapon") }], row.value, (value) => update({ value }));
+        else if (v?.kind === "string") pickText(api, chip, ctx.namer.string(row.value) ?? "", (text) => onText?.(text, (index) => ({ ...row, value: index })), { title: entry.name });
         else pickNumber(api, chip, row.value, (value) => update({ value }), { min: v?.min ?? 0, max: v?.max ?? 4294967295, unit: v?.unit, integer: (v?.scale ?? 1) === 1, step: (v?.scale ?? 1) === 1 ? 1 : 0.01, hint: entry.note });
         return;
       }
@@ -223,12 +251,14 @@ function renderEud(ctx: RowContext, kind: "condition" | "action", row: EudRow, i
         case "tech": pickNamed(api, chip, host.techs().filter((u) => u.value < arg.max), seg.value, setArg); break;
         case "key": pickKey(api, chip, seg.value, setArg); break;
         case "unitIndex": pickPlacedUnit(api, host, chip, seg.value, setArg); break;
+        case "race": pickChoice(api, chip, RACES, setArg, { current: seg.value }); break;
         default: pickNumber(api, chip, seg.value, setArg, { min: 0, max: arg.max - 1 });
       }
     });
     into.append(chip);
   }
-  const tag = api.ui.el("span", { className: "mg-tag", title: eudTitle(entry, row) }, "EUD");
+  // A dashed tag is an entry no game has yet shown working; the hover says so.
+  const tag = api.ui.el("span", { className: `mg-tag${entry.verified ? "" : " unverified"}`, title: eudTitle(entry, row) }, "EUD");
   into.append(tag);
   if (kind === "action" && !entry.remastered.write) into.append(api.ui.el("span", { className: "mg-tag ro", title: t("Remastered does not let a trigger write this address; the action does nothing in the game.") }, t("read only")));
 }

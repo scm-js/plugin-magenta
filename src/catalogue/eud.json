@@ -3,6 +3,8 @@
   "groups": [
     "Units",
     "Weapons",
+    "Upgrades",
+    "Technologies",
     "Players",
     "Game",
     "Placed units"
@@ -514,6 +516,775 @@
       "note": "130 is no weapon."
     },
     {
+      "id": "unit.speed",
+      "kind": "action",
+      "group": "Units",
+      "name": "Speed of a unit type",
+      "aliases": [
+        "movement speed",
+        "faster",
+        "slower",
+        "top speed",
+        "velocity"
+      ],
+      "sentence": {
+        "action": "Set the speed of {unit} to {value}"
+      },
+      "args": [
+        {
+          "name": "unit",
+          "kind": "unit",
+          "label": "Unit",
+          "max": 228
+        }
+      ],
+      "address": {
+        "base": "0x6C9EF8",
+        "terms": [
+          {
+            "arg": "unit",
+            "stride": 4,
+            "via": "flingy"
+          }
+        ]
+      },
+      "width": 4,
+      "parts": [
+        {
+          "role": "const",
+          "const": 0,
+          "address": {
+            "base": "0x6C9858",
+            "terms": [
+              {
+                "arg": "unit",
+                "stride": 1,
+                "via": "flingy"
+              }
+            ]
+          },
+          "width": 1
+        },
+        {
+          "role": "value",
+          "address": {
+            "base": "0x6C9EF8",
+            "terms": [
+              {
+                "arg": "unit",
+                "stride": 4,
+                "via": "flingy"
+              }
+            ]
+          },
+          "width": 4
+        },
+        {
+          "role": "acceleration",
+          "address": {
+            "base": "0x6C9C78",
+            "terms": [
+              {
+                "arg": "unit",
+                "stride": 2,
+                "via": "flingy"
+              }
+            ]
+          },
+          "width": 2
+        },
+        {
+          "role": "halt",
+          "address": {
+            "base": "0x6C9930",
+            "terms": [
+              {
+                "arg": "unit",
+                "stride": 4,
+                "via": "flingy"
+              }
+            ]
+          },
+          "width": 4
+        }
+      ],
+      "value": {
+        "scale": 256,
+        "unit": "px/frame",
+        "setOnly": true,
+        "min": 0.1,
+        "max": 64
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "flingy.dat movement control, top speed, acceleration, halt distance (DatEdit's layout)",
+      "note": "Four records: the unit's flingy is switched to table control and given this top speed, with acceleration and stopping distance to match. Units made after this move at the new speed; the ones already on the map keep theirs. A Marine walks at 4, a Vulture at 6.7. Hero units that share a type's flingy change with it.",
+      "verified": true
+    },
+    {
+      "id": "unit.name",
+      "kind": "action",
+      "group": "Units",
+      "name": "Name of a unit type",
+      "aliases": [
+        "rename",
+        "call",
+        "label",
+        "unit name"
+      ],
+      "sentence": {
+        "action": "Name {unit} {value}"
+      },
+      "args": [
+        {
+          "name": "unit",
+          "kind": "unit",
+          "label": "Unit",
+          "max": 228
+        }
+      ],
+      "address": {
+        "base": "0x660260",
+        "terms": [
+          {
+            "arg": "unit",
+            "stride": 2
+          }
+        ]
+      },
+      "width": 2,
+      "value": {
+        "kind": "string"
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "units.dat map string index (Remastered's unit names from the map's strings)",
+      "note": "The name comes from one of the map's strings, shown wherever the unit's name appears. Remastered only.",
+      "verified": true
+    },
+    {
+      "id": "unit.sizeClass",
+      "kind": "both",
+      "group": "Units",
+      "name": "Size of a unit type",
+      "aliases": [
+        "small",
+        "medium",
+        "large",
+        "size class",
+        "armor type"
+      ],
+      "sentence": {
+        "action": "Set the size of {unit} to {value}",
+        "condition": "The size of {unit} is {value}"
+      },
+      "args": [
+        {
+          "name": "unit",
+          "kind": "unit",
+          "label": "Unit",
+          "max": 228
+        }
+      ],
+      "address": {
+        "base": "0x662180",
+        "terms": [
+          {
+            "arg": "unit",
+            "stride": 1
+          }
+        ]
+      },
+      "width": 1,
+      "value": {
+        "choices": [
+          {
+            "value": 1,
+            "label": "small"
+          },
+          {
+            "value": 2,
+            "label": "medium"
+          },
+          {
+            "value": 3,
+            "label": "large"
+          },
+          {
+            "value": 0,
+            "label": "independent"
+          }
+        ]
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "units.dat unit size (DatEdit's layout)",
+      "note": "What concussive and explosive damage scale by: small takes full concussive damage and half explosive, large the other way round. Not yet seen working in Remastered."
+    },
+    {
+      "id": "unit.graphics",
+      "kind": "action",
+      "group": "Units",
+      "name": "Looks of a unit type",
+      "aliases": [
+        "appearance",
+        "sprite",
+        "model",
+        "look like",
+        "graphics",
+        "disguise"
+      ],
+      "sentence": {
+        "action": "Make {unit} look like {value}"
+      },
+      "args": [
+        {
+          "name": "unit",
+          "kind": "unit",
+          "label": "Unit",
+          "max": 228
+        }
+      ],
+      "address": {
+        "base": "0x6644F8",
+        "terms": [
+          {
+            "arg": "unit",
+            "stride": 1
+          }
+        ]
+      },
+      "width": 1,
+      "value": {
+        "kind": "unit",
+        "via": "flingy"
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "units.dat graphics (the flingy a unit type draws through)",
+      "note": "Units made after this draw as the other type; the ones already on the map keep their look. Stats, size and weapons stay the type's own.",
+      "verified": true
+    },
+    {
+      "id": "unit.detector",
+      "kind": "both",
+      "group": "Units",
+      "name": "Detector flag of a unit type",
+      "aliases": [
+        "see cloaked",
+        "reveal"
+      ],
+      "sentence": {
+        "action": "Make {unit} {value}",
+        "condition": "{unit} is {value}"
+      },
+      "args": [
+        {
+          "name": "unit",
+          "kind": "unit",
+          "label": "Unit",
+          "max": 228
+        }
+      ],
+      "address": {
+        "base": "0x664080",
+        "terms": [
+          {
+            "arg": "unit",
+            "stride": 4
+          }
+        ]
+      },
+      "width": "bit",
+      "bit": 15,
+      "value": {
+        "choices": [
+          {
+            "value": 1,
+            "label": "a detector"
+          },
+          {
+            "value": 0,
+            "label": "not a detector"
+          }
+        ]
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "units.dat special ability flags (DatEdit's bit order)",
+      "note": "A units.dat flag. Units of the type see cloaked and burrowed units in their sight range.",
+      "verified": true
+    },
+    {
+      "id": "unit.permanentCloak",
+      "kind": "both",
+      "group": "Units",
+      "name": "Permanent cloak flag of a unit type",
+      "aliases": [
+        "always cloaked",
+        "invisible"
+      ],
+      "sentence": {
+        "action": "Make {unit} {value}",
+        "condition": "{unit} is {value}"
+      },
+      "args": [
+        {
+          "name": "unit",
+          "kind": "unit",
+          "label": "Unit",
+          "max": 228
+        }
+      ],
+      "address": {
+        "base": "0x664080",
+        "terms": [
+          {
+            "arg": "unit",
+            "stride": 4
+          }
+        ]
+      },
+      "width": "bit",
+      "bit": 22,
+      "value": {
+        "choices": [
+          {
+            "value": 1,
+            "label": "permanently cloaked"
+          },
+          {
+            "value": 0,
+            "label": "not permanently cloaked"
+          }
+        ]
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "units.dat special ability flags (DatEdit's bit order)",
+      "note": "A units.dat flag: units made after this have it; the ones already on the map keep what they were made with.",
+      "verified": true
+    },
+    {
+      "id": "unit.cloakable",
+      "kind": "both",
+      "group": "Units",
+      "name": "Cloak ability flag of a unit type",
+      "aliases": [
+        "cloaking"
+      ],
+      "sentence": {
+        "action": "Make {unit} {value}",
+        "condition": "{unit} is {value}"
+      },
+      "args": [
+        {
+          "name": "unit",
+          "kind": "unit",
+          "label": "Unit",
+          "max": 228
+        }
+      ],
+      "address": {
+        "base": "0x664080",
+        "terms": [
+          {
+            "arg": "unit",
+            "stride": 4
+          }
+        ]
+      },
+      "width": "bit",
+      "bit": 9,
+      "value": {
+        "choices": [
+          {
+            "value": 1,
+            "label": "able to cloak"
+          },
+          {
+            "value": 0,
+            "label": "unable to cloak"
+          }
+        ]
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "units.dat special ability flags (DatEdit's bit order)",
+      "note": "A units.dat flag: units made after this have it; the ones already on the map keep what they were made with."
+    },
+    {
+      "id": "unit.burrowable",
+      "kind": "both",
+      "group": "Units",
+      "name": "Burrow ability flag of a unit type",
+      "aliases": [
+        "burrow"
+      ],
+      "sentence": {
+        "action": "Make {unit} {value}",
+        "condition": "{unit} is {value}"
+      },
+      "args": [
+        {
+          "name": "unit",
+          "kind": "unit",
+          "label": "Unit",
+          "max": 228
+        }
+      ],
+      "address": {
+        "base": "0x664080",
+        "terms": [
+          {
+            "arg": "unit",
+            "stride": 4
+          }
+        ]
+      },
+      "width": "bit",
+      "bit": 20,
+      "value": {
+        "choices": [
+          {
+            "value": 1,
+            "label": "able to burrow"
+          },
+          {
+            "value": 0,
+            "label": "unable to burrow"
+          }
+        ]
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "units.dat special ability flags (DatEdit's bit order)",
+      "note": "A units.dat flag: units made after this have it; the ones already on the map keep what they were made with."
+    },
+    {
+      "id": "unit.regeneratesHp",
+      "kind": "both",
+      "group": "Units",
+      "name": "Regeneration flag of a unit type",
+      "aliases": [
+        "regen",
+        "heal over time",
+        "zerg regeneration"
+      ],
+      "sentence": {
+        "action": "Make {unit} {value}",
+        "condition": "{unit} is {value}"
+      },
+      "args": [
+        {
+          "name": "unit",
+          "kind": "unit",
+          "label": "Unit",
+          "max": 228
+        }
+      ],
+      "address": {
+        "base": "0x664080",
+        "terms": [
+          {
+            "arg": "unit",
+            "stride": 4
+          }
+        ]
+      },
+      "width": "bit",
+      "bit": 7,
+      "value": {
+        "choices": [
+          {
+            "value": 1,
+            "label": "regenerating hit points"
+          },
+          {
+            "value": 0,
+            "label": "not regenerating hit points"
+          }
+        ]
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "units.dat special ability flags (DatEdit's bit order)",
+      "note": "A units.dat flag: units made after this have it; the ones already on the map keep what they were made with."
+    },
+    {
+      "id": "unit.invincible",
+      "kind": "both",
+      "group": "Units",
+      "name": "Invincible flag of a unit type",
+      "aliases": [
+        "invulnerable",
+        "immortal",
+        "cannot be killed"
+      ],
+      "sentence": {
+        "action": "Make {unit} {value}",
+        "condition": "{unit} is {value}"
+      },
+      "args": [
+        {
+          "name": "unit",
+          "kind": "unit",
+          "label": "Unit",
+          "max": 228
+        }
+      ],
+      "address": {
+        "base": "0x664080",
+        "terms": [
+          {
+            "arg": "unit",
+            "stride": 4
+          }
+        ]
+      },
+      "width": "bit",
+      "bit": 29,
+      "value": {
+        "choices": [
+          {
+            "value": 1,
+            "label": "invincible"
+          },
+          {
+            "value": 0,
+            "label": "not invincible"
+          }
+        ]
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "units.dat special ability flags (DatEdit's bit order)",
+      "note": "A units.dat flag: units made after this have it; the ones already on the map keep what they were made with."
+    },
+    {
+      "id": "unit.hero",
+      "kind": "both",
+      "group": "Units",
+      "name": "Hero flag of a unit type",
+      "aliases": [
+        "hero unit"
+      ],
+      "sentence": {
+        "action": "Make {unit} {value}",
+        "condition": "{unit} is {value}"
+      },
+      "args": [
+        {
+          "name": "unit",
+          "kind": "unit",
+          "label": "Unit",
+          "max": 228
+        }
+      ],
+      "address": {
+        "base": "0x664080",
+        "terms": [
+          {
+            "arg": "unit",
+            "stride": 4
+          }
+        ]
+      },
+      "width": "bit",
+      "bit": 6,
+      "value": {
+        "choices": [
+          {
+            "value": 1,
+            "label": "a hero"
+          },
+          {
+            "value": 0,
+            "label": "not a hero"
+          }
+        ]
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "units.dat special ability flags (DatEdit's bit order)",
+      "note": "A units.dat flag: units made after this have it; the ones already on the map keep what they were made with."
+    },
+    {
+      "id": "unit.organic",
+      "kind": "both",
+      "group": "Units",
+      "name": "Organic flag of a unit type",
+      "aliases": [
+        "biological",
+        "medic heal"
+      ],
+      "sentence": {
+        "action": "Make {unit} {value}",
+        "condition": "{unit} is {value}"
+      },
+      "args": [
+        {
+          "name": "unit",
+          "kind": "unit",
+          "label": "Unit",
+          "max": 228
+        }
+      ],
+      "address": {
+        "base": "0x664080",
+        "terms": [
+          {
+            "arg": "unit",
+            "stride": 4
+          }
+        ]
+      },
+      "width": "bit",
+      "bit": 16,
+      "value": {
+        "choices": [
+          {
+            "value": 1,
+            "label": "organic"
+          },
+          {
+            "value": 0,
+            "label": "not organic"
+          }
+        ]
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "units.dat special ability flags (DatEdit's bit order)",
+      "note": "A units.dat flag: units made after this have it; the ones already on the map keep what they were made with."
+    },
+    {
+      "id": "unit.mechanical",
+      "kind": "both",
+      "group": "Units",
+      "name": "Mechanical flag of a unit type",
+      "aliases": [
+        "scv repair",
+        "machine"
+      ],
+      "sentence": {
+        "action": "Make {unit} {value}",
+        "condition": "{unit} is {value}"
+      },
+      "args": [
+        {
+          "name": "unit",
+          "kind": "unit",
+          "label": "Unit",
+          "max": 228
+        }
+      ],
+      "address": {
+        "base": "0x664080",
+        "terms": [
+          {
+            "arg": "unit",
+            "stride": 4
+          }
+        ]
+      },
+      "width": "bit",
+      "bit": 30,
+      "value": {
+        "choices": [
+          {
+            "value": 1,
+            "label": "mechanical"
+          },
+          {
+            "value": 0,
+            "label": "not mechanical"
+          }
+        ]
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "units.dat special ability flags (DatEdit's bit order)",
+      "note": "A units.dat flag: units made after this have it; the ones already on the map keep what they were made with."
+    },
+    {
+      "id": "unit.robotic",
+      "kind": "both",
+      "group": "Units",
+      "name": "Robotic flag of a unit type",
+      "aliases": [
+        "immune to spells",
+        "robot"
+      ],
+      "sentence": {
+        "action": "Make {unit} {value}",
+        "condition": "{unit} is {value}"
+      },
+      "args": [
+        {
+          "name": "unit",
+          "kind": "unit",
+          "label": "Unit",
+          "max": 228
+        }
+      ],
+      "address": {
+        "base": "0x664080",
+        "terms": [
+          {
+            "arg": "unit",
+            "stride": 4
+          }
+        ]
+      },
+      "width": "bit",
+      "bit": 14,
+      "value": {
+        "choices": [
+          {
+            "value": 1,
+            "label": "robotic"
+          },
+          {
+            "value": 0,
+            "label": "not robotic"
+          }
+        ]
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "units.dat special ability flags (DatEdit's bit order)",
+      "note": "A units.dat flag: units made after this have it; the ones already on the map keep what they were made with."
+    },
+    {
       "id": "weapon.damage",
       "kind": "both",
       "group": "Weapons",
@@ -761,6 +1532,358 @@
       "note": "In pixels: 32 per tile."
     },
     {
+      "id": "upgrade.mineralCost",
+      "kind": "both",
+      "group": "Upgrades",
+      "name": "Mineral cost of an upgrade",
+      "aliases": [
+        "upgrade price",
+        "ore"
+      ],
+      "sentence": {
+        "action": "Set the mineral cost of {upgrade} {mod} {value}",
+        "condition": "The mineral cost of {upgrade} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "upgrade",
+          "kind": "upgrade",
+          "label": "Upgrade",
+          "max": 61
+        }
+      ],
+      "address": {
+        "base": "0x655740",
+        "terms": [
+          {
+            "arg": "upgrade",
+            "stride": 2
+          }
+        ]
+      },
+      "width": 2,
+      "value": {
+        "unit": "minerals",
+        "min": 0,
+        "max": 65535
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "upgrades.dat mineral cost base (DatEdit's layout)",
+      "note": "The first level's cost; each further level adds the upgrade's own factor to it.",
+      "verified": true
+    },
+    {
+      "id": "upgrade.gasCost",
+      "kind": "both",
+      "group": "Upgrades",
+      "name": "Gas cost of an upgrade",
+      "aliases": [
+        "upgrade price",
+        "vespene"
+      ],
+      "sentence": {
+        "action": "Set the gas cost of {upgrade} {mod} {value}",
+        "condition": "The gas cost of {upgrade} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "upgrade",
+          "kind": "upgrade",
+          "label": "Upgrade",
+          "max": 61
+        }
+      ],
+      "address": {
+        "base": "0x655840",
+        "terms": [
+          {
+            "arg": "upgrade",
+            "stride": 2
+          }
+        ]
+      },
+      "width": 2,
+      "value": {
+        "unit": "gas",
+        "min": 0,
+        "max": 65535
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "upgrades.dat gas cost base (DatEdit's layout)",
+      "note": "The first level's cost; each further level adds the upgrade's own factor to it.",
+      "verified": true
+    },
+    {
+      "id": "upgrade.time",
+      "kind": "both",
+      "group": "Upgrades",
+      "name": "Research time of an upgrade",
+      "aliases": [
+        "upgrade time",
+        "how long"
+      ],
+      "sentence": {
+        "action": "Set the research time of {upgrade} {mod} {value}",
+        "condition": "The research time of {upgrade} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "upgrade",
+          "kind": "upgrade",
+          "label": "Upgrade",
+          "max": 61
+        }
+      ],
+      "address": {
+        "base": "0x655B80",
+        "terms": [
+          {
+            "arg": "upgrade",
+            "stride": 2
+          }
+        ]
+      },
+      "width": 2,
+      "value": {
+        "scale": 15,
+        "unit": "s",
+        "min": 0,
+        "max": 4369
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "upgrades.dat time base (DatEdit's layout)",
+      "note": "The first level's time, stored in frames at Normal speed: 15 per game second. Each further level adds the upgrade's own factor.",
+      "verified": true
+    },
+    {
+      "id": "upgrade.maxLevel",
+      "kind": "both",
+      "group": "Upgrades",
+      "name": "Maximum level of an upgrade",
+      "aliases": [
+        "upgrade levels",
+        "max repeats",
+        "level cap"
+      ],
+      "sentence": {
+        "action": "Set the maximum level of {upgrade} {mod} {value}",
+        "condition": "The maximum level of {upgrade} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "upgrade",
+          "kind": "upgrade",
+          "label": "Upgrade",
+          "max": 61
+        }
+      ],
+      "address": {
+        "base": "0x655700",
+        "terms": [
+          {
+            "arg": "upgrade",
+            "stride": 1
+          }
+        ]
+      },
+      "width": 1,
+      "value": {
+        "unit": "levels",
+        "min": 0,
+        "max": 255
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "upgrades.dat max repeats (DatEdit's layout)",
+      "note": "How many times the upgrade can be researched. Not yet seen working in Remastered."
+    },
+    {
+      "id": "tech.mineralCost",
+      "kind": "both",
+      "group": "Technologies",
+      "name": "Mineral cost of a technology",
+      "aliases": [
+        "research price",
+        "ore"
+      ],
+      "sentence": {
+        "action": "Set the mineral cost of {tech} {mod} {value}",
+        "condition": "The mineral cost of {tech} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "tech",
+          "kind": "tech",
+          "label": "Technology",
+          "max": 44
+        }
+      ],
+      "address": {
+        "base": "0x656248",
+        "terms": [
+          {
+            "arg": "tech",
+            "stride": 2
+          }
+        ]
+      },
+      "width": 2,
+      "value": {
+        "unit": "minerals",
+        "min": 0,
+        "max": 65535
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "techdata.dat mineral cost (DatEdit's layout)",
+      "verified": true
+    },
+    {
+      "id": "tech.gasCost",
+      "kind": "both",
+      "group": "Technologies",
+      "name": "Gas cost of a technology",
+      "aliases": [
+        "research price",
+        "vespene"
+      ],
+      "sentence": {
+        "action": "Set the gas cost of {tech} {mod} {value}",
+        "condition": "The gas cost of {tech} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "tech",
+          "kind": "tech",
+          "label": "Technology",
+          "max": 44
+        }
+      ],
+      "address": {
+        "base": "0x6561F0",
+        "terms": [
+          {
+            "arg": "tech",
+            "stride": 2
+          }
+        ]
+      },
+      "width": 2,
+      "value": {
+        "unit": "gas",
+        "min": 0,
+        "max": 65535
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "techdata.dat gas cost (DatEdit's layout)",
+      "verified": true
+    },
+    {
+      "id": "tech.time",
+      "kind": "both",
+      "group": "Technologies",
+      "name": "Research time of a technology",
+      "aliases": [
+        "research time",
+        "how long"
+      ],
+      "sentence": {
+        "action": "Set the research time of {tech} {mod} {value}",
+        "condition": "The research time of {tech} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "tech",
+          "kind": "tech",
+          "label": "Technology",
+          "max": 44
+        }
+      ],
+      "address": {
+        "base": "0x6563D8",
+        "terms": [
+          {
+            "arg": "tech",
+            "stride": 2
+          }
+        ]
+      },
+      "width": 2,
+      "value": {
+        "scale": 15,
+        "unit": "s",
+        "min": 0,
+        "max": 4369
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "techdata.dat research time (DatEdit's layout)",
+      "note": "Stored in frames at Normal speed: 15 per game second.",
+      "verified": true
+    },
+    {
+      "id": "tech.energy",
+      "kind": "both",
+      "group": "Technologies",
+      "name": "Energy cost of a technology",
+      "aliases": [
+        "mana cost",
+        "spell cost",
+        "energy"
+      ],
+      "sentence": {
+        "action": "Set the energy cost of {tech} {mod} {value}",
+        "condition": "The energy cost of {tech} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "tech",
+          "kind": "tech",
+          "label": "Technology",
+          "max": 44
+        }
+      ],
+      "address": {
+        "base": "0x656380",
+        "terms": [
+          {
+            "arg": "tech",
+            "stride": 2
+          }
+        ]
+      },
+      "width": 2,
+      "value": {
+        "unit": "energy",
+        "min": 0,
+        "max": 65535
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "techdata.dat energy cost (DatEdit's layout)",
+      "note": "What a cast of the spell takes. Not yet seen working in Remastered."
+    },
+    {
       "id": "player.minerals",
       "kind": "both",
       "group": "Players",
@@ -987,7 +2110,7 @@
         }
       ],
       "address": {
-        "base": "0x58D6F8",
+        "base": "0x58D634",
         "terms": [
           {
             "arg": "player",
@@ -1020,8 +2143,8 @@
         "read": true,
         "write": true
       },
-      "source": "player alliances (eud-book)",
-      "note": "As a condition this reads what Set Alliance Status wrote; the game has no native way to test it."
+      "source": "player alliances 0x58D634 (eud-book)",
+      "note": "As a condition this reads what Set Alliance Status wrote; the game has no native way to test it. The catalogue had this at 0x58D6F8 until 2026-09-14, which is the game clock; not yet seen working in Remastered."
     },
     {
       "id": "player.vision",
@@ -1083,12 +2206,495 @@
       "note": "Which way round the two players go is not yet verified in game."
     },
     {
-      "id": "game.speed",
+      "id": "player.color",
+      "kind": "action",
+      "group": "Players",
+      "name": "Colour of a player",
+      "aliases": [
+        "team colour",
+        "player color",
+        "recolour",
+        "tint"
+      ],
+      "sentence": {
+        "action": "Set the colour of {player} to {value}"
+      },
+      "args": [
+        {
+          "name": "player",
+          "kind": "player",
+          "label": "Player",
+          "max": 12
+        }
+      ],
+      "address": {
+        "base": "0x581D76",
+        "terms": [
+          {
+            "arg": "player",
+            "stride": 1
+          }
+        ]
+      },
+      "width": 1,
+      "parts": [
+        {
+          "role": "value",
+          "address": {
+            "base": "0x581D76",
+            "terms": [
+              {
+                "arg": "player",
+                "stride": 1
+              }
+            ]
+          },
+          "width": 1
+        },
+        {
+          "role": "value",
+          "address": {
+            "base": "0x581DD6",
+            "terms": [
+              {
+                "arg": "player",
+                "stride": 1
+              }
+            ]
+          },
+          "width": 1
+        }
+      ],
+      "value": {
+        "choices": [
+          {
+            "value": 111,
+            "label": "red"
+          },
+          {
+            "value": 165,
+            "label": "blue"
+          },
+          {
+            "value": 159,
+            "label": "teal"
+          },
+          {
+            "value": 164,
+            "label": "purple"
+          },
+          {
+            "value": 179,
+            "label": "orange"
+          },
+          {
+            "value": 19,
+            "label": "brown"
+          },
+          {
+            "value": 255,
+            "label": "white"
+          },
+          {
+            "value": 135,
+            "label": "yellow"
+          },
+          {
+            "value": 117,
+            "label": "green"
+          }
+        ]
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "unit colour table 0x581D76 and minimap colour table 0x581DD6 (eud-book)",
+      "note": "Two records: the palette entry the player's units are drawn in, and the one the minimap uses. Takes effect at once, for every unit of the player.",
+      "verified": true
+    },
+    {
+      "id": "player.supplyProvided",
       "kind": "both",
+      "group": "Players",
+      "name": "Supply provided to a player",
+      "aliases": [
+        "supply",
+        "psi",
+        "control",
+        "supply available",
+        "depots"
+      ],
+      "sentence": {
+        "action": "Set the {race} supply provided to {player} {mod} {value}",
+        "condition": "The {race} supply provided to {player} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "race",
+          "kind": "race",
+          "label": "Race",
+          "max": 3
+        },
+        {
+          "name": "player",
+          "kind": "player",
+          "label": "Player",
+          "max": 12
+        }
+      ],
+      "address": {
+        "base": "0x582144",
+        "terms": [
+          {
+            "arg": "race",
+            "stride": 144
+          },
+          {
+            "arg": "player",
+            "stride": 4
+          }
+        ]
+      },
+      "width": 4,
+      "value": {
+        "scale": 2,
+        "unit": "supply",
+        "min": 0,
+        "max": 32767
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "supply tables: available (eud-book)",
+      "note": "The right-hand number of the top bar, before the cap. The game recounts it when a depot, overlord or pylon is made or lost, so set it every frame to hold a value. Each race has its own table; a player's is the one for the race they play.",
+      "verified": true
+    },
+    {
+      "id": "player.supplyUsed",
+      "kind": "both",
+      "group": "Players",
+      "name": "Supply used by a player",
+      "aliases": [
+        "supply",
+        "psi",
+        "control",
+        "population",
+        "army size"
+      ],
+      "sentence": {
+        "action": "Set the {race} supply used by {player} {mod} {value}",
+        "condition": "The {race} supply used by {player} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "race",
+          "kind": "race",
+          "label": "Race",
+          "max": 3
+        },
+        {
+          "name": "player",
+          "kind": "player",
+          "label": "Player",
+          "max": 12
+        }
+      ],
+      "address": {
+        "base": "0x582174",
+        "terms": [
+          {
+            "arg": "race",
+            "stride": 144
+          },
+          {
+            "arg": "player",
+            "stride": 4
+          }
+        ]
+      },
+      "width": 4,
+      "value": {
+        "scale": 2,
+        "unit": "supply",
+        "min": 0,
+        "max": 32767
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "supply tables: used (eud-book)",
+      "note": "The left-hand number of the top bar. The game recounts it when a unit is made or dies. Each race has its own table; a player's is the one for the race they play."
+    },
+    {
+      "id": "player.supplyMax",
+      "kind": "both",
+      "group": "Players",
+      "name": "Supply cap of a player",
+      "aliases": [
+        "supply",
+        "psi",
+        "control",
+        "max supply",
+        "200 cap",
+        "supply limit"
+      ],
+      "sentence": {
+        "action": "Set the {race} supply cap of {player} {mod} {value}",
+        "condition": "The {race} supply cap of {player} is {cmp} {value}"
+      },
+      "args": [
+        {
+          "name": "race",
+          "kind": "race",
+          "label": "Race",
+          "max": 3
+        },
+        {
+          "name": "player",
+          "kind": "player",
+          "label": "Player",
+          "max": 12
+        }
+      ],
+      "address": {
+        "base": "0x5821A4",
+        "terms": [
+          {
+            "arg": "race",
+            "stride": 144
+          },
+          {
+            "arg": "player",
+            "stride": 4
+          }
+        ]
+      },
+      "width": 4,
+      "value": {
+        "scale": 2,
+        "unit": "supply",
+        "min": 0,
+        "max": 32767
+      },
+      "remastered": {
+        "read": true,
+        "write": true
+      },
+      "source": "supply tables: max (eud-book)",
+      "note": "What the provided supply is capped at, 200 in a normal game. Each race has its own table; a player's is the one for the race they play.",
+      "verified": true
+    },
+    {
+      "id": "player.slotType",
+      "kind": "condition",
+      "group": "Players",
+      "name": "Slot of a player",
+      "aliases": [
+        "is human",
+        "is a computer",
+        "empty slot",
+        "player kind",
+        "occupied"
+      ],
+      "sentence": {
+        "condition": "The slot of {player} is {value}"
+      },
+      "args": [
+        {
+          "name": "player",
+          "kind": "player",
+          "label": "Player",
+          "max": 12
+        }
+      ],
+      "address": {
+        "base": "0x57F1B4",
+        "terms": [
+          {
+            "arg": "player",
+            "stride": 1
+          }
+        ]
+      },
+      "width": 1,
+      "value": {
+        "choices": [
+          {
+            "value": 2,
+            "label": "a human"
+          },
+          {
+            "value": 1,
+            "label": "a computer"
+          },
+          {
+            "value": 0,
+            "label": "empty"
+          },
+          {
+            "value": 3,
+            "label": "rescuable"
+          },
+          {
+            "value": 4,
+            "label": "unavailable"
+          },
+          {
+            "value": 5,
+            "label": "a computer (lobby)"
+          },
+          {
+            "value": 6,
+            "label": "open"
+          },
+          {
+            "value": 7,
+            "label": "neutral"
+          },
+          {
+            "value": 8,
+            "label": "closed"
+          }
+        ]
+      },
+      "remastered": {
+        "read": true,
+        "write": false
+      },
+      "source": "player slot types 0x57F1B4 (eud-book)",
+      "note": "What the slot holds once the game has started: a human, a computer, or nothing. Not yet seen working in Remastered."
+    },
+    {
+      "id": "player.race",
+      "kind": "condition",
+      "group": "Players",
+      "name": "Race of a player",
+      "aliases": [
+        "is zerg",
+        "is terran",
+        "is protoss",
+        "plays"
+      ],
+      "sentence": {
+        "condition": "The race of {player} is {value}"
+      },
+      "args": [
+        {
+          "name": "player",
+          "kind": "player",
+          "label": "Player",
+          "max": 12
+        }
+      ],
+      "address": {
+        "base": "0x57F1C0",
+        "terms": [
+          {
+            "arg": "player",
+            "stride": 1
+          }
+        ]
+      },
+      "width": 1,
+      "value": {
+        "choices": [
+          {
+            "value": 0,
+            "label": "Zerg"
+          },
+          {
+            "value": 1,
+            "label": "Terran"
+          },
+          {
+            "value": 2,
+            "label": "Protoss"
+          },
+          {
+            "value": 3,
+            "label": "other"
+          },
+          {
+            "value": 4,
+            "label": "neutral"
+          },
+          {
+            "value": 5,
+            "label": "user selectable"
+          },
+          {
+            "value": 6,
+            "label": "random"
+          }
+        ]
+      },
+      "remastered": {
+        "read": true,
+        "write": false
+      },
+      "source": "player slot races 0x57F1C0 (eud-book)",
+      "note": "The race the player picked, once the game has started. Not yet seen working in Remastered."
+    },
+    {
+      "id": "player.left",
+      "kind": "condition",
+      "group": "Players",
+      "name": "Whether a player has left",
+      "aliases": [
+        "left the game",
+        "quit",
+        "dropped",
+        "disconnected"
+      ],
+      "sentence": {
+        "condition": "{player} {value}"
+      },
+      "args": [
+        {
+          "name": "player",
+          "kind": "player",
+          "label": "Player",
+          "max": 8
+        }
+      ],
+      "address": {
+        "base": "0x581D62",
+        "terms": [
+          {
+            "arg": "player",
+            "stride": 1
+          }
+        ]
+      },
+      "width": 1,
+      "value": {
+        "choices": [
+          {
+            "value": 1,
+            "label": "has left the game"
+          },
+          {
+            "value": 0,
+            "label": "is still in the game"
+          }
+        ]
+      },
+      "remastered": {
+        "read": true,
+        "write": false
+      },
+      "source": "player left flags 0x581D62 (eud-book)",
+      "note": "Set once a human leaves. Not yet seen working in Remastered."
+    },
+    {
+      "id": "game.speed",
+      "kind": "condition",
       "group": "Game",
       "name": "Game speed",
       "sentence": {
-        "action": "Set the game speed to {value}",
         "condition": "The game speed is {value}"
       },
       "args": [],
@@ -1130,10 +2736,11 @@
       },
       "remastered": {
         "read": true,
-        "write": true
+        "write": false
       },
       "source": "game speed (eud-book)",
-      "note": "Not confirmed: a Remastered run on 2026-09-12 read neither Fastest nor Normal here, so the address may not be mapped by Remastered's EUD layer."
+      "note": "Writing it did nothing in Remastered (probe 5, 2026-09-14), so it is a read only: what the speed setting is.",
+      "verified": true
     },
     {
       "id": "game.triggerTimer",
@@ -1364,6 +2971,68 @@
       "source": "keyboard state array (eud-book)",
       "note": "Local to each computer. Needs triggers running every frame to catch a press. Verified in Remastered 2026-09-12: the press reads as 1 for a frame and the key reads 0 again at once, even while held; 2 and 3 never appeared.",
       "verified": true
+    },
+    {
+      "id": "game.frames",
+      "kind": "condition",
+      "group": "Game",
+      "name": "Frames the game has run",
+      "aliases": [
+        "frame counter",
+        "ticks",
+        "game time",
+        "elapsed frames"
+      ],
+      "sentence": {
+        "condition": "The game has run {cmp} {value}"
+      },
+      "args": [],
+      "address": {
+        "base": "0x57F23C"
+      },
+      "width": 4,
+      "value": {
+        "unit": "frames",
+        "min": 0,
+        "max": 4294967295
+      },
+      "remastered": {
+        "read": true,
+        "write": false
+      },
+      "source": "elapsed time in game ticks 0x57F23C (eud-book)",
+      "note": "About 24 a second at Fastest, 15 at Normal. Not yet seen working in Remastered."
+    },
+    {
+      "id": "game.seconds",
+      "kind": "condition",
+      "group": "Game",
+      "name": "Seconds on the game clock",
+      "aliases": [
+        "game clock",
+        "timer",
+        "elapsed seconds",
+        "game time"
+      ],
+      "sentence": {
+        "condition": "The game clock is {cmp} {value}"
+      },
+      "args": [],
+      "address": {
+        "base": "0x58D6F8"
+      },
+      "width": 4,
+      "value": {
+        "unit": "s",
+        "min": 0,
+        "max": 4294967295
+      },
+      "remastered": {
+        "read": true,
+        "write": false
+      },
+      "source": "elapsed time in game seconds 0x58D6F8 (eud-book)",
+      "note": "The seconds the in-game clock shows. The earlier entry at 0x58D6F4 never fired; this one is the next dword. Not yet seen working in Remastered."
     },
     {
       "id": "cunit.hp",

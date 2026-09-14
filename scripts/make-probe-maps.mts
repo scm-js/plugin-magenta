@@ -10,10 +10,16 @@
  *      orders, spell timers, cooldown lock, resource amounts, cloak, no-clip, position,
  *      weakest / nearest, and the order / under-attack / target / burrowed / moving scans.
  *   7  input: held keys and the mouse through MSQC, chat commands with a number in them.
+ *   8  the catalogue: every slice 3 entry lowered by the catalogue itself (speed as four
+ *      records, colour as two, the name from a string, the looks through units.dat), the
+ *      reads probe 5 left unreported (frame counter, clock, slot type and race), and the
+ *      entries the first four maps never touched (sight and weapon range, cooldown, build
+ *      time, gas, upgrade level, alliance, a placed unit's energy, shields, position and
+ *      cloak, the screen).
  *
  * Maps 6 and 7 need the build server (`--build http://localhost:8085`, the eud-server
  * container with the spec-3 plugin); their built copies end in `-eud.scx`, and those are
- * the ones to play. Map 5 plays as written.
+ * the ones to play. Maps 5 and 8 play as written.
  *
  *   npx tsx scripts/make-probe-maps.mts [--build URL] [../scm-js]
  */
@@ -22,7 +28,7 @@ import { join, resolve } from "node:path";
 import { SetModifier, Comparison, ActionType, ConditionType, PlayerGroup, ActionFlag, SwitchAction, SwitchState, type TriggerRecord, type ActionRecord, type ConditionRecord } from "../vendor/triggers";
 import { entry } from "../src/catalogue";
 import type { Entry } from "../src/catalogue/types";
-import { lowerAction, lowerCondition } from "../src/model/eud";
+import { lookupOver, lowerAction, lowerActions, lowerCondition, setGameLookup } from "../src/model/eud";
 import { setOwners } from "../src/model/records";
 import { encodeSidecar, MEMBER, type Sidecar } from "../src/model/sidecar";
 import type { BuildPlugins } from "../src/model/builds";
@@ -51,7 +57,8 @@ const jungle = existsSync(join(TILESET_DIR, "jungle.cv5"))
   : null;
 if (!jungle) console.warn("no extracted jungle tileset in the editor: the maps get dirt ids without graphics-checked tiles");
 const unitsDat = existsSync(join(EDITOR, "public", "arr", "units.dat")) ? decodeUnitsDat(new Uint8Array(readFileSync(join(EDITOR, "public", "arr", "units.dat")))) : null;
-if (!unitsDat) console.warn("no extracted units.dat in the editor: the flingy probes use DatEdit's ids");
+if (!unitsDat) console.warn("no extracted units.dat in the editor: the flingy probes use DatEdit's ids, and map 8 is skipped");
+if (unitsDat) setGameLookup(lookupOver(unitsDat.flingy));
 // flingy.dat raw: sprite u16×209, top speed u32×209 at 418, acceleration u16×209 at 1254, halt distance u32×209 at 1672, turn radius u8 at 2508, unused, movement control u8 at 2926.
 const flingyBytes = existsSync(join(EDITOR, "public", "arr", "flingy.dat")) ? new Uint8Array(readFileSync(join(EDITOR, "public", "arr", "flingy.dat"))) : null;
 const flingyView = flingyBytes ? new DataView(flingyBytes.buffer, flingyBytes.byteOffset, flingyBytes.byteLength) : null;
@@ -80,6 +87,8 @@ const write = (id: string, base: number, width: 1 | 2 | 4, value: number, op = S
 const writeBit = (id: string, base: number, bit: number, on: boolean): ActionRecord => lowerAction({ entry: probeEntry(id, base, "bit", bit), args: {}, value: on ? 1 : 0, op: SetModifier.SetTo });
 const readIs = (id: string, base: number, width: 1 | 2 | 4, value: number, op = Comparison.Exactly): ConditionRecord => lowerCondition({ entry: probeEntry(id, base, width), args: {}, value, op });
 const eud = (id: string, args: Record<string, number>, value: number, op = SetModifier.SetTo): ActionRecord => lowerAction({ entry: entry(id)!, args, value, op });
+/** Every record the entry writes: the parts of a grouped one (speed, colour) in order. */
+const eudAll = (id: string, args: Record<string, number>, value: number): ActionRecord[] => lowerActions({ entry: entry(id)!, args, value, op: SetModifier.SetTo });
 const eudIs = (id: string, args: Record<string, number>, value: number, op = Comparison.Exactly): ConditionRecord => lowerCondition({ entry: entry(id)!, args, value, op });
 const keyPressed = (k: string): ConditionRecord => eudIs("game.key", { key: KEY[k] }, 1);
 const always = (): ConditionRecord => newCondition(ConditionType.Always);
@@ -437,6 +446,127 @@ const MAPS: ProbeMap[] = [
         eudTurbo: {},
       };
       return { plugins };
+    },
+  },
+  /* ────────────────────────────────────────────────────────────────────────────── */
+  {
+    name: "Magenta probe 8 — catalogue", file: "magenta-probe-8-catalogue.scx",
+    place(place) {
+      // Slots: the first placed unit is 0, later ones count down from 1699 — the Ghost is slot 0, the Zealot 1699, the marines 1698 to 1695.
+      place(GHOST, 0, 12.5, 14.5);
+      place(ZEALOT, 0, 14.5, 16.5);
+      for (let i = 0; i < 4; i++) place(MARINE, 0, 12.5 + i, 12.5);
+      place(ZERGLING, 0, 15.5, 14.5); place(ZERGLING, 0, 16.5, 14.5);
+      place(SCV, 0, 9.5, 27.5); place(SCV, 0, 10.5, 27.5);
+      place(COMMAND_CENTER, 0, 12, 26.5);
+      place(ENGINEERING_BAY, 0, 18, 26.5);
+      place(ACADEMY, 0, 24, 26);
+      place(BARRACKS, 0, 18, 31.5);
+      place(SUPPLY_DEPOT, 0, 24, 31);
+      place(SIEGE_TANK, 1, 38.5, 14.5); place(SIEGE_TANK, 1, 41.5, 14.5);
+      place(MINERAL_FIELD, 11, 7, 25); place(MINERAL_FIELD, 11, 7, 26); place(MINERAL_FIELD, 11, 7, 27);
+      place(GEYSER, 11, 8, 30.5);
+      place(BEACON_UNIT, 11, 20, 10);
+    },
+    build(scn, h) {
+      if (!unitsDat) { console.warn("map 8 needs units.dat for the speed and looks entries; skipped"); return; }
+      const GHOST_SLOT = 0, ZEALOT_SLOT = 1699, MARINE_SLOTS = [1698, 1697, 1696, 1695];
+      const INFANTRY_ARMOR = 0, INFANTRY_WEAPONS = 7, STIM_PACKS = 0, LOCKDOWN = 1, PERSONNEL_CLOAKING = 10, GAUSS_RIFLE = 0;
+      const gunner = h.intern("Gunner");
+      const TERRAN = 1, YELLOW_CHOICE = 135, LARGE = 3;
+      const zerglingFlingy = flingyOf(ZERGLING, 15);
+      applyTriggers(scn, [
+        h.trigger([P1], [always()], [
+          h.comment("start: marines at 10 HP, lockdown and personnel cloaking researched"),
+          ...MARINE_SLOTS.map((s) => eud("cunit.hp", { index: s }, 10)),
+          eud("player.techResearched", { player: 0, tech: LOCKDOWN }, 1),
+          eud("player.techResearched", { player: 0, tech: PERSONNEL_CLOAKING }, 1),
+          h.text("Probe 8, the catalogue. Keys: 1 zerglings crawl, K zerglings sprint, 2 upgrade + tech costs (lockdown 10 energy), 3 marine named Gunner + large, 4 marines regenerate + an invincible enemy zergling, 5 your colour yellow, 6 supply 200, 7 marines look like zealots, 8 marine stats, 9 gas + weapons 3 + ally, 0 ghost energy + zealot shields."),
+          h.text("Reads: the frame counter at 10 s, the clock at 15 s, your slot and race, Player 3's slot. Cloak your ghost (C), walk it east and south past the middle, scroll the screen right and down, and a line says what was read."),
+        ]),
+        // 1 / K: the speed entry, four records through units.dat's flingy column.
+        ...onKey(h, "1", "Zergling speed 0.5 px/frame (the catalogue's speed entry: control 0, top speed, acceleration and halt distance derived), then a new zergling at the Beacon and every zergling ordered to the Pen. Expect: the new one crawls.", [
+          ...eudAll("unit.speed", { unit: ZERGLING }, 0.5),
+          setSwitch(30, true),
+          createUnit(ZERGLING, P1, BEACON),
+          orderAll(ZERGLING, P1, PEN),
+        ]),
+        ...onKey(h, "K", "Zergling speed 13 px/frame (twice a vulture's), then a new zergling at the Beacon and every zergling ordered home. Expect: the new one sprints.", [
+          ...eudAll("unit.speed", { unit: ZERGLING }, 13),
+          createUnit(ZERGLING, P1, BEACON),
+          orderAll(ZERGLING, P1, HOME),
+        ]),
+        h.once(16, [switchIs(30, true), readIs("flingy.topSpeed", A.flingyTopSpeed + zerglingFlingy * 4, 4, 128)], "Read back: the zergling flingy's top speed is 128 (0.5 × 256) — the speed entry wrote it."),
+        // 2: upgrade and tech entries.
+        ...onKey(h, "2", "Infantry Armor: 1/1, 1 s, up to level 10. Stim Packs: 1/1, 1 s. Lockdown: 10 energy. Expect that at the Engineering Bay and Academy; your ghost (50 energy) can lock down both tanks in the Pen.", [
+          eud("upgrade.mineralCost", { upgrade: INFANTRY_ARMOR }, 1), eud("upgrade.gasCost", { upgrade: INFANTRY_ARMOR }, 1), eud("upgrade.time", { upgrade: INFANTRY_ARMOR }, 1), eud("upgrade.maxLevel", { upgrade: INFANTRY_ARMOR }, 10),
+          eud("tech.mineralCost", { tech: STIM_PACKS }, 1), eud("tech.gasCost", { tech: STIM_PACKS }, 1), eud("tech.time", { tech: STIM_PACKS }, 1),
+          eud("tech.energy", { tech: LOCKDOWN }, 10),
+          ping(PEN),
+        ]),
+        // 3: the name from a string, the size class.
+        ...onKey(h, "3", "Marine named 'Gunner' (the name entry, a map string) and size class large; a read-back line follows. Expect: a selected marine is called Gunner.", [
+          eud("unit.name", { unit: MARINE }, gunner),
+          eud("unit.sizeClass", { unit: MARINE }, LARGE),
+          setSwitch(31, true),
+        ]),
+        h.once(17, [switchIs(31, true), eudIs("unit.sizeClass", { unit: MARINE }, LARGE)], "Read back: the Marine's size byte is 3 (large) — the write took. A Vulture's shots now do a quarter to marines."),
+        // 4: two flags nobody has seen yet.
+        ...onKey(h, "4", "Marine: regenerating hit points (your marines are at 10 HP). Zergling: invincible flag, then an enemy zergling at Home. Expect: marine HP climbs; the enemy zergling cannot be killed.", [
+          eud("unit.regeneratesHp", { unit: MARINE }, 1),
+          eud("unit.invincible", { unit: ZERGLING }, 1),
+          createUnit(ZERGLING, P2, HOME),
+        ]),
+        // 5: the colour entry, two records.
+        ...onKey(h, "5", "Player 1 colour = yellow (the colour entry: unit byte and minimap byte). Expect: your units and minimap dots turn yellow.", [
+          ...eudAll("player.color", { player: 0 }, YELLOW_CHOICE),
+        ]),
+        // 6: the supply entries by race.
+        ...onKey(h, "6", "Terran supply provided to P1 = 200 and cap = 200 (the supply entries, race Terran). Expect: n/200 in the top bar. A line reads your used supply back.", [
+          eud("player.supplyProvided", { race: TERRAN, player: 0 }, 200),
+          eud("player.supplyMax", { race: TERRAN, player: 0 }, 200),
+          setSwitch(32, true),
+        ]),
+        h.once(18, [switchIs(32, true), eudIs("player.supplyUsed", { race: TERRAN, player: 0 }, 1, Comparison.AtLeast)], "Read back: your Terran supply used is at least 1 — the used table reads."),
+        // 7: the looks entry through units.dat.
+        ...onKey(h, "7", "Marine looks like a Zealot (the looks entry: units.dat graphics = the Zealot's flingy), then a new marine at the Beacon. Expect: it draws as a zealot.", [
+          eud("unit.graphics", { unit: MARINE }, ZEALOT),
+          createUnit(MARINE, P1, BEACON),
+        ]),
+        // 8: units.dat and weapons.dat entries never probed.
+        ...onKey(h, "8", "Marine: max HP 100, sight 11, build time 1 s; Gauss Rifle: range 8 tiles, cooldown 1 frame. Then a new marine at the Beacon. Expect: 100 HP, sees and shoots far and fast; the Barracks trains a marine in a second.", [
+          eud("unit.maxHp", { unit: MARINE }, 100),
+          eud("unit.sightRange", { unit: MARINE }, 11),
+          eud("unit.buildTime", { unit: MARINE }, 1),
+          eud("weapon.range", { weapon: GAUSS_RIFLE }, 8 * 32),
+          eud("weapon.cooldown", { weapon: GAUSS_RIFLE }, 1),
+          createUnit(MARINE, P1, BEACON),
+        ]),
+        // 9: player entries never probed.
+        ...onKey(h, "9", "P1: +500 gas, Infantry Weapons level 3, allied to Player 2. Expect: +500 gas, marines show +3 on their weapon, your units stop shooting the enemy tanks.", [
+          eud("player.gas", { player: 0 }, 500, SetModifier.Add),
+          eud("player.upgradeLevel", { player: 0, upgrade: INFANTRY_WEAPONS }, 3),
+          eud("player.alliance", { player: 0, other: 1 }, 1),
+        ]),
+        // 0: placed-unit fields never probed.
+        ...onKey(h, "0", "Your ghost (slot 0): energy 250. Your zealot (slot 1699): shields 0. Expect: select them.", [
+          eud("cunit.energy", { index: GHOST_SLOT }, 250),
+          eud("cunit.shields", { index: ZEALOT_SLOT }, 0),
+        ]),
+        // Reads: the ones probe 5 left unreported, and the placed-unit and screen reads never probed.
+        h.once(10, [eudIs("game.frames", {}, 240, Comparison.AtLeast)], "Read: the game has run 240 frames — 10 s at Fastest."),
+        h.once(11, [eudIs("game.seconds", {}, 15, Comparison.AtLeast)], "Read: the game clock passed 15 s (0x58D6F8)."),
+        ...[2, 1, 0, 3, 4, 5, 6, 7, 8].map((v) => h.once(12, [eudIs("player.slotType", { player: 0 }, v)], `Read: your slot's type byte is ${v} (2 = a human).`)),
+        ...[0, 1, 2, 3, 4, 5, 6, 7, 8].map((v) => h.once(13, [eudIs("player.slotType", { player: 2 }, v)], `Read: Player 3's slot type byte is ${v} (nobody is in that slot; 0 = empty).`)),
+        ...[0, 1, 2].map((v) => h.once(14, [eudIs("player.race", { player: 0 }, v)], `Read: your race byte is ${v} (0 zerg, 1 terran, 2 protoss).`)),
+        h.once(15, [eudIs("player.left", { player: 1 }, 1)], "Read: Player 2 has left (only a human who leaves sets this; a computer never does)."),
+        h.once(19, [eudIs("cunit.cloaked", { index: GHOST_SLOT }, 1)], "Read: your ghost is cloaked (slot 0's cloak bit)."),
+        h.once(20, [eudIs("cunit.x", { index: GHOST_SLOT }, 1024, Comparison.AtLeast)], "Read: your ghost is east of the middle (x ≥ 1024)."),
+        h.once(21, [eudIs("cunit.y", { index: GHOST_SLOT }, 1024, Comparison.AtLeast)], "Read: your ghost is south of the middle (y ≥ 1024)."),
+        h.once(22, [eudIs("game.screenX", {}, 1024, Comparison.AtLeast)], "Read: the screen scrolled right of the middle (screen x ≥ 1024)."),
+        h.once(23, [eudIs("game.screenY", {}, 1024, Comparison.AtLeast)], "Read: the screen scrolled below the middle (screen y ≥ 1024)."),
+        h.trigger([P1], [always()], [h.comment("Magenta: run triggers every frame"), everyFrame(), preserve()]),
+      ]);
     },
   },
 ];

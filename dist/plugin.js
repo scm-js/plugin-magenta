@@ -196,103 +196,14 @@ function emptyTrigger() {
   return { conditions: [], actions: [], flags: 0, players: Array.from({ length: PLAYER_GROUP_COUNT }, () => 0), currentAction: 0 };
 }
 
-// src/model/records.ts
-var clone = (value) => structuredClone(value);
-function fingerprint(trigger3) {
-  let h = 2166136261;
-  const mix = (n) => {
-    for (let i = 0; i < 4; i++) {
-      h ^= n >>> i * 8 & 255;
-      h = Math.imul(h, 16777619) >>> 0;
-    }
-  };
-  for (const c2 of trigger3.conditions) {
-    mix(c2.type);
-    mix(c2.location);
-    mix(c2.player);
-    mix(c2.amount);
-    mix(c2.unitId);
-    mix(c2.comparison);
-    mix(c2.resource);
-    mix(c2.flags & ~ConditionFlag.Unknown);
-    mix(c2.mask);
-  }
-  mix(65535);
-  for (const a2 of trigger3.actions) {
-    mix(a2.type);
-    mix(a2.location);
-    mix(a2.text);
-    mix(a2.wav);
-    mix(a2.time);
-    mix(a2.player);
-    mix(a2.target);
-    mix(a2.unitId);
-    mix(a2.modifier);
-    mix(a2.flags & ~ActionFlag.IgnoreWaitOnce);
-    mix(a2.mask);
-  }
-  mix(65534);
-  mix(trigger3.flags & ~1);
-  for (const p of trigger3.players) mix(p);
-  return h.toString(16).padStart(8, "0");
-}
-var isConditionDisabled = (c2) => (c2.flags & ConditionFlag.Disabled) !== 0;
-var isActionDisabled = (a2) => (a2.flags & ActionFlag.Disabled) !== 0;
-function setConditionDisabled(c2, disabled) {
-  return { ...c2, flags: disabled ? c2.flags | ConditionFlag.Disabled : c2.flags & ~ConditionFlag.Disabled };
-}
-function setActionDisabled(a2, disabled) {
-  return { ...a2, flags: disabled ? a2.flags | ActionFlag.Disabled : a2.flags & ~ActionFlag.Disabled };
-}
-function setTriggerDisabled(trigger3, disabled) {
-  return {
-    ...trigger3,
-    conditions: trigger3.conditions.map((c2) => c2.type === ConditionType.None ? c2 : setConditionDisabled(c2, disabled)),
-    actions: trigger3.actions.map((a2) => a2.type === ActionType.None ? a2 : setActionDisabled(a2, disabled))
-  };
-}
-function isTriggerDisabled(trigger3) {
-  const live = [...trigger3.conditions.filter((c2) => c2.type !== ConditionType.None).map(isConditionDisabled), ...trigger3.actions.filter((a2) => a2.type !== ActionType.None).map(isActionDisabled)];
-  return live.length > 0 && live.every(Boolean);
-}
-function commentIndex(trigger3) {
-  return trigger3.actions.findIndex((a2) => a2.type === ActionType.Comment);
-}
-function liveConditions(trigger3) {
-  const out = [];
-  for (const c2 of trigger3.conditions) {
-    if (c2.type === ConditionType.None) break;
-    out.push(c2);
-  }
-  return out;
-}
-function liveActions(trigger3) {
-  const out = [];
-  for (const a2 of trigger3.actions) {
-    if (a2.type === ActionType.None) break;
-    out.push(a2);
-  }
-  return out;
-}
-function owners(trigger3) {
-  const out = [];
-  trigger3.players.forEach((on, i) => {
-    if (on) out.push(i);
-  });
-  return out;
-}
-function setOwners(trigger3, groups) {
-  const players = trigger3.players.map(() => 0);
-  for (const g of groups) if (g >= 0 && g < players.length) players[g] = 1;
-  return { ...trigger3, players };
-}
-
 // src/catalogue/eud.json
 var eud_default = {
   $comment: "Magenta's EUD catalogue. Addresses are StarCraft 1.16.1's, which Remastered's EUD layer maps; transcribed from Armoha's eud-book (MIT, see ATTRIBUTION.md) and the community's CUnit / dat layouts. `verified` means played and seen working in Remastered; nothing is verified until a map has been.",
   groups: [
     "Units",
     "Weapons",
+    "Upgrades",
+    "Technologies",
     "Players",
     "Game",
     "Placed units"
@@ -804,6 +715,775 @@ var eud_default = {
       note: "130 is no weapon."
     },
     {
+      id: "unit.speed",
+      kind: "action",
+      group: "Units",
+      name: "Speed of a unit type",
+      aliases: [
+        "movement speed",
+        "faster",
+        "slower",
+        "top speed",
+        "velocity"
+      ],
+      sentence: {
+        action: "Set the speed of {unit} to {value}"
+      },
+      args: [
+        {
+          name: "unit",
+          kind: "unit",
+          label: "Unit",
+          max: 228
+        }
+      ],
+      address: {
+        base: "0x6C9EF8",
+        terms: [
+          {
+            arg: "unit",
+            stride: 4,
+            via: "flingy"
+          }
+        ]
+      },
+      width: 4,
+      parts: [
+        {
+          role: "const",
+          const: 0,
+          address: {
+            base: "0x6C9858",
+            terms: [
+              {
+                arg: "unit",
+                stride: 1,
+                via: "flingy"
+              }
+            ]
+          },
+          width: 1
+        },
+        {
+          role: "value",
+          address: {
+            base: "0x6C9EF8",
+            terms: [
+              {
+                arg: "unit",
+                stride: 4,
+                via: "flingy"
+              }
+            ]
+          },
+          width: 4
+        },
+        {
+          role: "acceleration",
+          address: {
+            base: "0x6C9C78",
+            terms: [
+              {
+                arg: "unit",
+                stride: 2,
+                via: "flingy"
+              }
+            ]
+          },
+          width: 2
+        },
+        {
+          role: "halt",
+          address: {
+            base: "0x6C9930",
+            terms: [
+              {
+                arg: "unit",
+                stride: 4,
+                via: "flingy"
+              }
+            ]
+          },
+          width: 4
+        }
+      ],
+      value: {
+        scale: 256,
+        unit: "px/frame",
+        setOnly: true,
+        min: 0.1,
+        max: 64
+      },
+      remastered: {
+        read: true,
+        write: true
+      },
+      source: "flingy.dat movement control, top speed, acceleration, halt distance (DatEdit's layout)",
+      note: "Four records: the unit's flingy is switched to table control and given this top speed, with acceleration and stopping distance to match. Units made after this move at the new speed; the ones already on the map keep theirs. A Marine walks at 4, a Vulture at 6.7. Hero units that share a type's flingy change with it.",
+      verified: true
+    },
+    {
+      id: "unit.name",
+      kind: "action",
+      group: "Units",
+      name: "Name of a unit type",
+      aliases: [
+        "rename",
+        "call",
+        "label",
+        "unit name"
+      ],
+      sentence: {
+        action: "Name {unit} {value}"
+      },
+      args: [
+        {
+          name: "unit",
+          kind: "unit",
+          label: "Unit",
+          max: 228
+        }
+      ],
+      address: {
+        base: "0x660260",
+        terms: [
+          {
+            arg: "unit",
+            stride: 2
+          }
+        ]
+      },
+      width: 2,
+      value: {
+        kind: "string"
+      },
+      remastered: {
+        read: true,
+        write: true
+      },
+      source: "units.dat map string index (Remastered's unit names from the map's strings)",
+      note: "The name comes from one of the map's strings, shown wherever the unit's name appears. Remastered only.",
+      verified: true
+    },
+    {
+      id: "unit.sizeClass",
+      kind: "both",
+      group: "Units",
+      name: "Size of a unit type",
+      aliases: [
+        "small",
+        "medium",
+        "large",
+        "size class",
+        "armor type"
+      ],
+      sentence: {
+        action: "Set the size of {unit} to {value}",
+        condition: "The size of {unit} is {value}"
+      },
+      args: [
+        {
+          name: "unit",
+          kind: "unit",
+          label: "Unit",
+          max: 228
+        }
+      ],
+      address: {
+        base: "0x662180",
+        terms: [
+          {
+            arg: "unit",
+            stride: 1
+          }
+        ]
+      },
+      width: 1,
+      value: {
+        choices: [
+          {
+            value: 1,
+            label: "small"
+          },
+          {
+            value: 2,
+            label: "medium"
+          },
+          {
+            value: 3,
+            label: "large"
+          },
+          {
+            value: 0,
+            label: "independent"
+          }
+        ]
+      },
+      remastered: {
+        read: true,
+        write: true
+      },
+      source: "units.dat unit size (DatEdit's layout)",
+      note: "What concussive and explosive damage scale by: small takes full concussive damage and half explosive, large the other way round. Not yet seen working in Remastered."
+    },
+    {
+      id: "unit.graphics",
+      kind: "action",
+      group: "Units",
+      name: "Looks of a unit type",
+      aliases: [
+        "appearance",
+        "sprite",
+        "model",
+        "look like",
+        "graphics",
+        "disguise"
+      ],
+      sentence: {
+        action: "Make {unit} look like {value}"
+      },
+      args: [
+        {
+          name: "unit",
+          kind: "unit",
+          label: "Unit",
+          max: 228
+        }
+      ],
+      address: {
+        base: "0x6644F8",
+        terms: [
+          {
+            arg: "unit",
+            stride: 1
+          }
+        ]
+      },
+      width: 1,
+      value: {
+        kind: "unit",
+        via: "flingy"
+      },
+      remastered: {
+        read: true,
+        write: true
+      },
+      source: "units.dat graphics (the flingy a unit type draws through)",
+      note: "Units made after this draw as the other type; the ones already on the map keep their look. Stats, size and weapons stay the type's own.",
+      verified: true
+    },
+    {
+      id: "unit.detector",
+      kind: "both",
+      group: "Units",
+      name: "Detector flag of a unit type",
+      aliases: [
+        "see cloaked",
+        "reveal"
+      ],
+      sentence: {
+        action: "Make {unit} {value}",
+        condition: "{unit} is {value}"
+      },
+      args: [
+        {
+          name: "unit",
+          kind: "unit",
+          label: "Unit",
+          max: 228
+        }
+      ],
+      address: {
+        base: "0x664080",
+        terms: [
+          {
+            arg: "unit",
+            stride: 4
+          }
+        ]
+      },
+      width: "bit",
+      bit: 15,
+      value: {
+        choices: [
+          {
+            value: 1,
+            label: "a detector"
+          },
+          {
+            value: 0,
+            label: "not a detector"
+          }
+        ]
+      },
+      remastered: {
+        read: true,
+        write: true
+      },
+      source: "units.dat special ability flags (DatEdit's bit order)",
+      note: "A units.dat flag. Units of the type see cloaked and burrowed units in their sight range.",
+      verified: true
+    },
+    {
+      id: "unit.permanentCloak",
+      kind: "both",
+      group: "Units",
+      name: "Permanent cloak flag of a unit type",
+      aliases: [
+        "always cloaked",
+        "invisible"
+      ],
+      sentence: {
+        action: "Make {unit} {value}",
+        condition: "{unit} is {value}"
+      },
+      args: [
+        {
+          name: "unit",
+          kind: "unit",
+          label: "Unit",
+          max: 228
+        }
+      ],
+      address: {
+        base: "0x664080",
+        terms: [
+          {
+            arg: "unit",
+            stride: 4
+          }
+        ]
+      },
+      width: "bit",
+      bit: 22,
+      value: {
+        choices: [
+          {
+            value: 1,
+            label: "permanently cloaked"
+          },
+          {
+            value: 0,
+            label: "not permanently cloaked"
+          }
+        ]
+      },
+      remastered: {
+        read: true,
+        write: true
+      },
+      source: "units.dat special ability flags (DatEdit's bit order)",
+      note: "A units.dat flag: units made after this have it; the ones already on the map keep what they were made with.",
+      verified: true
+    },
+    {
+      id: "unit.cloakable",
+      kind: "both",
+      group: "Units",
+      name: "Cloak ability flag of a unit type",
+      aliases: [
+        "cloaking"
+      ],
+      sentence: {
+        action: "Make {unit} {value}",
+        condition: "{unit} is {value}"
+      },
+      args: [
+        {
+          name: "unit",
+          kind: "unit",
+          label: "Unit",
+          max: 228
+        }
+      ],
+      address: {
+        base: "0x664080",
+        terms: [
+          {
+            arg: "unit",
+            stride: 4
+          }
+        ]
+      },
+      width: "bit",
+      bit: 9,
+      value: {
+        choices: [
+          {
+            value: 1,
+            label: "able to cloak"
+          },
+          {
+            value: 0,
+            label: "unable to cloak"
+          }
+        ]
+      },
+      remastered: {
+        read: true,
+        write: true
+      },
+      source: "units.dat special ability flags (DatEdit's bit order)",
+      note: "A units.dat flag: units made after this have it; the ones already on the map keep what they were made with."
+    },
+    {
+      id: "unit.burrowable",
+      kind: "both",
+      group: "Units",
+      name: "Burrow ability flag of a unit type",
+      aliases: [
+        "burrow"
+      ],
+      sentence: {
+        action: "Make {unit} {value}",
+        condition: "{unit} is {value}"
+      },
+      args: [
+        {
+          name: "unit",
+          kind: "unit",
+          label: "Unit",
+          max: 228
+        }
+      ],
+      address: {
+        base: "0x664080",
+        terms: [
+          {
+            arg: "unit",
+            stride: 4
+          }
+        ]
+      },
+      width: "bit",
+      bit: 20,
+      value: {
+        choices: [
+          {
+            value: 1,
+            label: "able to burrow"
+          },
+          {
+            value: 0,
+            label: "unable to burrow"
+          }
+        ]
+      },
+      remastered: {
+        read: true,
+        write: true
+      },
+      source: "units.dat special ability flags (DatEdit's bit order)",
+      note: "A units.dat flag: units made after this have it; the ones already on the map keep what they were made with."
+    },
+    {
+      id: "unit.regeneratesHp",
+      kind: "both",
+      group: "Units",
+      name: "Regeneration flag of a unit type",
+      aliases: [
+        "regen",
+        "heal over time",
+        "zerg regeneration"
+      ],
+      sentence: {
+        action: "Make {unit} {value}",
+        condition: "{unit} is {value}"
+      },
+      args: [
+        {
+          name: "unit",
+          kind: "unit",
+          label: "Unit",
+          max: 228
+        }
+      ],
+      address: {
+        base: "0x664080",
+        terms: [
+          {
+            arg: "unit",
+            stride: 4
+          }
+        ]
+      },
+      width: "bit",
+      bit: 7,
+      value: {
+        choices: [
+          {
+            value: 1,
+            label: "regenerating hit points"
+          },
+          {
+            value: 0,
+            label: "not regenerating hit points"
+          }
+        ]
+      },
+      remastered: {
+        read: true,
+        write: true
+      },
+      source: "units.dat special ability flags (DatEdit's bit order)",
+      note: "A units.dat flag: units made after this have it; the ones already on the map keep what they were made with."
+    },
+    {
+      id: "unit.invincible",
+      kind: "both",
+      group: "Units",
+      name: "Invincible flag of a unit type",
+      aliases: [
+        "invulnerable",
+        "immortal",
+        "cannot be killed"
+      ],
+      sentence: {
+        action: "Make {unit} {value}",
+        condition: "{unit} is {value}"
+      },
+      args: [
+        {
+          name: "unit",
+          kind: "unit",
+          label: "Unit",
+          max: 228
+        }
+      ],
+      address: {
+        base: "0x664080",
+        terms: [
+          {
+            arg: "unit",
+            stride: 4
+          }
+        ]
+      },
+      width: "bit",
+      bit: 29,
+      value: {
+        choices: [
+          {
+            value: 1,
+            label: "invincible"
+          },
+          {
+            value: 0,
+            label: "not invincible"
+          }
+        ]
+      },
+      remastered: {
+        read: true,
+        write: true
+      },
+      source: "units.dat special ability flags (DatEdit's bit order)",
+      note: "A units.dat flag: units made after this have it; the ones already on the map keep what they were made with."
+    },
+    {
+      id: "unit.hero",
+      kind: "both",
+      group: "Units",
+      name: "Hero flag of a unit type",
+      aliases: [
+        "hero unit"
+      ],
+      sentence: {
+        action: "Make {unit} {value}",
+        condition: "{unit} is {value}"
+      },
+      args: [
+        {
+          name: "unit",
+          kind: "unit",
+          label: "Unit",
+          max: 228
+        }
+      ],
+      address: {
+        base: "0x664080",
+        terms: [
+          {
+            arg: "unit",
+            stride: 4
+          }
+        ]
+      },
+      width: "bit",
+      bit: 6,
+      value: {
+        choices: [
+          {
+            value: 1,
+            label: "a hero"
+          },
+          {
+            value: 0,
+            label: "not a hero"
+          }
+        ]
+      },
+      remastered: {
+        read: true,
+        write: true
+      },
+      source: "units.dat special ability flags (DatEdit's bit order)",
+      note: "A units.dat flag: units made after this have it; the ones already on the map keep what they were made with."
+    },
+    {
+      id: "unit.organic",
+      kind: "both",
+      group: "Units",
+      name: "Organic flag of a unit type",
+      aliases: [
+        "biological",
+        "medic heal"
+      ],
+      sentence: {
+        action: "Make {unit} {value}",
+        condition: "{unit} is {value}"
+      },
+      args: [
+        {
+          name: "unit",
+          kind: "unit",
+          label: "Unit",
+          max: 228
+        }
+      ],
+      address: {
+        base: "0x664080",
+        terms: [
+          {
+            arg: "unit",
+            stride: 4
+          }
+        ]
+      },
+      width: "bit",
+      bit: 16,
+      value: {
+        choices: [
+          {
+            value: 1,
+            label: "organic"
+          },
+          {
+            value: 0,
+            label: "not organic"
+          }
+        ]
+      },
+      remastered: {
+        read: true,
+        write: true
+      },
+      source: "units.dat special ability flags (DatEdit's bit order)",
+      note: "A units.dat flag: units made after this have it; the ones already on the map keep what they were made with."
+    },
+    {
+      id: "unit.mechanical",
+      kind: "both",
+      group: "Units",
+      name: "Mechanical flag of a unit type",
+      aliases: [
+        "scv repair",
+        "machine"
+      ],
+      sentence: {
+        action: "Make {unit} {value}",
+        condition: "{unit} is {value}"
+      },
+      args: [
+        {
+          name: "unit",
+          kind: "unit",
+          label: "Unit",
+          max: 228
+        }
+      ],
+      address: {
+        base: "0x664080",
+        terms: [
+          {
+            arg: "unit",
+            stride: 4
+          }
+        ]
+      },
+      width: "bit",
+      bit: 30,
+      value: {
+        choices: [
+          {
+            value: 1,
+            label: "mechanical"
+          },
+          {
+            value: 0,
+            label: "not mechanical"
+          }
+        ]
+      },
+      remastered: {
+        read: true,
+        write: true
+      },
+      source: "units.dat special ability flags (DatEdit's bit order)",
+      note: "A units.dat flag: units made after this have it; the ones already on the map keep what they were made with."
+    },
+    {
+      id: "unit.robotic",
+      kind: "both",
+      group: "Units",
+      name: "Robotic flag of a unit type",
+      aliases: [
+        "immune to spells",
+        "robot"
+      ],
+      sentence: {
+        action: "Make {unit} {value}",
+        condition: "{unit} is {value}"
+      },
+      args: [
+        {
+          name: "unit",
+          kind: "unit",
+          label: "Unit",
+          max: 228
+        }
+      ],
+      address: {
+        base: "0x664080",
+        terms: [
+          {
+            arg: "unit",
+            stride: 4
+          }
+        ]
+      },
+      width: "bit",
+      bit: 14,
+      value: {
+        choices: [
+          {
+            value: 1,
+            label: "robotic"
+          },
+          {
+            value: 0,
+            label: "not robotic"
+          }
+        ]
+      },
+      remastered: {
+        read: true,
+        write: true
+      },
+      source: "units.dat special ability flags (DatEdit's bit order)",
+      note: "A units.dat flag: units made after this have it; the ones already on the map keep what they were made with."
+    },
+    {
       id: "weapon.damage",
       kind: "both",
       group: "Weapons",
@@ -1051,6 +1731,358 @@ var eud_default = {
       note: "In pixels: 32 per tile."
     },
     {
+      id: "upgrade.mineralCost",
+      kind: "both",
+      group: "Upgrades",
+      name: "Mineral cost of an upgrade",
+      aliases: [
+        "upgrade price",
+        "ore"
+      ],
+      sentence: {
+        action: "Set the mineral cost of {upgrade} {mod} {value}",
+        condition: "The mineral cost of {upgrade} is {cmp} {value}"
+      },
+      args: [
+        {
+          name: "upgrade",
+          kind: "upgrade",
+          label: "Upgrade",
+          max: 61
+        }
+      ],
+      address: {
+        base: "0x655740",
+        terms: [
+          {
+            arg: "upgrade",
+            stride: 2
+          }
+        ]
+      },
+      width: 2,
+      value: {
+        unit: "minerals",
+        min: 0,
+        max: 65535
+      },
+      remastered: {
+        read: true,
+        write: true
+      },
+      source: "upgrades.dat mineral cost base (DatEdit's layout)",
+      note: "The first level's cost; each further level adds the upgrade's own factor to it.",
+      verified: true
+    },
+    {
+      id: "upgrade.gasCost",
+      kind: "both",
+      group: "Upgrades",
+      name: "Gas cost of an upgrade",
+      aliases: [
+        "upgrade price",
+        "vespene"
+      ],
+      sentence: {
+        action: "Set the gas cost of {upgrade} {mod} {value}",
+        condition: "The gas cost of {upgrade} is {cmp} {value}"
+      },
+      args: [
+        {
+          name: "upgrade",
+          kind: "upgrade",
+          label: "Upgrade",
+          max: 61
+        }
+      ],
+      address: {
+        base: "0x655840",
+        terms: [
+          {
+            arg: "upgrade",
+            stride: 2
+          }
+        ]
+      },
+      width: 2,
+      value: {
+        unit: "gas",
+        min: 0,
+        max: 65535
+      },
+      remastered: {
+        read: true,
+        write: true
+      },
+      source: "upgrades.dat gas cost base (DatEdit's layout)",
+      note: "The first level's cost; each further level adds the upgrade's own factor to it.",
+      verified: true
+    },
+    {
+      id: "upgrade.time",
+      kind: "both",
+      group: "Upgrades",
+      name: "Research time of an upgrade",
+      aliases: [
+        "upgrade time",
+        "how long"
+      ],
+      sentence: {
+        action: "Set the research time of {upgrade} {mod} {value}",
+        condition: "The research time of {upgrade} is {cmp} {value}"
+      },
+      args: [
+        {
+          name: "upgrade",
+          kind: "upgrade",
+          label: "Upgrade",
+          max: 61
+        }
+      ],
+      address: {
+        base: "0x655B80",
+        terms: [
+          {
+            arg: "upgrade",
+            stride: 2
+          }
+        ]
+      },
+      width: 2,
+      value: {
+        scale: 15,
+        unit: "s",
+        min: 0,
+        max: 4369
+      },
+      remastered: {
+        read: true,
+        write: true
+      },
+      source: "upgrades.dat time base (DatEdit's layout)",
+      note: "The first level's time, stored in frames at Normal speed: 15 per game second. Each further level adds the upgrade's own factor.",
+      verified: true
+    },
+    {
+      id: "upgrade.maxLevel",
+      kind: "both",
+      group: "Upgrades",
+      name: "Maximum level of an upgrade",
+      aliases: [
+        "upgrade levels",
+        "max repeats",
+        "level cap"
+      ],
+      sentence: {
+        action: "Set the maximum level of {upgrade} {mod} {value}",
+        condition: "The maximum level of {upgrade} is {cmp} {value}"
+      },
+      args: [
+        {
+          name: "upgrade",
+          kind: "upgrade",
+          label: "Upgrade",
+          max: 61
+        }
+      ],
+      address: {
+        base: "0x655700",
+        terms: [
+          {
+            arg: "upgrade",
+            stride: 1
+          }
+        ]
+      },
+      width: 1,
+      value: {
+        unit: "levels",
+        min: 0,
+        max: 255
+      },
+      remastered: {
+        read: true,
+        write: true
+      },
+      source: "upgrades.dat max repeats (DatEdit's layout)",
+      note: "How many times the upgrade can be researched. Not yet seen working in Remastered."
+    },
+    {
+      id: "tech.mineralCost",
+      kind: "both",
+      group: "Technologies",
+      name: "Mineral cost of a technology",
+      aliases: [
+        "research price",
+        "ore"
+      ],
+      sentence: {
+        action: "Set the mineral cost of {tech} {mod} {value}",
+        condition: "The mineral cost of {tech} is {cmp} {value}"
+      },
+      args: [
+        {
+          name: "tech",
+          kind: "tech",
+          label: "Technology",
+          max: 44
+        }
+      ],
+      address: {
+        base: "0x656248",
+        terms: [
+          {
+            arg: "tech",
+            stride: 2
+          }
+        ]
+      },
+      width: 2,
+      value: {
+        unit: "minerals",
+        min: 0,
+        max: 65535
+      },
+      remastered: {
+        read: true,
+        write: true
+      },
+      source: "techdata.dat mineral cost (DatEdit's layout)",
+      verified: true
+    },
+    {
+      id: "tech.gasCost",
+      kind: "both",
+      group: "Technologies",
+      name: "Gas cost of a technology",
+      aliases: [
+        "research price",
+        "vespene"
+      ],
+      sentence: {
+        action: "Set the gas cost of {tech} {mod} {value}",
+        condition: "The gas cost of {tech} is {cmp} {value}"
+      },
+      args: [
+        {
+          name: "tech",
+          kind: "tech",
+          label: "Technology",
+          max: 44
+        }
+      ],
+      address: {
+        base: "0x6561F0",
+        terms: [
+          {
+            arg: "tech",
+            stride: 2
+          }
+        ]
+      },
+      width: 2,
+      value: {
+        unit: "gas",
+        min: 0,
+        max: 65535
+      },
+      remastered: {
+        read: true,
+        write: true
+      },
+      source: "techdata.dat gas cost (DatEdit's layout)",
+      verified: true
+    },
+    {
+      id: "tech.time",
+      kind: "both",
+      group: "Technologies",
+      name: "Research time of a technology",
+      aliases: [
+        "research time",
+        "how long"
+      ],
+      sentence: {
+        action: "Set the research time of {tech} {mod} {value}",
+        condition: "The research time of {tech} is {cmp} {value}"
+      },
+      args: [
+        {
+          name: "tech",
+          kind: "tech",
+          label: "Technology",
+          max: 44
+        }
+      ],
+      address: {
+        base: "0x6563D8",
+        terms: [
+          {
+            arg: "tech",
+            stride: 2
+          }
+        ]
+      },
+      width: 2,
+      value: {
+        scale: 15,
+        unit: "s",
+        min: 0,
+        max: 4369
+      },
+      remastered: {
+        read: true,
+        write: true
+      },
+      source: "techdata.dat research time (DatEdit's layout)",
+      note: "Stored in frames at Normal speed: 15 per game second.",
+      verified: true
+    },
+    {
+      id: "tech.energy",
+      kind: "both",
+      group: "Technologies",
+      name: "Energy cost of a technology",
+      aliases: [
+        "mana cost",
+        "spell cost",
+        "energy"
+      ],
+      sentence: {
+        action: "Set the energy cost of {tech} {mod} {value}",
+        condition: "The energy cost of {tech} is {cmp} {value}"
+      },
+      args: [
+        {
+          name: "tech",
+          kind: "tech",
+          label: "Technology",
+          max: 44
+        }
+      ],
+      address: {
+        base: "0x656380",
+        terms: [
+          {
+            arg: "tech",
+            stride: 2
+          }
+        ]
+      },
+      width: 2,
+      value: {
+        unit: "energy",
+        min: 0,
+        max: 65535
+      },
+      remastered: {
+        read: true,
+        write: true
+      },
+      source: "techdata.dat energy cost (DatEdit's layout)",
+      note: "What a cast of the spell takes. Not yet seen working in Remastered."
+    },
+    {
       id: "player.minerals",
       kind: "both",
       group: "Players",
@@ -1277,7 +2309,7 @@ var eud_default = {
         }
       ],
       address: {
-        base: "0x58D6F8",
+        base: "0x58D634",
         terms: [
           {
             arg: "player",
@@ -1310,8 +2342,8 @@ var eud_default = {
         read: true,
         write: true
       },
-      source: "player alliances (eud-book)",
-      note: "As a condition this reads what Set Alliance Status wrote; the game has no native way to test it."
+      source: "player alliances 0x58D634 (eud-book)",
+      note: "As a condition this reads what Set Alliance Status wrote; the game has no native way to test it. The catalogue had this at 0x58D6F8 until 2026-09-14, which is the game clock; not yet seen working in Remastered."
     },
     {
       id: "player.vision",
@@ -1373,12 +2405,495 @@ var eud_default = {
       note: "Which way round the two players go is not yet verified in game."
     },
     {
-      id: "game.speed",
+      id: "player.color",
+      kind: "action",
+      group: "Players",
+      name: "Colour of a player",
+      aliases: [
+        "team colour",
+        "player color",
+        "recolour",
+        "tint"
+      ],
+      sentence: {
+        action: "Set the colour of {player} to {value}"
+      },
+      args: [
+        {
+          name: "player",
+          kind: "player",
+          label: "Player",
+          max: 12
+        }
+      ],
+      address: {
+        base: "0x581D76",
+        terms: [
+          {
+            arg: "player",
+            stride: 1
+          }
+        ]
+      },
+      width: 1,
+      parts: [
+        {
+          role: "value",
+          address: {
+            base: "0x581D76",
+            terms: [
+              {
+                arg: "player",
+                stride: 1
+              }
+            ]
+          },
+          width: 1
+        },
+        {
+          role: "value",
+          address: {
+            base: "0x581DD6",
+            terms: [
+              {
+                arg: "player",
+                stride: 1
+              }
+            ]
+          },
+          width: 1
+        }
+      ],
+      value: {
+        choices: [
+          {
+            value: 111,
+            label: "red"
+          },
+          {
+            value: 165,
+            label: "blue"
+          },
+          {
+            value: 159,
+            label: "teal"
+          },
+          {
+            value: 164,
+            label: "purple"
+          },
+          {
+            value: 179,
+            label: "orange"
+          },
+          {
+            value: 19,
+            label: "brown"
+          },
+          {
+            value: 255,
+            label: "white"
+          },
+          {
+            value: 135,
+            label: "yellow"
+          },
+          {
+            value: 117,
+            label: "green"
+          }
+        ]
+      },
+      remastered: {
+        read: true,
+        write: true
+      },
+      source: "unit colour table 0x581D76 and minimap colour table 0x581DD6 (eud-book)",
+      note: "Two records: the palette entry the player's units are drawn in, and the one the minimap uses. Takes effect at once, for every unit of the player.",
+      verified: true
+    },
+    {
+      id: "player.supplyProvided",
       kind: "both",
+      group: "Players",
+      name: "Supply provided to a player",
+      aliases: [
+        "supply",
+        "psi",
+        "control",
+        "supply available",
+        "depots"
+      ],
+      sentence: {
+        action: "Set the {race} supply provided to {player} {mod} {value}",
+        condition: "The {race} supply provided to {player} is {cmp} {value}"
+      },
+      args: [
+        {
+          name: "race",
+          kind: "race",
+          label: "Race",
+          max: 3
+        },
+        {
+          name: "player",
+          kind: "player",
+          label: "Player",
+          max: 12
+        }
+      ],
+      address: {
+        base: "0x582144",
+        terms: [
+          {
+            arg: "race",
+            stride: 144
+          },
+          {
+            arg: "player",
+            stride: 4
+          }
+        ]
+      },
+      width: 4,
+      value: {
+        scale: 2,
+        unit: "supply",
+        min: 0,
+        max: 32767
+      },
+      remastered: {
+        read: true,
+        write: true
+      },
+      source: "supply tables: available (eud-book)",
+      note: "The right-hand number of the top bar, before the cap. The game recounts it when a depot, overlord or pylon is made or lost, so set it every frame to hold a value. Each race has its own table; a player's is the one for the race they play.",
+      verified: true
+    },
+    {
+      id: "player.supplyUsed",
+      kind: "both",
+      group: "Players",
+      name: "Supply used by a player",
+      aliases: [
+        "supply",
+        "psi",
+        "control",
+        "population",
+        "army size"
+      ],
+      sentence: {
+        action: "Set the {race} supply used by {player} {mod} {value}",
+        condition: "The {race} supply used by {player} is {cmp} {value}"
+      },
+      args: [
+        {
+          name: "race",
+          kind: "race",
+          label: "Race",
+          max: 3
+        },
+        {
+          name: "player",
+          kind: "player",
+          label: "Player",
+          max: 12
+        }
+      ],
+      address: {
+        base: "0x582174",
+        terms: [
+          {
+            arg: "race",
+            stride: 144
+          },
+          {
+            arg: "player",
+            stride: 4
+          }
+        ]
+      },
+      width: 4,
+      value: {
+        scale: 2,
+        unit: "supply",
+        min: 0,
+        max: 32767
+      },
+      remastered: {
+        read: true,
+        write: true
+      },
+      source: "supply tables: used (eud-book)",
+      note: "The left-hand number of the top bar. The game recounts it when a unit is made or dies. Each race has its own table; a player's is the one for the race they play."
+    },
+    {
+      id: "player.supplyMax",
+      kind: "both",
+      group: "Players",
+      name: "Supply cap of a player",
+      aliases: [
+        "supply",
+        "psi",
+        "control",
+        "max supply",
+        "200 cap",
+        "supply limit"
+      ],
+      sentence: {
+        action: "Set the {race} supply cap of {player} {mod} {value}",
+        condition: "The {race} supply cap of {player} is {cmp} {value}"
+      },
+      args: [
+        {
+          name: "race",
+          kind: "race",
+          label: "Race",
+          max: 3
+        },
+        {
+          name: "player",
+          kind: "player",
+          label: "Player",
+          max: 12
+        }
+      ],
+      address: {
+        base: "0x5821A4",
+        terms: [
+          {
+            arg: "race",
+            stride: 144
+          },
+          {
+            arg: "player",
+            stride: 4
+          }
+        ]
+      },
+      width: 4,
+      value: {
+        scale: 2,
+        unit: "supply",
+        min: 0,
+        max: 32767
+      },
+      remastered: {
+        read: true,
+        write: true
+      },
+      source: "supply tables: max (eud-book)",
+      note: "What the provided supply is capped at, 200 in a normal game. Each race has its own table; a player's is the one for the race they play.",
+      verified: true
+    },
+    {
+      id: "player.slotType",
+      kind: "condition",
+      group: "Players",
+      name: "Slot of a player",
+      aliases: [
+        "is human",
+        "is a computer",
+        "empty slot",
+        "player kind",
+        "occupied"
+      ],
+      sentence: {
+        condition: "The slot of {player} is {value}"
+      },
+      args: [
+        {
+          name: "player",
+          kind: "player",
+          label: "Player",
+          max: 12
+        }
+      ],
+      address: {
+        base: "0x57F1B4",
+        terms: [
+          {
+            arg: "player",
+            stride: 1
+          }
+        ]
+      },
+      width: 1,
+      value: {
+        choices: [
+          {
+            value: 2,
+            label: "a human"
+          },
+          {
+            value: 1,
+            label: "a computer"
+          },
+          {
+            value: 0,
+            label: "empty"
+          },
+          {
+            value: 3,
+            label: "rescuable"
+          },
+          {
+            value: 4,
+            label: "unavailable"
+          },
+          {
+            value: 5,
+            label: "a computer (lobby)"
+          },
+          {
+            value: 6,
+            label: "open"
+          },
+          {
+            value: 7,
+            label: "neutral"
+          },
+          {
+            value: 8,
+            label: "closed"
+          }
+        ]
+      },
+      remastered: {
+        read: true,
+        write: false
+      },
+      source: "player slot types 0x57F1B4 (eud-book)",
+      note: "What the slot holds once the game has started: a human, a computer, or nothing. Not yet seen working in Remastered."
+    },
+    {
+      id: "player.race",
+      kind: "condition",
+      group: "Players",
+      name: "Race of a player",
+      aliases: [
+        "is zerg",
+        "is terran",
+        "is protoss",
+        "plays"
+      ],
+      sentence: {
+        condition: "The race of {player} is {value}"
+      },
+      args: [
+        {
+          name: "player",
+          kind: "player",
+          label: "Player",
+          max: 12
+        }
+      ],
+      address: {
+        base: "0x57F1C0",
+        terms: [
+          {
+            arg: "player",
+            stride: 1
+          }
+        ]
+      },
+      width: 1,
+      value: {
+        choices: [
+          {
+            value: 0,
+            label: "Zerg"
+          },
+          {
+            value: 1,
+            label: "Terran"
+          },
+          {
+            value: 2,
+            label: "Protoss"
+          },
+          {
+            value: 3,
+            label: "other"
+          },
+          {
+            value: 4,
+            label: "neutral"
+          },
+          {
+            value: 5,
+            label: "user selectable"
+          },
+          {
+            value: 6,
+            label: "random"
+          }
+        ]
+      },
+      remastered: {
+        read: true,
+        write: false
+      },
+      source: "player slot races 0x57F1C0 (eud-book)",
+      note: "The race the player picked, once the game has started. Not yet seen working in Remastered."
+    },
+    {
+      id: "player.left",
+      kind: "condition",
+      group: "Players",
+      name: "Whether a player has left",
+      aliases: [
+        "left the game",
+        "quit",
+        "dropped",
+        "disconnected"
+      ],
+      sentence: {
+        condition: "{player} {value}"
+      },
+      args: [
+        {
+          name: "player",
+          kind: "player",
+          label: "Player",
+          max: 8
+        }
+      ],
+      address: {
+        base: "0x581D62",
+        terms: [
+          {
+            arg: "player",
+            stride: 1
+          }
+        ]
+      },
+      width: 1,
+      value: {
+        choices: [
+          {
+            value: 1,
+            label: "has left the game"
+          },
+          {
+            value: 0,
+            label: "is still in the game"
+          }
+        ]
+      },
+      remastered: {
+        read: true,
+        write: false
+      },
+      source: "player left flags 0x581D62 (eud-book)",
+      note: "Set once a human leaves. Not yet seen working in Remastered."
+    },
+    {
+      id: "game.speed",
+      kind: "condition",
       group: "Game",
       name: "Game speed",
       sentence: {
-        action: "Set the game speed to {value}",
         condition: "The game speed is {value}"
       },
       args: [],
@@ -1420,10 +2935,11 @@ var eud_default = {
       },
       remastered: {
         read: true,
-        write: true
+        write: false
       },
       source: "game speed (eud-book)",
-      note: "Not confirmed: a Remastered run on 2026-09-12 read neither Fastest nor Normal here, so the address may not be mapped by Remastered's EUD layer."
+      note: "Writing it did nothing in Remastered (probe 5, 2026-09-14), so it is a read only: what the speed setting is.",
+      verified: true
     },
     {
       id: "game.triggerTimer",
@@ -1654,6 +3170,68 @@ var eud_default = {
       source: "keyboard state array (eud-book)",
       note: "Local to each computer. Needs triggers running every frame to catch a press. Verified in Remastered 2026-09-12: the press reads as 1 for a frame and the key reads 0 again at once, even while held; 2 and 3 never appeared.",
       verified: true
+    },
+    {
+      id: "game.frames",
+      kind: "condition",
+      group: "Game",
+      name: "Frames the game has run",
+      aliases: [
+        "frame counter",
+        "ticks",
+        "game time",
+        "elapsed frames"
+      ],
+      sentence: {
+        condition: "The game has run {cmp} {value}"
+      },
+      args: [],
+      address: {
+        base: "0x57F23C"
+      },
+      width: 4,
+      value: {
+        unit: "frames",
+        min: 0,
+        max: 4294967295
+      },
+      remastered: {
+        read: true,
+        write: false
+      },
+      source: "elapsed time in game ticks 0x57F23C (eud-book)",
+      note: "About 24 a second at Fastest, 15 at Normal. Not yet seen working in Remastered."
+    },
+    {
+      id: "game.seconds",
+      kind: "condition",
+      group: "Game",
+      name: "Seconds on the game clock",
+      aliases: [
+        "game clock",
+        "timer",
+        "elapsed seconds",
+        "game time"
+      ],
+      sentence: {
+        condition: "The game clock is {cmp} {value}"
+      },
+      args: [],
+      address: {
+        base: "0x58D6F8"
+      },
+      width: 4,
+      value: {
+        unit: "s",
+        min: 0,
+        max: 4294967295
+      },
+      remastered: {
+        read: true,
+        write: false
+      },
+      source: "elapsed time in game seconds 0x58D6F8 (eud-book)",
+      note: "The seconds the in-game clock shows. The earlier entry at 0x58D6F4 never fired; this one is the next dword. Not yet seen working in Remastered."
     },
     {
       id: "cunit.hp",
@@ -2086,48 +3664,77 @@ var eud_default = {
 };
 
 // src/catalogue/index.ts
+var address = (json) => ({ base: Number(json.base), terms: json.terms });
 function load(json) {
-  return { ...json, address: { base: Number(json.address.base), terms: json.address.terms } };
+  return { ...json, address: address(json.address), parts: json.parts?.map((p) => ({ ...p, address: address(p.address) })) };
 }
 var GROUPS = eud_default.groups;
 var ENTRIES = eud_default.entries.map(load);
 var BY_ID = new Map(ENTRIES.map((e) => [e.id, e]));
 var entry = (id) => BY_ID.get(id);
 var offers = (e, kind) => e.kind === "both" || e.kind === kind;
-var enumerated = (e) => !!(e.value?.choices || e.value?.kind || e.width === "bit");
+var enumerated = (e) => !!(e.value?.choices || e.value?.kind || e.value?.setOnly || e.width === "bit");
+var grouped = (e) => !!e.parts?.length;
+var needsLookup = (e) => !!(e.value?.via || e.address.terms?.some((t) => t.via) || e.parts?.some((p) => p.address.terms?.some((t) => t.via)));
 function entriesFor(kind) {
   return ENTRIES.filter((e) => offers(e, kind));
 }
+var RACES = [{ value: 0, label: "Zerg" }, { value: 1, label: "Terran" }, { value: 2, label: "Protoss" }];
 
 // src/model/eud.ts
 var DEATHS_TABLE = 5808996;
 var MASK_MARKER = 17235;
 var UNIT_STRIDE = 48;
-var epd = (address) => ((address & ~3) - DEATHS_TABLE) / 4 >>> 0;
+var epd = (address2) => ((address2 & ~3) - DEATHS_TABLE) / 4 >>> 0;
 var addressOf = (player, unit = 0) => DEATHS_TABLE + player * 4 + unit * UNIT_STRIDE >>> 0;
 var isEud = (player) => player >= PLAYER_GROUP_COUNT;
-function entryAddress(entry2, args) {
-  let address = entry2.address.base;
-  for (const term of entry2.address.terms ?? []) address += (args[term.arg] ?? 0) * term.stride;
-  return address >>> 0;
+var lookup = null;
+function setGameLookup(next) {
+  lookup = next;
 }
-function fieldMask(entry2, args) {
-  const address = entryAddress(entry2, args);
-  if (entry2.width === "bit") {
-    const bit = typeof entry2.bit === "number" ? entry2.bit : args[entry2.bit?.arg ?? ""] ?? 0;
-    return { shift: bit, mask: 1 << bit >>> 0 };
+function lookupOver(flingyOfUnit) {
+  const byFlingy = /* @__PURE__ */ new Map();
+  for (let u = 0; u < flingyOfUnit.length; u++) {
+    const f = flingyOfUnit[u];
+    (byFlingy.get(f) ?? byFlingy.set(f, []).get(f)).push(u);
   }
-  if (entry2.width === 4) return null;
-  const shift = (address & 3) * 8;
-  const mask = (1 << entry2.width * 8) - 1 << shift >>> 0;
+  return { flingy: (u) => u < flingyOfUnit.length ? flingyOfUnit[u] : null, unitsOfFlingy: (f) => byFlingy.get(f) ?? [] };
+}
+var available = (entry2) => !needsLookup(entry2) || lookup !== null;
+function addressAt(spec, args) {
+  let address2 = spec.base;
+  for (const term of spec.terms ?? []) {
+    const v = args[term.arg] ?? 0;
+    address2 += (term.via ? lookup?.flingy(v) ?? 0 : v) * term.stride;
+  }
+  return address2 >>> 0;
+}
+var entryAddress = (entry2, args) => addressAt(entry2.address, args);
+function maskAt(address2, width, bit) {
+  if (width === "bit") return { shift: bit, mask: 1 << bit >>> 0 };
+  if (width === 4) return null;
+  const shift = (address2 & 3) * 8;
+  const mask = (1 << width * 8) - 1 << shift >>> 0;
   return { shift, mask };
 }
+function fieldMask(entry2, args) {
+  const bit = typeof entry2.bit === "number" ? entry2.bit : args[entry2.bit?.arg ?? ""] ?? 0;
+  return maskAt(entryAddress(entry2, args), entry2.width, bit);
+}
 var scaleOf = (entry2) => entry2.value?.scale ?? 1;
+function rawValue(entry2, value) {
+  if (entry2.value?.via) return lookup?.flingy(value) ?? 0;
+  return Math.round(value * scaleOf(entry2));
+}
 function stored(entry2, args, value) {
-  const scaled = Math.round(value * scaleOf(entry2));
+  const raw = rawValue(entry2, value);
   const fm = fieldMask(entry2, args);
-  if (!fm) return scaled >>> 0;
-  return (scaled << fm.shift & fm.mask) >>> 0;
+  if (!fm) return raw >>> 0;
+  return (raw << fm.shift & fm.mask) >>> 0;
+}
+function typedValue(entry2, raw) {
+  if (entry2.value?.via) return lookup?.unitsOfFlingy(raw)[0] ?? 0;
+  return raw / scaleOf(entry2);
 }
 function lowerCondition(row) {
   const { entry: entry2, args } = row;
@@ -2157,6 +3764,39 @@ function lowerAction(row) {
     mask: fm ? MASK_MARKER : 0
   };
 }
+function partValue(entry2, part, value) {
+  const raw = rawValue(entry2, value);
+  switch (part.role) {
+    case "value":
+      return raw;
+    case "const":
+      return part.const ?? 0;
+    case "acceleration":
+      return Math.max(1, Math.round(raw / 17));
+    case "halt":
+      return Math.max(1, Math.round(raw * raw / (2 * Math.max(1, Math.round(raw / 17)))));
+  }
+}
+function partRecord(entry2, part, args, value) {
+  const address2 = addressAt(part.address, args);
+  const fm = maskAt(address2, part.width, 0);
+  const raw = partValue(entry2, part, value);
+  return {
+    ...emptyAction(),
+    type: ActionType.SetDeaths,
+    player: epd(address2),
+    unitId: 0,
+    modifier: SetModifier.SetTo,
+    target: fm ? (raw << fm.shift & fm.mask) >>> 0 : raw >>> 0,
+    location: fm ? fm.mask : 0,
+    mask: fm ? MASK_MARKER : 0
+  };
+}
+function lowerActions(row) {
+  const parts = row.entry.parts;
+  if (!parts?.length) return [lowerAction(row)];
+  return parts.map((part) => partRecord(row.entry, part, row.args, row.value));
+}
 function accessOf(player, unit, mask, location) {
   if (!isEud(player)) return null;
   const dword = addressOf(player, unit);
@@ -2165,26 +3805,38 @@ function accessOf(player, unit, mask, location) {
   while (shift < 32 && !(location >>> shift & 1)) shift++;
   return { dword, masked: true, shift, mask: location >>> 0, address: dword + (shift >> 3) >>> 0 };
 }
-function solve(entry2, address) {
-  let offset = address - entry2.address.base;
+function solveAt(spec, entry2, address2) {
+  let offset = address2 - spec.base;
   if (offset < 0) return null;
   const args = {};
-  const terms = [...entry2.address.terms ?? []].sort((a2, b) => b.stride - a2.stride);
+  const terms = [...spec.terms ?? []].sort((a2, b) => b.stride - a2.stride);
   for (const term of terms) {
     const arg = entry2.args.find((a2) => a2.name === term.arg);
     if (!arg) return null;
     const n = Math.floor(offset / term.stride);
-    if (n >= arg.max) return null;
-    args[term.arg] = n;
+    if (term.via) {
+      const units = lookup?.unitsOfFlingy(n) ?? [];
+      if (!units.length) return null;
+      args[term.arg] = units[0];
+    } else {
+      if (n >= arg.max) return null;
+      args[term.arg] = n;
+    }
     offset -= n * term.stride;
   }
   return offset === 0 ? args : null;
+}
+var solve = (entry2, address2) => solveAt(entry2.address, entry2, address2);
+function matchField(access, width, spec, entry2) {
+  if (width === 4) return access.masked ? null : solveAt(spec, entry2, access.dword);
+  if (!access.masked || access.mask !== (1 << width * 8) - 1 << access.shift >>> 0) return null;
+  return solveAt(spec, entry2, access.address);
 }
 function recognize(kind, player, unit, mask, location, amount, op) {
   const access = accessOf(player, unit, mask, location);
   if (!access) return null;
   for (const entry2 of ENTRIES) {
-    if (!offers(entry2, kind)) continue;
+    if (!offers(entry2, kind) || grouped(entry2) || !available(entry2)) continue;
     if (entry2.width === "bit") {
       if (!access.masked || (access.mask & access.mask - 1) !== 0) continue;
       const args2 = solve(entry2, access.dword);
@@ -2199,22 +3851,156 @@ function recognize(kind, player, unit, mask, location, amount, op) {
       }
       return { entry: entry2, args: args2, value: amount >>> access.shift & 1, op };
     }
-    if (entry2.width === 4) {
-      if (access.masked) continue;
-      const args2 = solve(entry2, access.dword);
-      if (!args2) continue;
-      return { entry: entry2, args: args2, value: amount / scaleOf(entry2), op };
-    }
-    const width = entry2.width;
-    if (!access.masked || access.mask !== (1 << width * 8) - 1 << access.shift >>> 0) continue;
-    const args = solve(entry2, access.address);
+    const args = matchField(access, entry2.width, entry2.address, entry2);
     if (!args) continue;
-    return { entry: entry2, args, value: ((amount & access.mask) >>> access.shift) / scaleOf(entry2), op };
+    const raw = entry2.width === 4 ? amount : (amount & access.mask) >>> access.shift;
+    return { entry: entry2, args, value: typedValue(entry2, raw), op };
   }
   return null;
 }
 var recognizeCondition = (c2) => c2.type === ConditionType.Deaths ? recognize("condition", c2.player, c2.unitId, c2.mask, c2.location, c2.amount, c2.comparison) : null;
 var recognizeAction = (a2) => a2.type === ActionType.SetDeaths ? recognize("action", a2.player, a2.unitId, a2.mask, a2.location, a2.target, a2.modifier) : null;
+function recognizeActionGroup(actions, at) {
+  for (const entry2 of ENTRIES) {
+    const parts = entry2.parts;
+    if (!parts?.length || !offers(entry2, "action") || !available(entry2)) continue;
+    if (at + parts.length > actions.length) continue;
+    let args = null;
+    let value = 0;
+    let ok = true;
+    for (let i = 0; i < parts.length && ok; i++) {
+      const a2 = actions[at + i];
+      const part = parts[i];
+      if (a2.type !== ActionType.SetDeaths || a2.modifier !== SetModifier.SetTo) {
+        ok = false;
+        break;
+      }
+      const access = accessOf(a2.player, a2.unitId, a2.mask, a2.location);
+      if (!access) {
+        ok = false;
+        break;
+      }
+      const got = matchField(access, part.width, part.address, entry2);
+      if (!got) {
+        ok = false;
+        break;
+      }
+      if (args && Object.keys(args).some((k) => args[k] !== got[k])) {
+        ok = false;
+        break;
+      }
+      args = got;
+      if (part.role === "value") value = typedValue(entry2, part.width === 4 ? a2.target : (a2.target & access.mask) >>> access.shift);
+    }
+    if (ok && args) return { row: { entry: entry2, args, value, op: SetModifier.SetTo }, count: parts.length };
+  }
+  return null;
+}
+function actionSpans(actions) {
+  const out = [];
+  for (let i = 0; i < actions.length; ) {
+    const g = actions[i].type === ActionType.SetDeaths && isEud(actions[i].player) ? recognizeActionGroup(actions, i) : null;
+    if (g) {
+      out.push({ at: i, count: g.count, group: g.row });
+      i += g.count;
+    } else {
+      out.push({ at: i, count: 1, group: null });
+      i++;
+    }
+  }
+  return out;
+}
+
+// src/model/records.ts
+var clone = (value) => structuredClone(value);
+function fingerprint(trigger3) {
+  let h = 2166136261;
+  const mix = (n) => {
+    for (let i = 0; i < 4; i++) {
+      h ^= n >>> i * 8 & 255;
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+  };
+  for (const c2 of trigger3.conditions) {
+    mix(c2.type);
+    mix(c2.location);
+    mix(c2.player);
+    mix(c2.amount);
+    mix(c2.unitId);
+    mix(c2.comparison);
+    mix(c2.resource);
+    mix(c2.flags & ~ConditionFlag.Unknown);
+    mix(c2.mask);
+  }
+  mix(65535);
+  for (const a2 of trigger3.actions) {
+    mix(a2.type);
+    mix(a2.location);
+    mix(a2.text);
+    mix(a2.wav);
+    mix(a2.time);
+    mix(a2.player);
+    mix(a2.target);
+    mix(a2.unitId);
+    mix(a2.modifier);
+    mix(a2.flags & ~ActionFlag.IgnoreWaitOnce);
+    mix(a2.mask);
+  }
+  mix(65534);
+  mix(trigger3.flags & ~1);
+  for (const p of trigger3.players) mix(p);
+  return h.toString(16).padStart(8, "0");
+}
+var isConditionDisabled = (c2) => (c2.flags & ConditionFlag.Disabled) !== 0;
+var isActionDisabled = (a2) => (a2.flags & ActionFlag.Disabled) !== 0;
+function setConditionDisabled(c2, disabled) {
+  return { ...c2, flags: disabled ? c2.flags | ConditionFlag.Disabled : c2.flags & ~ConditionFlag.Disabled };
+}
+function setActionDisabled(a2, disabled) {
+  return { ...a2, flags: disabled ? a2.flags | ActionFlag.Disabled : a2.flags & ~ActionFlag.Disabled };
+}
+function setTriggerDisabled(trigger3, disabled) {
+  return {
+    ...trigger3,
+    conditions: trigger3.conditions.map((c2) => c2.type === ConditionType.None ? c2 : setConditionDisabled(c2, disabled)),
+    actions: trigger3.actions.map((a2) => a2.type === ActionType.None ? a2 : setActionDisabled(a2, disabled))
+  };
+}
+function isTriggerDisabled(trigger3) {
+  const live = [...trigger3.conditions.filter((c2) => c2.type !== ConditionType.None).map(isConditionDisabled), ...trigger3.actions.filter((a2) => a2.type !== ActionType.None).map(isActionDisabled)];
+  return live.length > 0 && live.every(Boolean);
+}
+function commentIndex(trigger3) {
+  return trigger3.actions.findIndex((a2) => a2.type === ActionType.Comment);
+}
+function liveConditions(trigger3) {
+  const out = [];
+  for (const c2 of trigger3.conditions) {
+    if (c2.type === ConditionType.None) break;
+    out.push(c2);
+  }
+  return out;
+}
+function liveActions(trigger3) {
+  const out = [];
+  for (const a2 of trigger3.actions) {
+    if (a2.type === ActionType.None) break;
+    out.push(a2);
+  }
+  return out;
+}
+function owners(trigger3) {
+  const out = [];
+  trigger3.players.forEach((on, i) => {
+    if (on) out.push(i);
+  });
+  return out;
+}
+function setOwners(trigger3, groups) {
+  const players = trigger3.players.map(() => 0);
+  for (const g of groups) if (g >= 0 && g < players.length) players[g] = 1;
+  return { ...trigger3, players };
+}
 
 // vendor/triggerDefs.ts
 var c = (kind, field, label) => ({ kind, field, label });
@@ -2715,6 +4501,8 @@ function eudArgLabel(arg, value, namer, extra) {
       return extra.key(value);
     case "unitIndex":
       return extra.slot ? extra.slot(value) : `slot ${value}`;
+    case "race":
+      return RACES.find((r) => r.value === value)?.label ?? String(value);
     default:
       return String(value);
   }
@@ -2725,6 +4513,10 @@ function eudValueLabel(row, namer, extra) {
   if (v?.kind === "unit") return namer.unit(row.value);
   if (v?.kind === "player") return namer.player(row.value);
   if (v?.kind === "weapon") return extra.weapon(row.value);
+  if (v?.kind === "string") {
+    const s = namer.string(row.value);
+    return s === null ? row.value === 0 ? "(no text)" : `string ${row.value}` : s;
+  }
   const n = Number.isInteger(row.value) ? String(row.value) : row.value.toFixed(2).replace(/\.?0+$/, "");
   return v?.unit ? `${n} ${v.unit}` : n;
 }
@@ -2775,13 +4567,18 @@ var KEYS = [
 var keyLabel = (code) => KEYS.find((k) => k.code === code)?.label ?? `key 0x${code.toString(16).toUpperCase()}`;
 
 // src/ui/describe.ts
+var words = (row, kind, namer, extra) => describeEud(row, kind, namer, extra).map((s) => s.kind === "text" ? s.text : s.label).join("");
 function conditionText(c2, namer, extra) {
   const eud = recognizeCondition(c2);
-  return eud ? describeEud(eud, "condition", namer, extra).map((s) => s.kind === "text" ? s.text : s.label).join("") : sentenceText(describeCondition(c2, namer));
+  return eud ? words(eud, "condition", namer, extra) : sentenceText(describeCondition(c2, namer));
 }
 function actionText(a2, namer, extra, briefing = false) {
   const eud = briefing ? null : recognizeAction(a2);
-  return eud ? describeEud(eud, "action", namer, extra).map((s) => s.kind === "text" ? s.text : s.label).join("") : sentenceText(describeAction(a2, namer, briefing));
+  return eud ? words(eud, "action", namer, extra) : sentenceText(describeAction(a2, namer, briefing));
+}
+function actionsText(actions, namer, extra, briefing = false) {
+  if (briefing) return actions.map((a2, at) => ({ at, count: 1, group: null, text: actionText(a2, namer, extra, true) }));
+  return actionSpans(actions).map((s) => ({ at: s.at, count: s.count, group: s.group, text: s.group ? words(s.group, "action", namer, extra) : actionText(actions[s.at], namer, extra) }));
 }
 
 // src/model/expansions.ts
@@ -4183,8 +5980,14 @@ function check(trigger3, ctx = {}) {
   const usesSwitch = enabledConditions.some(({ c: c2 }) => c2.type === ConditionType.Switch) && actions.some((a2) => a2.type === ActionType.SetSwitch && !isActionDisabled(a2));
   if (sharedOwner && perPlayer && usesSwitch) out.push({ level: "warn", text: "Every owner runs this trigger, and its switch is shared: when the Current Player condition is false for one of them, that run can flip the switch for the others. Guard with a death counter of the Current Player instead." });
   const preserved = (trigger3.flags & TriggerFlag.Preserve) !== 0 || actions.some((a2) => a2.type === ActionType.PreserveTrigger && !isActionDisabled(a2));
+  const groups = actionSpans(actions).filter((s) => s.group);
+  const inGroup = new Set(groups.flatMap((s) => Array.from({ length: s.count }, (_, i) => s.at + i)));
+  for (const s of groups) {
+    const v = s.group.entry.value;
+    if (v?.kind === "string" && s.group.value !== 0 && ctx.stringExists && !ctx.stringExists(s.group.value)) out.push({ level: "error", text: `${s.group.entry.name} names string ${s.group.value}, which the map does not have.`, at: { kind: "action", index: s.at } });
+  }
   actions.forEach((a2, index) => {
-    if (isActionDisabled(a2)) return;
+    if (isActionDisabled(a2) || inGroup.has(index)) return;
     const at = { kind: "action", index };
     if (a2.type === ActionType.Wait || a2.type === ActionType.Transmission) {
       if (preserved) out.push({ level: "warn", text: "A Wait in a preserved trigger holds up every other trigger of its owner while it waits, every cycle.", at });
@@ -4210,6 +6013,8 @@ function check(trigger3, ctx = {}) {
           const access = accessOf(a2.player, a2.unitId, a2.mask, a2.location);
           out.push({ level: "info", text: `Writes memory at 0x${access.address.toString(16).toUpperCase()}, which the catalogue does not know.`, at });
         } else if (!row.entry.remastered.write) out.push({ level: "error", text: `Remastered does not let a trigger write ${row.entry.name.toLowerCase()}.`, at });
+        else if (row.entry.value?.kind === "string" && ctx.stringExists && !ctx.stringExists(row.value)) out.push({ level: "error", text: `${row.entry.name} names string ${row.value}, which the map does not have.`, at });
+        else if (row.entry.value?.kind === "string" && row.value === 0) out.push({ level: "warn", text: `${row.entry.name} has no text.`, at });
       } else if (ctx.claimedCells && a2.unitId < 228) {
         for (const p of playerSlots(a2.player, own)) if (ctx.claimedCells.has(cellKey(p, a2.unitId))) {
           out.push({ level: "warn", text: "This death counter is used by another plugin's generated triggers.", at });
@@ -4245,15 +6050,15 @@ function check(trigger3, ctx = {}) {
 var norm2 = (s) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
 var stem = (w) => w.length > 3 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w;
 var startsWord = (token, w) => token.startsWith(w) || token.startsWith(stem(w)) || stem(token).startsWith(stem(w));
-function scoreText(text, query, words) {
+function scoreText(text, query, words2) {
   const t = norm2(text);
   if (!t) return 0;
   if (t === query || t === stem(query)) return 100;
   if (t.startsWith(query) || t.startsWith(stem(query))) return 80;
   const tw = t.split(" ");
-  if (words.every((w) => tw.some((x) => startsWord(x, w)))) return 60 + Math.min(10, 10 * words.length / tw.length);
+  if (words2.every((w) => tw.some((x) => startsWord(x, w)))) return 60 + Math.min(10, 10 * words2.length / tw.length);
   if (t.includes(query)) return 40;
-  if (words.every((w) => t.includes(w))) return 30;
+  if (words2.every((w) => t.includes(w))) return 30;
   let i = 0;
   for (const ch of t) if (ch === query[i]) i++;
   if (i === query.length && query.length >= 3) return 10;
@@ -4265,17 +6070,17 @@ function search(items, query, options = {}) {
   if (!q) {
     return items.slice(0, options.limit ?? items.length).map((item) => ({ item, score: 0 }));
   }
-  const words = q.split(" ");
+  const words2 = q.split(" ");
   for (const item of items) {
-    let score = scoreText(item.label, q, words);
-    for (const alias of item.aliases ?? []) score = Math.max(score, Math.min(66, scoreText(alias, q, words) - 2));
+    let score = scoreText(item.label, q, words2);
+    for (const alias of item.aliases ?? []) score = Math.max(score, Math.min(66, scoreText(alias, q, words2) - 2));
     if (score < 50) {
       const tokens = [...norm2(item.label).split(" "), ...(item.aliases ?? []).flatMap((a2) => norm2(a2).split(" "))];
-      if (words.every((w) => tokens.some((tk) => startsWord(tk, w)))) score = Math.max(score, 55);
+      if (words2.every((w) => tokens.some((tk) => startsWord(tk, w)))) score = Math.max(score, 55);
     }
-    if (item.group) score = Math.max(score, scoreText(item.group, q, words) - 30);
+    if (item.group) score = Math.max(score, scoreText(item.group, q, words2) - 30);
     if (score <= 0) continue;
-    score += options.recent?.(item.value) ?? 0;
+    score += (options.recent?.(item.value) ?? 0) + (options.prefer?.(item.value) ?? 0);
     hits.push({ item, score });
   }
   hits.sort((a2, b) => b.score - a2.score || (b.item.priority ?? 0) - (a2.item.priority ?? 0) || a2.item.label.length - b.item.label.length || a2.item.label.localeCompare(b.item.label));
@@ -4283,7 +6088,7 @@ function search(items, query, options = {}) {
 }
 
 // src/model/parse.ts
-var RACES = ["terran ", "zerg ", "protoss "];
+var RACES2 = ["terran ", "zerg ", "protoss "];
 var norm3 = (s) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
 function spellings(label, aliases = []) {
   const out = /* @__PURE__ */ new Set();
@@ -4296,7 +6101,7 @@ function spellings(label, aliases = []) {
     }
   };
   add(label);
-  for (const r of RACES) if (label.toLowerCase().startsWith(r)) add(label.slice(r.length));
+  for (const r of RACES2) if (label.toLowerCase().startsWith(r)) add(label.slice(r.length));
   add(label.replace(/\s*\(.*\)\s*/g, " "));
   for (const a2 of aliases) add(a2);
   return [...out].filter((s) => s.length >= 2);
@@ -4317,7 +6122,7 @@ function candidates(names) {
     out.push({ kind: "key", value: k.code, spelling: `${k.label.toLowerCase()} key` });
     out.push({ kind: "key", value: k.code, spelling: `key ${k.label.toLowerCase()}` });
   }
-  const rank = { location: 0, switch: 1, player: 2, weapon: 3, upgrade: 4, tech: 5, key: 6, unit: 7, number: 8, comparison: 9, modifier: 10 };
+  const rank = { location: 0, switch: 1, player: 2, tech: 3, upgrade: 4, weapon: 5, key: 6, unit: 7, number: 8, comparison: 9, modifier: 10 };
   out.sort((a2, b) => b.spelling.length - a2.spelling.length || rank[a2.kind] - rank[b.kind]);
   return out;
 }
@@ -4447,14 +6252,19 @@ function fillAction(record, entities) {
 function fillEud(entry2, kind, entities, query) {
   const take = taker(entities);
   const args = {};
+  const q = norm3(query);
   for (const a2 of entry2.args) {
+    if (a2.kind === "race") {
+      args[a2.name] = /\bzerg\b/.test(q) ? 0 : /\bprotoss\b/.test(q) ? 2 : 1;
+      continue;
+    }
     const e = take(a2.kind === "unit" ? ["unit"] : a2.kind === "player" ? ["player"] : a2.kind === "weapon" ? ["weapon"] : a2.kind === "upgrade" ? ["upgrade"] : a2.kind === "tech" ? ["tech"] : a2.kind === "key" ? ["key"] : ["number"]);
     args[a2.name] = e ? e.value : 0;
   }
   let value = entry2.value?.choices ? entry2.value.choices[0].value : entry2.value?.min ?? 0;
   if (entry2.value?.choices) {
-    const q = norm3(query);
-    const hit = entry2.value.choices.find((c2) => new RegExp(`\\b${norm3(c2.label).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(q));
+    const hits = entry2.value.choices.filter((c2) => new RegExp(`\\b${norm3(c2.label).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(q));
+    const hit = hits.sort((a2, b) => b.label.length - a2.label.length)[0];
     if (hit) value = hit.value;
   } else if (entry2.value?.kind === "unit") {
     const e = take(["unit"]);
@@ -4518,6 +6328,11 @@ var NATIVE_ALIASES = {
   "Score": ["points"],
   "Opponents": ["players remaining", "enemies left"]
 };
+function entryAliases(e, kind) {
+  const sentence = (kind === "condition" ? e.sentence.condition : e.sentence.action) ?? "";
+  const words2 = sentence.replace(/\{[^}]+\}/g, " ").replace(/\s+/g, " ").trim();
+  return [...e.aliases ?? [], ...words2 ? [words2] : [], ...e.value?.choices?.map((c2) => c2.label) ?? [], ...e.args.some((a2) => a2.kind === "race") ? RACES.map((r) => r.label) : []];
+}
 function paletteItems(kind) {
   const items = [];
   if (kind === "condition") for (const d of CONDITION_DEFS) {
@@ -4526,7 +6341,7 @@ function paletteItems(kind) {
   else for (const d of ACTION_DEFS) {
     if (d.type !== ActionType.None) items.push({ label: d.name, aliases: NATIVE_ALIASES[d.name], priority: 1, value: { kind: "native", type: d.type } });
   }
-  for (const e of entriesFor(kind)) items.push({ label: e.name, aliases: e.aliases, group: e.group, value: { kind: "eud", entry: e } });
+  for (const e of entriesFor(kind)) if (available(e)) items.push({ label: e.name, aliases: entryAliases(e, kind), group: e.group, value: { kind: "eud", entry: e } });
   if (kind === "condition") {
     items.push({ label: "Compare two counters", aliases: ["greater", "less", "equal", "variable"], group: "Counters", value: { kind: "expansion", what: "compare" } });
     items.push({ label: "The chat said a command", aliases: ["chat", "typed", "command", "message", "-heal", "-set with a number", "argument"], group: "Build", value: { kind: "build", what: "chat" } });
@@ -4577,7 +6392,9 @@ function addRow(api, kind, onPick, options = {}) {
       entities = parsed.entities;
       if (parsed.rest) query = parsed.rest;
     }
-    hits = browsing ? items : search(items, query, { limit: 14, recent: options.recent }).map((h) => h.item);
+    const named = new Set(entities.map((e) => e.kind));
+    const prefer = (v) => v.kind === "eud" ? v.entry.args.filter((a2) => (a2.kind === "weapon" || a2.kind === "upgrade" || a2.kind === "tech" || a2.kind === "key") && named.has(a2.kind)).length * 12 : 0;
+    hits = browsing ? items : search(items, query, { limit: 14, recent: options.recent, prefer }).map((h) => h.item);
     if (!hits.length) {
       close();
       return;
@@ -4604,11 +6421,11 @@ function addRow(api, kind, onPick, options = {}) {
           rows.push(el("div", { className: "mg-option group" }, group));
         }
       }
-      const named = entities.length ? entities.map((e) => e.text).join(" \xB7 ") : "";
+      const named2 = entities.length ? entities.map((e) => e.text).join(" \xB7 ") : "";
       const row = el(
         "button",
         { type: "button", className: `mg-option${i === active ? " active" : ""}`, title: eud ? item.value.entry.note ?? "" : "" },
-        el("span", { className: "grow" }, item.label, named ? el("span", { className: "hint" }, `  ${named}`) : null),
+        el("span", { className: "grow" }, item.label, named2 ? el("span", { className: "hint" }, `  ${named2}`) : null),
         el("span", { className: `mg-hit-group${eud ? " eud" : ""}` }, eud ? `EUD \xB7 ${item.group}` : item.value.kind === "expansion" ? api.i18n.t("Counters") : item.value.kind === "build" ? api.i18n.t("Build") : "")
       );
       row.addEventListener("mousedown", (e) => e.preventDefault());
@@ -4661,13 +6478,25 @@ function choicesOf(api, kind) {
 function renderRow(ctx, kind, index, record, problems, h) {
   const { api } = ctx;
   const el = api.ui.el;
-  const t = api.i18n.t;
   const disabled = kind === "condition" ? isConditionDisabled(record) : isActionDisabled(record);
   const sentence = el("span", { className: "mg-sentence" });
   const eud = kind === "condition" ? recognizeCondition(record) : recognizeAction(record);
-  if (eud) renderEud(ctx, kind, eud, sentence, (row2) => h.onChange(kind === "condition" ? lowerCondition(row2) : lowerAction(row2)));
+  const hh = h;
+  const lower = (row) => kind === "condition" ? lowerCondition(row) : lowerAction(row);
+  if (eud) renderEud(ctx, kind, eud, sentence, (row) => hh.onChange(lower(row)), (text, rowFor) => hh.onChangeWithText(text, (i) => lower(rowFor(i))));
   else if (kind === "condition") renderNative(ctx, "condition", record, describeCondition(record, ctx.namer).segments, sentence, h);
   else renderNative(ctx, "action", record, describeAction(record, ctx.namer).segments, sentence, h);
+  return rowShell(ctx, kind, index, sentence, disabled, problems, h);
+}
+function renderGroupRow(ctx, index, row, records, problems, h) {
+  const sentence = ctx.api.ui.el("span", { className: "mg-sentence" });
+  renderEud(ctx, "action", row, sentence, (next) => h.onChange(lowerActions(next)), (text, rowFor) => h.onChangeWithText(text, (i) => lowerActions(rowFor(i))));
+  return rowShell(ctx, "action", index, sentence, records.every(isActionDisabled), problems, h);
+}
+function rowShell(ctx, kind, index, sentence, disabled, problems, h) {
+  const { api } = ctx;
+  const el = api.ui.el;
+  const t = api.i18n.t;
   const tools = el(
     "span",
     { className: "mg-tools" },
@@ -4836,11 +6665,12 @@ function pickCounter(ctx, chip3, record, kind, h) {
   });
 }
 function eudTitle(entry2, row) {
-  const address = entryAddress(entry2, row.args);
+  const address2 = entryAddress(entry2, row.args);
   const rw = entry2.remastered.read && entry2.remastered.write ? "read and write" : entry2.remastered.read ? "read only" : "write only";
-  return [`${entry2.name} \u2014 0x${address.toString(16).toUpperCase()}, ${entry2.width === "bit" ? "one bit" : `${entry2.width} byte${entry2.width > 1 ? "s" : ""}`}, Remastered: ${rw}.`, entry2.note, `Source: ${entry2.source}.`].filter(Boolean).join("\n");
+  const where = entry2.parts?.length ? `${entry2.parts.length} records from 0x${address2.toString(16).toUpperCase()}` : `0x${address2.toString(16).toUpperCase()}, ${entry2.width === "bit" ? "one bit" : `${entry2.width} byte${entry2.width > 1 ? "s" : ""}`}`;
+  return [`${entry2.name} \u2014 ${where}, Remastered: ${rw}.`, entry2.note, entry2.verified ? "Seen working in Remastered." : "Not yet seen working in Remastered.", `Source: ${entry2.source}.`].filter(Boolean).join("\n");
 }
-function renderEud(ctx, kind, row, into, onChange) {
+function renderEud(ctx, kind, row, into, onChange, onText) {
   const { api, host } = ctx;
   const t = api.i18n.t;
   const placed = new Map(host.placedUnits().map((u) => [u.slot, u]));
@@ -4860,7 +6690,8 @@ function renderEud(ctx, kind, row, into, onChange) {
       into.append(chipEl(api, seg.label, ""));
       continue;
     }
-    const chip3 = chipEl(api, seg.label, "eud", seg.slot !== "value" && seg.slot !== "op" && seg.slot.arg.kind === "player" ? ctx.namer.playerColor?.(seg.value) ?? null : entry2.value?.kind === "player" && seg.slot === "value" ? ctx.namer.playerColor?.(seg.value) ?? null : null);
+    const isString = seg.slot === "value" && entry2.value?.kind === "string";
+    const chip3 = chipEl(api, seg.label, isString ? "eud text" : "eud", seg.slot !== "value" && seg.slot !== "op" && seg.slot.arg.kind === "player" ? ctx.namer.playerColor?.(seg.value) ?? null : entry2.value?.kind === "player" && seg.slot === "value" ? ctx.namer.playerColor?.(seg.value) ?? null : null);
     chip3.addEventListener("click", () => {
       if (seg.slot === "op") {
         pickChoice(api, chip3, choicesOf(api, kind === "condition" ? "comparison" : "modifier"), (v) => update({ op: v }), { current: row.op });
@@ -4872,6 +6703,7 @@ function renderEud(ctx, kind, row, into, onChange) {
         else if (v?.kind === "unit") pickUnitType(api, host, chip3, row.value, (value) => update({ value }), { classes: false });
         else if (v?.kind === "player") pickPlayer(api, host, chip3, row.value, (value) => update({ value }), { eud: false });
         else if (v?.kind === "weapon") pickNamed(api, chip3, [...host.weapons(), { value: 130, label: t("No weapon") }], row.value, (value) => update({ value }));
+        else if (v?.kind === "string") pickText(api, chip3, ctx.namer.string(row.value) ?? "", (text) => onText?.(text, (index) => ({ ...row, value: index })), { title: entry2.name });
         else pickNumber(api, chip3, row.value, (value) => update({ value }), { min: v?.min ?? 0, max: v?.max ?? 4294967295, unit: v?.unit, integer: (v?.scale ?? 1) === 1, step: (v?.scale ?? 1) === 1 ? 1 : 0.01, hint: entry2.note });
         return;
       }
@@ -4899,13 +6731,16 @@ function renderEud(ctx, kind, row, into, onChange) {
         case "unitIndex":
           pickPlacedUnit(api, host, chip3, seg.value, setArg);
           break;
+        case "race":
+          pickChoice(api, chip3, RACES, setArg, { current: seg.value });
+          break;
         default:
           pickNumber(api, chip3, seg.value, setArg, { min: 0, max: arg.max - 1 });
       }
     });
     into.append(chip3);
   }
-  const tag2 = api.ui.el("span", { className: "mg-tag", title: eudTitle(entry2, row) }, "EUD");
+  const tag2 = api.ui.el("span", { className: `mg-tag${entry2.verified ? "" : " unverified"}`, title: eudTitle(entry2, row) }, "EUD");
   into.append(tag2);
   if (kind === "action" && !entry2.remastered.write) into.append(api.ui.el("span", { className: "mg-tag ro", title: t("Remastered does not let a trigger write this address; the action does nothing in the game.") }, t("read only")));
 }
@@ -5733,10 +7568,31 @@ function renderEditor(deps, root) {
   }, { names: () => host.parseNames() }));
   root.append(condSection);
   const actions = liveActions(trigger3);
-  const shownActions = actions.map((a2, i) => ({ a: a2, i })).filter(({ i }) => i !== ci);
+  const spans = actionSpans(actions).filter((s) => s.at !== ci);
+  const shownActions = spans.map((s) => ({ a: actions[s.at], i: s.at, span: s }));
   const actSection = el("div", { className: "mg-section" }, el("div", { className: "mg-section-head" }, t("Actions"), el("span", { className: "grow" }), el("span", { className: "hint" }, `${actions.length}/${MAX_ACTIONS}`)));
   const writeActions = (label, next) => replace(label, { ...trigger3, actions: next });
-  for (const { a: a2, i } of shownActions) {
+  const moveSpan = (pos, d) => {
+    const to = pos + d;
+    if (to < 0 || to >= shownActions.length) return;
+    const a2 = shownActions[Math.min(pos, to)].span, b = shownActions[Math.max(pos, to)].span;
+    if (a2.at + a2.count !== b.at) return;
+    const next = [...actions.slice(0, a2.at), ...actions.slice(b.at, b.at + b.count), ...actions.slice(a2.at, a2.at + a2.count), ...actions.slice(b.at + b.count)];
+    writeActions(t("Move action"), next);
+  };
+  for (const [pos, { a: a2, i, span }] of shownActions.entries()) {
+    if (span.group) {
+      const records = actions.slice(i, i + span.count);
+      const splice = (next) => [...actions.slice(0, i), ...next, ...actions.slice(i + span.count)];
+      actSection.append(renderGroupRow(ctx, i, span.group, records, at("action", i), {
+        onChange: (recs) => writeActions(t("Edit action"), splice(recs)),
+        onChangeWithText: (text, apply) => store.commit(t("Edit action"), (intern) => store.list.map((tr, j) => j !== index ? tr : { ...tr, actions: splice(apply(intern(text))) })),
+        onRemove: () => writeActions(t("Remove action"), splice([])),
+        onMove: (d) => moveSpan(pos, d),
+        onToggle: () => writeActions(t("Toggle action"), splice(records.map((x) => setActionDisabled(x, !records.every((r) => r.flags & 2)))))
+      }));
+      continue;
+    }
     const hook = hookOf(store, a2);
     if (hook) {
       const sentence = el("span", { className: "mg-sentence" });
@@ -5757,37 +7613,29 @@ function renderEditor(deps, root) {
       onChange: (rec) => writeActions(t("Edit action"), actions.map((x, j) => j === i ? rec : x)),
       onChangeWithText: (text, apply) => store.commit(t("Edit action"), (intern) => store.list.map((tr, j) => j !== index ? tr : { ...tr, actions: actions.map((x, k) => k === i ? apply(intern(text)) : x) })),
       onRemove: () => writeActions(t("Remove action"), actions.filter((_, j) => j !== i)),
-      onMove: (d) => {
-        const order = shownActions.map((x) => x.i);
-        const pos = order.indexOf(i);
-        const to = pos + d;
-        if (to < 0 || to >= order.length) return;
-        const next = [...actions];
-        [next[order[pos]], next[order[to]]] = [next[order[to]], next[order[pos]]];
-        writeActions(t("Move action"), next);
-      },
+      onMove: (d) => moveSpan(pos, d),
       onToggle: () => writeActions(t("Toggle action"), actions.map((x, j) => j === i ? setActionDisabled(x, !(x.flags & 2)) : x))
     }));
   }
   if (actions.length < MAX_ACTIONS) actSection.append(addRow(api, "action", ({ pick, entities, query }) => {
     if (pick.kind === "build") {
       if (pick.what === "chat" || pick.what === "scan" || pick.what === "key" || pick.what === "click" || pick.what === "mouseIn") return;
-      const made = newHook(host, store, pick.what, query);
-      if (!made) {
+      const made2 = newHook(host, store, pick.what, query);
+      if (!made2) {
         api.ui.toast({ kind: "error", title: t("No free counter cell for the build row") });
         return;
       }
-      store.commit(t("Add build row"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, actions: [...actions, made.action] }), { sidecar: { builds: made.builds } });
+      store.commit(t("Add build row"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, actions: [...actions, made2.action] }), { sidecar: { builds: made2.builds } });
       return;
     }
     if (pick.kind === "expansion") {
       if (pick.what === "compare") return;
-      const made = newCounterStep(store, host, pick.what);
-      if (!made) {
+      const made2 = newCounterStep(store, host, pick.what);
+      if (!made2) {
         api.ui.toast({ kind: "error", title: t("No free counter cells for the step") });
         return;
       }
-      store.commit(t("Add counter step"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, actions: [...actions, flagAction({ cell: made.flag })] }), { sidecar: { expansions: [...store.sidecar.expansions, made.expansion] } });
+      store.commit(t("Add counter step"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, actions: [...actions, flagAction({ cell: made2.flag })] }), { sidecar: { expansions: [...store.sidecar.expansions, made2.expansion] } });
       return;
     }
     if (pick.kind === "native" && pick.type === ActionType.Comment) {
@@ -5797,7 +7645,12 @@ function renderEditor(deps, root) {
       });
       return;
     }
-    writeActions(t("Add action"), [...actions, newAction(api, pick, entities, query)]);
+    const made = newActions(api, pick, entities, query);
+    if (actions.length + made.length > MAX_ACTIONS) {
+      api.ui.toast({ kind: "info", title: t("No room for this row"), detail: t("It writes {n} records and the trigger has {free} action slots left.", { n: made.length, free: MAX_ACTIONS - actions.length }) });
+      return;
+    }
+    writeActions(t("Add action"), [...actions, ...made]);
   }, { names: () => host.parseNames() }));
   root.append(actSection);
 }
@@ -5810,30 +7663,46 @@ function newCondition(api, pick, entities = [], query = "") {
   for (const a2 of e.args) args[a2.name] = 0;
   return lowerCondition({ entry: e, args, value: e.value?.choices ? e.value.choices[0].value : e.value?.min ?? 0, op: enumerated(e) ? Comparison.Exactly : Comparison.AtLeast });
 }
-function newAction(api, pick, entities = [], query = "") {
-  if (pick.kind === "native") return fillAction(api.triggers.newAction(pick.type), entities);
+function newActions(api, pick, entities = [], query = "") {
+  if (pick.kind === "native") return [fillAction(api.triggers.newAction(pick.type), entities)];
   if (pick.kind === "expansion" || pick.kind === "build") throw new Error("not a record of its own");
   const e = pick.entry;
-  if (entities.length) return lowerAction(fillEud(e, "action", entities, query));
+  if (entities.length) return lowerActions(fillEud(e, "action", entities, query));
   const args = {};
   for (const a2 of e.args) args[a2.name] = 0;
-  return lowerAction({ entry: e, args, value: e.value?.choices ? e.value.choices[0].value : e.value?.min ?? 0, op: SetModifier.SetTo });
+  return lowerActions({ entry: e, args, value: e.value?.choices ? e.value.choices[0].value : e.value?.min ?? 0, op: SetModifier.SetTo });
 }
 
 // src/ui/list.ts
+function rowWords(deps, render) {
+  const span = deps.api.ui.el("span");
+  render(span);
+  span.querySelectorAll(".mg-tag").forEach((e) => e.remove());
+  span.querySelectorAll(".mg-chip").forEach((e) => {
+    if (e.textContent === "#") e.remove();
+  });
+  return (span.textContent ?? "").replace(/\s+/g, " ").trim();
+}
 function itemInfo(deps, index, trigger3) {
-  const { host, store } = deps;
+  const { api, host, store } = deps;
   const namer = host.namer(store.sidecar);
   const extra = host.extra();
   const ci = commentIndex(trigger3);
   const cmp = compareOf(store, index, trigger3);
   const conditions = liveConditions(trigger3).flatMap((c2, i) => {
     if (cmp && cmp.rows.includes(i)) return i === cmp.rows[0] ? [`${cellLabel(cmp.x.a, namer)} is ${RELATION_WORDS[cmp.relation]} ${cellLabel(cmp.x.b, namer)}`] : [];
+    const brow = conditionRowOf(store, c2);
+    if (brow) return [rowWords(deps, (into) => renderConditionRow(api, host, store, brow, into, () => {
+    }))];
     return [conditionText(c2, namer, extra)];
   });
-  const actions = liveActions(trigger3).filter((a2) => a2.type !== ActionType.Comment).map((a2) => {
-    const x = counterExpansionOf(store, a2);
-    if (!x) return actionText(a2, namer, extra);
+  const live = liveActions(trigger3);
+  const actions = actionsText(live, namer, extra).filter((s) => live[s.at].type !== ActionType.Comment).map((s) => {
+    const a2 = live[s.at];
+    const hook = s.group ? null : hookOf(store, a2);
+    if (hook) return rowWords(deps, (into) => renderHook(api, host, store, hook, into));
+    const x = s.group ? null : counterExpansionOf(store, a2);
+    if (!x) return s.text;
     return x.kind === "copy" ? `Copy ${cellLabel(x.from, namer)} into ${cellLabel(x.to, namer)}` : x.kind === "add" ? `Add ${cellLabel(x.from, namer)} to ${cellLabel(x.to, namer)}` : `Subtract ${cellLabel(x.from, namer)} from ${cellLabel(x.to, namer)}`;
   });
   const title = ci >= 0 ? namer.string(trigger3.actions[ci].text) ?? "" : "";
@@ -6217,6 +8086,7 @@ var STYLE = `
 .mg .mg-chip .mg-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; border: 1px solid rgba(0,0,0,0.5); }
 .mg .mg-tag { display: inline-block; vertical-align: middle; margin-left: 6px; font-size: 9px; letter-spacing: 0.08em; padding: 1px 4px; border-radius: 2px; background: rgba(79, 209, 197, 0.18); color: var(--teal); cursor: help; }
 .mg .mg-tag.ro { background: rgba(224, 165, 69, 0.18); color: var(--warn); }
+.mg .mg-tag.unverified { background: transparent; outline: 1px dashed rgba(79, 209, 197, 0.6); outline-offset: -1px; }
 
 .mg .mg-add { display: flex; align-items: center; gap: 6px; padding: 2px 6px; }
 .mg .mg-add .input { flex: 1; height: 24px; }
@@ -6633,6 +8503,12 @@ function activate(api) {
   let claims = null;
   const panel = createPanel(api, { afterCommit: () => claims?.refresh() });
   const t = api.i18n.t;
+  const lookup2 = () => void api.data.load().then(() => {
+    const units = api.data.units();
+    setGameLookup(units ? lookupOver(units.flingy) : null);
+  }, () => setGameLookup(null));
+  lookup2();
+  const onData = api.events.on("gameData", lookup2);
   api.commands.register({ id: "open", title: "Magenta", enabled: () => api.document.isOpen(), run: (options) => panel.open(options && typeof options === "object" && typeof options.index === "number" ? { index: options.index } : {}) });
   api.commands.register({
     id: "describe",
@@ -6644,7 +8520,7 @@ function activate(api) {
       const extra = host.extra();
       return {
         conditions: liveConditions(tr).map((c2) => conditionText(c2, namer, extra)),
-        actions: liveActions(tr).map((a2) => actionText(a2, namer, extra))
+        actions: actionsText(liveActions(tr), namer, extra).map((s) => s.text)
       };
     }
   });
@@ -6656,6 +8532,8 @@ function activate(api) {
   return () => {
     claims?.dispose();
     panel.close();
+    onData.dispose();
+    setGameLookup(null);
   };
 }
 export {

@@ -4,7 +4,7 @@
  */
 import { ActionType, Comparison, ConditionType, TriggerFlag, MAX_ACTIONS, MAX_CONDITIONS, type TriggerRecord } from "../../vendor/triggers";
 import { actionDef, conditionDef } from "../../vendor/triggerDefs";
-import { recognizeAction, recognizeCondition, isEud, accessOf } from "./eud";
+import { actionSpans, recognizeAction, recognizeCondition, isEud, accessOf } from "./eud";
 import { liveActions, liveConditions, owners, isActionDisabled, isConditionDisabled } from "./records";
 import { cellKey, playerSlots } from "./counters";
 
@@ -64,8 +64,15 @@ export function check(trigger: TriggerRecord, ctx: CheckContext = {}): Problem[]
   if (sharedOwner && perPlayer && usesSwitch) out.push({ level: "warn", text: "Every owner runs this trigger, and its switch is shared: when the Current Player condition is false for one of them, that run can flip the switch for the others. Guard with a death counter of the Current Player instead." });
 
   const preserved = (trigger.flags & TriggerFlag.Preserve) !== 0 || actions.some((a) => a.type === ActionType.PreserveTrigger && !isActionDisabled(a));
+  // The records of a grouped entry (a unit type's speed, a player's colour) are known as a set, not one by one.
+  const groups = actionSpans(actions).filter((s) => s.group);
+  const inGroup = new Set(groups.flatMap((s) => Array.from({ length: s.count }, (_, i) => s.at + i)));
+  for (const s of groups) {
+    const v = s.group!.entry.value;
+    if (v?.kind === "string" && s.group!.value !== 0 && ctx.stringExists && !ctx.stringExists(s.group!.value)) out.push({ level: "error", text: `${s.group!.entry.name} names string ${s.group!.value}, which the map does not have.`, at: { kind: "action", index: s.at } });
+  }
   actions.forEach((a, index) => {
-    if (isActionDisabled(a)) return;
+    if (isActionDisabled(a) || inGroup.has(index)) return;
     const at = { kind: "action" as const, index };
     if (a.type === ActionType.Wait || a.type === ActionType.Transmission) {
       if (preserved) out.push({ level: "warn", text: "A Wait in a preserved trigger holds up every other trigger of its owner while it waits, every cycle.", at });
@@ -91,6 +98,8 @@ export function check(trigger: TriggerRecord, ctx: CheckContext = {}): Problem[]
           const access = accessOf(a.player, a.unitId, a.mask, a.location);
           out.push({ level: "info", text: `Writes memory at 0x${access!.address.toString(16).toUpperCase()}, which the catalogue does not know.`, at });
         } else if (!row.entry.remastered.write) out.push({ level: "error", text: `Remastered does not let a trigger write ${row.entry.name.toLowerCase()}.`, at });
+        else if (row.entry.value?.kind === "string" && ctx.stringExists && !ctx.stringExists(row.value)) out.push({ level: "error", text: `${row.entry.name} names string ${row.value}, which the map does not have.`, at });
+        else if (row.entry.value?.kind === "string" && row.value === 0) out.push({ level: "warn", text: `${row.entry.name} has no text.`, at });
       } else if (ctx.claimedCells && a.unitId < 228) {
         for (const p of playerSlots(a.player, own)) if (ctx.claimedCells.has(cellKey(p, a.unitId))) { out.push({ level: "warn", text: "This death counter is used by another plugin's generated triggers.", at }); break; }
       }

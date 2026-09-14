@@ -11,7 +11,7 @@ import type { ActionRecord, ConditionRecord } from "../../vendor/triggers";
 import { actionDef, conditionDef, type ArgKind } from "../../vendor/triggerDefs";
 import type { Entry } from "../catalogue";
 import { enumerated } from "../catalogue";
-import { lowerAction, lowerCondition, type EudRow } from "./eud";
+import { lowerAction, lowerActions, lowerCondition, type EudRow } from "./eud";
 import { KEYS } from "./eudSentence";
 
 export interface Named {
@@ -79,8 +79,9 @@ function candidates(names: ParseNames): Candidate[] {
   push("player", names.players);
   for (const k of KEYS) { out.push({ kind: "key", value: k.code, spelling: `${k.label.toLowerCase()} key` }); out.push({ kind: "key", value: k.code, spelling: `key ${k.label.toLowerCase()}` }); }
   // Longest spelling first, so "high templar" beats "templar"; on a tie the map's own names
-  // (a location called Beacon) beat the game's (the Zerg Beacon unit).
-  const rank: Record<EntityKind, number> = { location: 0, switch: 1, player: 2, weapon: 3, upgrade: 4, tech: 5, key: 6, unit: 7, number: 8, comparison: 9, modifier: 10 };
+  // (a location called Beacon) beat the game's (the Zerg Beacon unit), and a spell's name is
+  // the technology before the weapon of the same name ("lockdown energy" is the research's cost).
+  const rank: Record<EntityKind, number> = { location: 0, switch: 1, player: 2, tech: 3, upgrade: 4, weapon: 5, key: 6, unit: 7, number: 8, comparison: 9, modifier: 10 };
   out.sort((a, b) => b.spelling.length - a.spelling.length || rank[a.kind] - rank[b.kind]);
   return out;
 }
@@ -213,14 +214,17 @@ export function fillAction(record: ActionRecord, entities: Entity[]): ActionReco
 export function fillEud(entry: Entry, kind: "condition" | "action", entities: Entity[], query: string): EudRow {
   const take = taker(entities);
   const args: Record<string, number> = {};
+  const q = norm(query);
   for (const a of entry.args) {
+    if (a.kind === "race") { args[a.name] = /\bzerg\b/.test(q) ? 0 : /\bprotoss\b/.test(q) ? 2 : 1; continue; }
     const e = take(a.kind === "unit" ? ["unit"] : a.kind === "player" ? ["player"] : a.kind === "weapon" ? ["weapon"] : a.kind === "upgrade" ? ["upgrade"] : a.kind === "tech" ? ["tech"] : a.kind === "key" ? ["key"] : ["number"]);
     args[a.name] = e ? e.value : 0;
   }
   let value = entry.value?.choices ? entry.value.choices[0].value : entry.value?.min ?? 0;
   if (entry.value?.choices) {
-    const q = norm(query);
-    const hit = entry.value.choices.find((c) => new RegExp(`\\b${norm(c.label).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(q));
+    // The longest label that appears wins: "not a detector" over "a detector".
+    const hits = entry.value.choices.filter((c) => new RegExp(`\\b${norm(c.label).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(q));
+    const hit = hits.sort((a, b) => b.label.length - a.label.length)[0];
     if (hit) value = hit.value;
   } else if (entry.value?.kind === "unit") { const e = take(["unit"]); if (e) value = e.value; }
   else if (entry.value?.kind === "player") { const e = take(["player"]); if (e) value = e.value; }
@@ -233,3 +237,5 @@ export function fillEud(entry: Entry, kind: "condition" | "action", entities: En
 
 export const fillEudCondition = (entry: Entry, entities: Entity[], query: string): ConditionRecord => lowerCondition(fillEud(entry, "condition", entities, query));
 export const fillEudAction = (entry: Entry, entities: Entity[], query: string): ActionRecord => lowerAction(fillEud(entry, "action", entities, query));
+/** Every record the filled row writes: one, or a grouped entry's parts. */
+export const fillEudActions = (entry: Entry, entities: Entity[], query: string): ActionRecord[] => lowerActions(fillEud(entry, "action", entities, query));

@@ -5,7 +5,8 @@
 import type { PluginApi } from "@scm-js/plugin-api";
 import { ACTION_DEFS, CONDITION_DEFS } from "../../vendor/triggerDefs";
 import { ConditionType, ActionType } from "../../vendor/triggers";
-import { entriesFor, type Entry } from "../catalogue";
+import { entriesFor, RACES, type Entry } from "../catalogue";
+import { available } from "../model/eud";
 import { search, type SearchItem } from "../model/search";
 import { parseQuery, type Entity, type ParseNames } from "../model/parse";
 import { openPopover, type PopoverHandle } from "./popover";
@@ -24,11 +25,20 @@ const NATIVE_ALIASES: Record<string, string[]> = {
   "Set Doodad State": ["door", "trap"], "Accumulate": ["resources", "minerals", "gas"], "Kill": ["has killed", "kills"], "Score": ["points"], "Opponents": ["players remaining", "enemies left"],
 };
 
+function entryAliases(e: Entry, kind: "condition" | "action"): string[] {
+  const sentence = (kind === "condition" ? e.sentence.condition : e.sentence.action) ?? "";
+  const words = sentence.replace(/\{[^}]+\}/g, " ").replace(/\s+/g, " ").trim();
+  return [...(e.aliases ?? []), ...(words ? [words] : []), ...(e.value?.choices?.map((c) => c.label) ?? []), ...(e.args.some((a) => a.kind === "race") ? RACES.map((r) => r.label) : [])];
+}
+
 export function paletteItems(kind: "condition" | "action"): SearchItem<Pick>[] {
   const items: SearchItem<Pick>[] = [];
   if (kind === "condition") for (const d of CONDITION_DEFS) { if (d.type !== ConditionType.Briefing) items.push({ label: d.name, aliases: NATIVE_ALIASES[d.name], priority: 1, value: { kind: "native", type: d.type } }); }
   else for (const d of ACTION_DEFS) { if (d.type !== ActionType.None) items.push({ label: d.name, aliases: NATIVE_ALIASES[d.name], priority: 1, value: { kind: "native", type: d.type } }); }
-  for (const e of entriesFor(kind)) items.push({ label: e.name, aliases: e.aliases, group: e.group, value: { kind: "eud", entry: e } });
+  // An entry that goes through the game data's tables is offered once they are loaded. Its sentence's
+  // words, its choices and its race argument search too, so "make marine a detector", "colour yellow"
+  // and "terran supply cap" find their rows with the words a map maker would type.
+  for (const e of entriesFor(kind)) if (available(e)) items.push({ label: e.name, aliases: entryAliases(e, kind), group: e.group, value: { kind: "eud", entry: e } });
   if (kind === "condition") {
     items.push({ label: "Compare two counters", aliases: ["greater", "less", "equal", "variable"], group: "Counters", value: { kind: "expansion", what: "compare" } });
     items.push({ label: "The chat said a command", aliases: ["chat", "typed", "command", "message", "-heal", "-set with a number", "argument"], group: "Build", value: { kind: "build", what: "chat" } });
@@ -79,7 +89,10 @@ export function addRow(api: PluginApi, kind: "condition" | "action", onPick: (pi
       // With everything named taken out, what is left finds the row; a query that is all names browses.
       if (parsed.rest) query = parsed.rest;
     }
-    hits = browsing ? items : search(items, query, { limit: 14, recent: options.recent }).map((h) => h.item);
+    // A weapon, upgrade, technology or key named in the query points at the rows that take one: "lockdown energy" is the technology's energy cost, not a placed unit's.
+    const named = new Set(entities.map((e) => e.kind));
+    const prefer = (v: Pick) => (v.kind === "eud" ? v.entry.args.filter((a) => (a.kind === "weapon" || a.kind === "upgrade" || a.kind === "tech" || a.kind === "key") && named.has(a.kind)).length * 12 : 0);
+    hits = browsing ? items : search(items, query, { limit: 14, recent: options.recent, prefer }).map((h) => h.item);
     if (!hits.length) { close(); return; }
     active = 0;
     if (!pop) {

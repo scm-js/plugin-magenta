@@ -8,14 +8,14 @@ import type { PluginApi, ActionRecord, ConditionRecord, TriggerRecord } from "@s
 import { ActionType, ConditionType, Comparison, SetModifier, MAX_ACTIONS, MAX_CONDITIONS, PLAYER_GROUP_COUNT } from "../../vendor/triggers";
 import { enumerated } from "../catalogue";
 import { check, type Problem } from "../model/checks";
-import { lowerAction, lowerCondition } from "../model/eud";
+import { actionSpans, lowerActions, lowerCondition } from "../model/eud";
 import { commentIndex, liveActions, liveConditions, owners, setActionDisabled, setConditionDisabled, setOwners } from "../model/records";
 import { cellKey, playerSlots } from "../model/counters";
 import type { Host } from "./host";
 import { addRow, type Pick, type Picked } from "./palette";
 import { fillAction, fillCondition, fillEud, type Entity } from "../model/parse";
 import { pickChoice } from "./chips";
-import { renderRow, type RowContext } from "./rows";
+import { renderGroupRow, renderRow, type RowContext } from "./rows";
 import { compareOf, counterExpansionOf, newCompare, newCounterStep, renderCompare, renderCounterExpansion } from "./expansionRows";
 import { flagAction } from "../model/expansions";
 import { conditionRowOf, hookOf, newChat, newHook, newInput, newScan, renderConditionRow, renderHook } from "./buildRows";
@@ -174,10 +174,33 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
 
   /* ── Actions ── */
   const actions = liveActions(trigger);
-  const shownActions = actions.map((a, i) => ({ a, i })).filter(({ i }) => i !== ci);
+  // The rows: every record on its own, a grouped entry's records as one, the title's Comment left out.
+  const spans = actionSpans(actions).filter((s) => s.at !== ci);
+  const shownActions = spans.map((s) => ({ a: actions[s.at], i: s.at, span: s }));
   const actSection = el("div", { className: "mg-section" }, el("div", { className: "mg-section-head" }, t("Actions"), el("span", { className: "grow" }), el("span", { className: "hint" }, `${actions.length}/${MAX_ACTIONS}`)));
   const writeActions = (label: string, next: ActionRecord[]) => replace(label, { ...trigger, actions: next });
-  for (const { a, i } of shownActions) {
+  /** Swap the row at `pos` (in shown order) with its neighbour, both as whole spans. */
+  const moveSpan = (pos: number, d: number) => {
+    const to = pos + d;
+    if (to < 0 || to >= shownActions.length) return;
+    const a = shownActions[Math.min(pos, to)].span, b = shownActions[Math.max(pos, to)].span;
+    if (a.at + a.count !== b.at) return;
+    const next = [...actions.slice(0, a.at), ...actions.slice(b.at, b.at + b.count), ...actions.slice(a.at, a.at + a.count), ...actions.slice(b.at + b.count)];
+    writeActions(t("Move action"), next);
+  };
+  for (const [pos, { a, i, span }] of shownActions.entries()) {
+    if (span.group) {
+      const records = actions.slice(i, i + span.count);
+      const splice = (next: ActionRecord[]) => [...actions.slice(0, i), ...next, ...actions.slice(i + span.count)];
+      actSection.append(renderGroupRow(ctx, i, span.group, records, at("action", i), {
+        onChange: (recs) => writeActions(t("Edit action"), splice(recs)),
+        onChangeWithText: (text, apply) => store.commit(t("Edit action"), (intern) => store.list.map((tr, j) => (j !== index ? tr : { ...tr, actions: splice(apply(intern(text))) }))),
+        onRemove: () => writeActions(t("Remove action"), splice([])),
+        onMove: (d) => moveSpan(pos, d),
+        onToggle: () => writeActions(t("Toggle action"), splice(records.map((x) => setActionDisabled(x, !records.every((r) => r.flags & 2))))),
+      }));
+      continue;
+    }
     const hook = hookOf(store, a);
     if (hook) {
       const sentence = el("span", { className: "mg-sentence" });
@@ -198,15 +221,7 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
       onChange: (rec) => writeActions(t("Edit action"), actions.map((x, j) => (j === i ? rec : x))),
       onChangeWithText: (text, apply) => store.commit(t("Edit action"), (intern) => store.list.map((tr, j) => (j !== index ? tr : { ...tr, actions: actions.map((x, k) => (k === i ? apply(intern(text)) : x)) }))),
       onRemove: () => writeActions(t("Remove action"), actions.filter((_, j) => j !== i)),
-      onMove: (d) => {
-        const order = shownActions.map((x) => x.i);
-        const pos = order.indexOf(i);
-        const to = pos + d;
-        if (to < 0 || to >= order.length) return;
-        const next = [...actions];
-        [next[order[pos]], next[order[to]]] = [next[order[to]], next[order[pos]]];
-        writeActions(t("Move action"), next);
-      },
+      onMove: (d) => moveSpan(pos, d),
       onToggle: () => writeActions(t("Toggle action"), actions.map((x, j) => (j === i ? setActionDisabled(x, !(x.flags & 2)) : x))),
     }));
   }
@@ -234,7 +249,9 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
       });
       return;
     }
-    writeActions(t("Add action"), [...actions, newAction(api, pick, entities, query)]);
+    const made = newActions(api, pick, entities, query);
+    if (actions.length + made.length > MAX_ACTIONS) { api.ui.toast({ kind: "info", title: t("No room for this row"), detail: t("It writes {n} records and the trigger has {free} action slots left.", { n: made.length, free: MAX_ACTIONS - actions.length }) }); return; }
+    writeActions(t("Add action"), [...actions, ...made]);
   }, { names: () => host.parseNames() }));
   root.append(actSection);
 }
@@ -250,12 +267,15 @@ export function newCondition(api: PluginApi, pick: Pick, entities: Entity[] = []
   return lowerCondition({ entry: e, args, value: e.value?.choices ? e.value.choices[0].value : e.value?.min ?? 0, op: enumerated(e) ? Comparison.Exactly : Comparison.AtLeast });
 }
 
-export function newAction(api: PluginApi, pick: Pick, entities: Entity[] = [], query = ""): ActionRecord {
-  if (pick.kind === "native") return fillAction(api.triggers.newAction(pick.type), entities);
+/** The records for a pick: one for a native action or a plain entry, the parts of a grouped entry. */
+export function newActions(api: PluginApi, pick: Pick, entities: Entity[] = [], query = ""): ActionRecord[] {
+  if (pick.kind === "native") return [fillAction(api.triggers.newAction(pick.type), entities)];
   if (pick.kind === "expansion" || pick.kind === "build") throw new Error("not a record of its own");
   const e = pick.entry;
-  if (entities.length) return lowerAction(fillEud(e, "action", entities, query));
+  if (entities.length) return lowerActions(fillEud(e, "action", entities, query));
   const args: Record<string, number> = {};
   for (const a of e.args) args[a.name] = 0;
-  return lowerAction({ entry: e, args, value: e.value?.choices ? e.value.choices[0].value : e.value?.min ?? 0, op: SetModifier.SetTo });
+  return lowerActions({ entry: e, args, value: e.value?.choices ? e.value.choices[0].value : e.value?.min ?? 0, op: SetModifier.SetTo });
 }
+
+export const newAction = (api: PluginApi, pick: Pick, entities: Entity[] = [], query = ""): ActionRecord => newActions(api, pick, entities, query)[0];

@@ -173,6 +173,33 @@ two hydralisks and a tank in the Pen.
 What to write down: for each key, pass / fail / what happened instead. Two routes are probed
 for orders (Q, W) and colours (6, 7); the one that works is the one that ships.
 
+**Probe 8 — the catalogue** (`magenta-probe-8-catalogue.scx`, no build; written 2026-09-14
+with slice 3, not yet played)
+
+Every row here is lowered by the catalogue's own entries — the speed as four records through
+units.dat's flingy column, the colour as two, the name from a map string, the looks through
+units.dat — so a pass verifies the entry as shipped, not just the address. Your marines start
+at 10 HP; lockdown and personnel cloaking are researched; two enemy tanks sit in the Pen.
+
+| Key | Writes | Pass looks like |
+| --- | --- | --- |
+| 1 | Zergling speed 0.5 px/frame, a new zergling at the Beacon, all ordered to the Pen | the new one crawls; "Read back: … top speed is 128" |
+| K | Zergling speed 13, a new zergling, all ordered home | the new one sprints |
+| 2 | Infantry Armor 1/1, 1 s, max level 10; Stim 1/1, 1 s; Lockdown 10 energy | the Engineering Bay and Academy offer that; the ghost (50 energy) locks down both tanks |
+| 3 | Marine named "Gunner", size class large | a selected marine is called Gunner; "Read back: the Marine's size byte is 3" |
+| 4 | Marine regenerates HP; Zergling invincible flag, then an enemy zergling at Home | marine HP climbs from 10; the enemy zergling cannot be killed |
+| 5 | Player 1 colour yellow (unit byte + minimap byte) | your units and minimap dots turn yellow |
+| 6 | Terran supply provided 200 and cap 200 for P1 | n/200 in the top bar; "Read back: … supply used is at least 1" |
+| 7 | Marine looks like a Zealot, then a new marine at the Beacon | it draws as a zealot |
+| 8 | Marine max HP 100, sight 11, build time 1 s; Gauss Rifle range 8 tiles, cooldown 1 | a new marine at 100 HP sees and shoots far and fast; the Barracks trains one in a second |
+| 9 | +500 gas, Infantry Weapons level 3, P1 allied to P2 | +500 gas; marines show +3; your units stop shooting the tanks |
+| 0 | ghost (slot 0) energy 250, zealot (slot 1699) shields 0 | select them |
+| — | reads at start | the frame counter at 10 s, the clock at 15 s, your slot type (2 = human) and race, Player 3's slot (0 = empty) |
+| — | reads on your doing | cloak the ghost (C): "your ghost is cloaked"; walk it east then south past the middle: x ≥ 1024, y ≥ 1024; scroll the screen right and below the middle |
+
+Player 2's "has left" line cannot fire alone (a computer never sets it); a second human who
+leaves would.
+
 ## After the play-through
 
 The server side is done: `plugins/magenta.py` takes spec version 3 with every hook above,
@@ -268,8 +295,8 @@ worked. Magenta now warns on that shape.
   game speed write, held keys.
 - Server: `plugins/magenta.py` spec 3 as built and fixed today (shared flags, box locations,
   the 1-based mouse slot, Order by constants); `server.py` lets a setting value run to the
-  request cap instead of 4000 characters. The Cloud Run instance still runs spec 2 until it is
-  redeployed.
+  request cap instead of 4000 characters. Deployed to Cloud Run the same day (revision
+  eud-server-00002); maps 6 and 7 built through https://eud.scmjs.dev afterwards.
 - Plugin, slice 1 (0.2.0, same day): `MAGENTA_SPEC_VERSION` 3; the chat row's *exactly /
   followed by a number* chip with the args cells and the *Chat number* counter, and every
   pattern written in the chat plugin's two-`.*` form; the pass verbs order / spell effect
@@ -279,3 +306,20 @@ worked. Magenta now warns on that shape.
   conditions with a shared switch. The "switch cleared by the build" reading was wrong: the
   probe's All Players trigger ran for the computer too, whose Current Player state was 0, so
   *its* run printed the invisible "W up" and cleared the switch. No plugin was involved.
+- Plugin, slice 3 (0.3.0, 2026-09-14, the table entries — list item 3 above; item 2's verbs
+  and picks went out with slice 1): 31 catalogue entries — the speed of a unit type as a
+  *grouped* entry (four records, the row takes the top speed and derives acceleration and
+  halt distance the way the game's tables relate them), the name from a map string (the first
+  string-valued entry, with the text chip), size class, the looks through units.dat's flingy
+  column (a *via* lookup the game data supplies at run time; the speed and looks rows are
+  offered once it is loaded), ten flags, upgrade cost/time/max level, tech cost/time/energy,
+  the colour as a grouped entry (unit byte + minimap byte), supply provided/used/cap by race
+  (a `race` argument), slot type, race and left as conditions, the frame counter and the game
+  clock. `verified` is set from the play-through on 15 of them; the rest wear a dashed EUD tag
+  until probe 8 says. The game speed became a read (its write failed). Found on the way: the
+  alliance entry sat at 0x58D6F8, which is the game clock — moved to eud-book's 0x58D634 and
+  put in probe 8. The trigger list's summary now reads a build condition, a build row and a
+  grouped row as their sentences instead of raw deaths.
+- Owed: probe 8 played (the six unreported reads, the ten unverified entries of this slice,
+  the never-probed older ones it carries); slice 4 only if a probe shows terrain or tint
+  working.
