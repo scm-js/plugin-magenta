@@ -424,7 +424,8 @@ var eud_default = {
         read: true,
         write: true
       },
-      source: "units.dat mineral cost (eud-book)"
+      source: "units.dat mineral cost (eud-book)",
+      verified: true
     },
     {
       id: "unit.gasCost",
@@ -465,7 +466,8 @@ var eud_default = {
         read: true,
         write: true
       },
-      source: "units.dat gas cost (eud-book)"
+      source: "units.dat gas cost (eud-book)",
+      verified: true
     },
     {
       id: "unit.supplyRequired",
@@ -510,7 +512,8 @@ var eud_default = {
         write: true
       },
       source: "units.dat supply required (eud-book)",
-      note: "Stored in halves: a Zergling is 1."
+      note: "Stored in halves: a Zergling is 1.",
+      verified: true
     },
     {
       id: "unit.supplyProvided",
@@ -550,7 +553,8 @@ var eud_default = {
         write: true
       },
       source: "units.dat supply provided (eud-book)",
-      note: "Stored in halves."
+      note: "Verified: a depot made after the write provided 30 (probe 9).",
+      verified: true
     },
     {
       id: "unit.sightRange",
@@ -634,7 +638,8 @@ var eud_default = {
         read: true,
         write: true
       },
-      source: "units.dat target acquisition range (eud-book)"
+      source: "units.dat target acquisition range (eud-book)",
+      note: "How far a unit looks for targets on its own. A write of 1 in probe 9 could not be read back; not yet seen working."
     },
     {
       id: "unit.groundWeapon",
@@ -676,7 +681,8 @@ var eud_default = {
         write: true
       },
       source: "units.dat ground weapon (eud-book)",
-      note: "130 is no weapon."
+      note: "Verified: marines given the Arclite Shock Cannon fired it (probe 9). Units already on the map switch too.",
+      verified: true
     },
     {
       id: "unit.airWeapon",
@@ -927,7 +933,8 @@ var eud_default = {
         write: true
       },
       source: "units.dat unit size (DatEdit's layout)",
-      note: "What concussive and explosive damage scale by: small takes full concussive damage and half explosive, large the other way round. Not yet seen working in Remastered."
+      note: "What concussive and explosive damage scale by: small takes full concussive damage and half explosive, large the other way round. Verified: a vulture took 5 off a large marine (probe 9).",
+      verified: true
     },
     {
       id: "unit.graphics",
@@ -1384,7 +1391,8 @@ var eud_default = {
         write: true
       },
       source: "units.dat special ability flags (DatEdit's bit order)",
-      note: "A units.dat flag: units made after this have it; the ones already on the map keep what they were made with."
+      note: "A units.dat flag. Verified: a medic healed a vulture flagged organic (probe 9), one already on the map.",
+      verified: true
     },
     {
       id: "unit.mechanical",
@@ -1435,7 +1443,8 @@ var eud_default = {
         write: true
       },
       source: "units.dat special ability flags (DatEdit's bit order)",
-      note: "A units.dat flag: units made after this have it; the ones already on the map keep what they were made with."
+      note: "A units.dat flag. Verified: an SCV could repair a marine flagged mechanical (probe 9), one already on the map.",
+      verified: true
     },
     {
       id: "unit.robotic",
@@ -1568,7 +1577,9 @@ var eud_default = {
         read: true,
         write: true
       },
-      source: "weapons.dat damage bonus (eud-book)"
+      source: "weapons.dat damage bonus (eud-book)",
+      verified: true,
+      note: "Extra damage per upgrade level. Verified (probe 9)."
     },
     {
       id: "weapon.cooldown",
@@ -1610,7 +1621,9 @@ var eud_default = {
         read: true,
         write: true
       },
-      source: "weapons.dat cooldown (eud-book)"
+      source: "weapons.dat cooldown (eud-book)",
+      verified: true,
+      note: "In frames. Verified (probe 9)."
     },
     {
       id: "weapon.factor",
@@ -1651,7 +1664,8 @@ var eud_default = {
         write: true
       },
       source: "weapons.dat damage factor (eud-book)",
-      note: "How many times the damage lands per attack: 2 for a Goliath's or Zealot's."
+      note: "Hits per attack. Verified (probe 9).",
+      verified: true
     },
     {
       id: "weapon.range",
@@ -1734,7 +1748,8 @@ var eud_default = {
         write: true
       },
       source: "weapons.dat minimum range (eud-book)",
-      note: "In pixels: 32 per tile."
+      note: "In pixels, 32 a tile. Verified: marines could not shoot a zergling up close (probe 9).",
+      verified: true
     },
     {
       id: "upgrade.mineralCost",
@@ -2353,7 +2368,8 @@ var eud_default = {
         write: true
       },
       source: "player alliances 0x58D634 (eud-book)",
-      note: "As a condition this reads what Set Alliance Status wrote; the game has no native way to test it. The catalogue had this at 0x58D6F8 until 2026-09-14, which is the game clock. Probe 8: after the write, the marines seemed to stop shooting the allied tanks \u2014 a likely pass, not yet certain."
+      note: "As a condition this reads what Set Alliance Status wrote; the game has no native way to test it. Verified both ways in probe 9. The catalogue had this at 0x58D6F8 until 2026-09-14, which is the game clock.",
+      verified: true
     },
     {
       id: "player.vision",
@@ -2412,7 +2428,8 @@ var eud_default = {
         write: true
       },
       source: "player vision bits (eud-book)",
-      note: "Which way round the two players go is not yet verified in game."
+      note: "Player 2's row with Player 1's bit on lets Player 1 see what Player 2 sees: the row is whose sight is shared, the bit who receives it (probe 9).",
+      verified: true
     },
     {
       id: "player.color",
@@ -3494,7 +3511,8 @@ var eud_default = {
         write: false
       },
       source: "CUnit position.x at +0x28 (eud-book)",
-      note: "Map pixels: 32 per tile. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out. Start locations take no slot; nor does a unit of a human player who is not in the game (it is removed at load), so slots after one shift by one when that player is missing."
+      note: "Verified (probe 9).",
+      verified: true
     },
     {
       id: "cunit.y",
@@ -3532,7 +3550,8 @@ var eud_default = {
         write: false
       },
       source: "CUnit position.y at +0x2A (eud-book)",
-      note: "Map pixels: 32 per tile. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out. Start locations take no slot; nor does a unit of a human player who is not in the game (it is removed at load), so slots after one shift by one when that player is missing."
+      note: "Verified (probe 9).",
+      verified: true
     },
     {
       id: "cunit.invincible",
@@ -3627,7 +3646,8 @@ var eud_default = {
         write: true
       },
       source: "CUnit statusFlags at +0xDC, bit 30 (community CUnit layout)",
-      note: "A hallucinated unit takes double damage and deals none. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out. Start locations take no slot; nor does a unit of a human player who is not in the game (it is removed at load), so slots after one shift by one when that player is missing."
+      note: "Verified as a write (probe 9): the unit is labelled a hallucination and takes hallucination damage, but the tint and the timed death come from a real cast, not this bit.",
+      verified: true
     },
     {
       id: "cunit.cloaked",
@@ -3673,7 +3693,8 @@ var eud_default = {
         write: false
       },
       source: "CUnit statusFlags at +0xDC, bit 9 (community CUnit layout)",
-      note: "Slot order as for hit points: not simply map order, being probed. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out. Start locations take no slot; nor does a unit of a human player who is not in the game (it is removed at load), so slots after one shift by one when that player is missing."
+      note: "Verified: read while a ghost was cloaked (probe 9).",
+      verified: true
     }
   ]
 };

@@ -220,6 +220,17 @@ Rifle). Your marines start at 10 HP and your vulture at 20; personnel cloaking i
 | — | reads at start | your slot type (2), Player 3's (0), your race (1), supply used ≥ 1 |
 | — | reads on your doing | cloak the ghost; walk it east and south past the middle; scroll the screen right and down |
 
+**Probe 9, played 2026-09-14.** Passes: size class (1: a vulture took 5 off a marine, the
+read-back showed), the organic and mechanical flags (2: the medic healed, the SCV repaired),
+unit costs and supply (3), the ground weapon swap (5: marines fired the tank's cannon), the
+Gauss Rifle's cooldown, factor and bonus (6), its minimum range (7), vision (9 showed the Pen:
+Player 2's row with Player 1's bit is Player 1 seeing Player 2's sight; 8 did not), alliance
+both ways (0, Q), the hallucination flag (W: the unit reads "Hallucination" in game, but no
+tint and no timed death — those come from a real cast), and the cloak and position reads on
+the ghost. Fail: the acquisition-range read-back after a write of 1 (4). Unreported: the
+tiny sight circle (4), the overlord ignored (5), the four flag read-back lines (2), the
+start lines (slot type, race, supply used) and the screen reads.
+
 **Probe 8, played 2026-09-14** (first report). Passes: the speed entry (1 crawls, K sprints —
 the four-record group as the catalogue writes it), the upgrade and technology costs and the
 lockdown energy cost (2), the name from a map string (3, with a question: the report says
