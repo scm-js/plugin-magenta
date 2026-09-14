@@ -16,10 +16,15 @@
  *      entries the first four maps never touched (sight and weapon range, cooldown, build
  *      time, gas, upgrade level, alliance, a placed unit's energy, shields, position and
  *      cloak, the screen).
+ *   9  the rest: what 8 left unverified — size class by a vulture's shots, the flags with
+ *      an effect (organic, mechanical) and the others read back, unit costs and supply,
+ *      sight, weapon swaps, cooldown / factor / bonus / minimum range, vision both ways,
+ *      alliance both ways, the hallucination flag, and the slot, race, supply-used, cloak,
+ *      position and screen reads again.
  *
  * Maps 6 and 7 need the build server (`--build http://localhost:8085`, the eud-server
  * container with the spec-3 plugin); their built copies end in `-eud.scx`, and those are
- * the ones to play. Maps 5 and 8 play as written.
+ * the ones to play. Maps 5, 8 and 9 play as written.
  *
  *   npx tsx scripts/make-probe-maps.mts [--build URL] [../scm-js]
  */
@@ -73,7 +78,7 @@ const SIZE = 64;
 const T = 32;
 
 /* ── Ids ── */
-const MARINE = 0, GHOST = 1, VULTURE = 2, SIEGE_TANK = 5, SCV = 7, ZERGLING = 37, HYDRALISK = 38, ZEALOT = 65, COMMAND_CENTER = 106, SUPPLY_DEPOT = 109, BARRACKS = 111, ACADEMY = 112, ENGINEERING_BAY = 122, MINERAL_FIELD = 176, GEYSER = 188, BEACON_UNIT = 195, START = 214;
+const MARINE = 0, GHOST = 1, VULTURE = 2, SIEGE_TANK = 5, SCV = 7, MEDIC = 34, ZERGLING = 37, HYDRALISK = 38, OVERLORD = 42, ZEALOT = 65, COMMAND_CENTER = 106, SUPPLY_DEPOT = 109, BARRACKS = 111, ACADEMY = 112, ENGINEERING_BAY = 122, MINERAL_FIELD = 176, GEYSER = 188, BEACON_UNIT = 195, START = 214;
 const P1 = PlayerGroup.Player1, P2 = PlayerGroup.Player2, ALL = PlayerGroup.AllPlayers, CP = PlayerGroup.CurrentPlayer;
 const flingyOf = (unit: number, fallback: number) => (unitsDat ? unitsDat.flingy[unit] : fallback);
 const KEY: Record<string, number> = { "0": 0x30, "1": 0x31, "2": 0x32, "3": 0x33, "4": 0x34, "5": 0x35, "6": 0x36, "7": 0x37, "8": 0x38, "9": 0x39, Q: 0x51, W: 0x57, E: 0x45, R: 0x52, T: 0x54, Y: 0x59, U: 0x55, I: 0x49, O: 0x4f, P: 0x50, H: 0x48, J: 0x4a, K: 0x4b, L: 0x4c, M: 0x4d, N: 0x4e };
@@ -565,6 +570,109 @@ const MAPS: ProbeMap[] = [
         h.once(21, [eudIs("cunit.y", { index: GHOST_SLOT }, 1024, Comparison.AtLeast)], "Read: your ghost is south of the middle (y ≥ 1024)."),
         h.once(22, [eudIs("game.screenX", {}, 1024, Comparison.AtLeast)], "Read: the screen scrolled right of the middle (screen x ≥ 1024)."),
         h.once(23, [eudIs("game.screenY", {}, 1024, Comparison.AtLeast)], "Read: the screen scrolled below the middle (screen y ≥ 1024)."),
+        h.trigger([P1], [always()], [h.comment("Magenta: run triggers every frame"), everyFrame(), preserve()]),
+      ]);
+    },
+  },
+  /* ────────────────────────────────────────────────────────────────────────────── */
+  {
+    name: "Magenta probe 9 — the rest", file: "magenta-probe-9-rest.scx",
+    place(place) {
+      // Slots: Ghost 0, Zealot 1699, Vulture 1698, marines 1697–1694.
+      place(GHOST, 0, 12.5, 14.5);
+      place(ZEALOT, 0, 14.5, 16.5);
+      place(VULTURE, 0, 16.5, 16.5);
+      for (let i = 0; i < 4; i++) place(MARINE, 0, 12.5 + i, 12.5);
+      place(MEDIC, 0, 17.5, 14.5);
+      place(SCV, 0, 9.5, 27.5); place(SCV, 0, 10.5, 27.5); place(SCV, 0, 18.5, 14.5);
+      place(COMMAND_CENTER, 0, 12, 26.5);
+      place(ENGINEERING_BAY, 0, 18, 26.5);
+      place(BARRACKS, 0, 18, 31.5);
+      place(SUPPLY_DEPOT, 0, 24, 31);
+      place(SIEGE_TANK, 1, 38.5, 14.5); place(SIEGE_TANK, 1, 41.5, 14.5);
+      place(MINERAL_FIELD, 11, 7, 25); place(MINERAL_FIELD, 11, 7, 26); place(MINERAL_FIELD, 11, 7, 27);
+      place(GEYSER, 11, 8, 30.5);
+      place(BEACON_UNIT, 11, 20, 10);
+    },
+    build(scn, h) {
+      const GHOST_SLOT = 0, ZEALOT_SLOT = 1699, VULTURE_SLOT = 1698, MARINE_SLOTS = [1697, 1696, 1695, 1694];
+      const INFANTRY_WEAPONS = 7, PERSONNEL_CLOAKING = 10, GAUSS_RIFLE = 0, ARCLITE_SHOCK_CANNON = 27, NO_WEAPON = 130;
+      const TERRAN = 1, LARGE = 3;
+      applyTriggers(scn, [
+        h.trigger([P1], [always()], [
+          h.comment("start: marines at 10 HP, the vulture at 20, personnel cloaking researched"),
+          ...MARINE_SLOTS.map((s) => eud("cunit.hp", { index: s }, 10)),
+          eud("cunit.hp", { index: VULTURE_SLOT }, 20),
+          eud("player.techResearched", { player: 0, tech: PERSONNEL_CLOAKING }, 1),
+          h.text("Probe 9, the rest. Press 6 and 7 before 5. Keys: 1 marines large + an enemy vulture, 2 flags (medic heals the vulture, SCV repairs a marine), 3 marine costs + depot supply, 4 marine sight 1, 5 marine weapons swapped, 6 gauss rifle fast + strong, 7 gauss rifle minimum range, 8 / 9 vision (one shows the Pen), 0 / Q alliance, W the zealot a hallucination."),
+          h.text("At start, lines read your slot type (2 = human), Player 3's (0 = empty), your race (1 = terran) and your supply used. Cloak the ghost (C), walk it east and south past the middle, and scroll the screen right and down: a line each."),
+        ]),
+        ...onKey(h, "1", "Marine size class large, then an enemy vulture at Home. Expect: its shots take 5 off a marine, not 20; a read-back line.", [
+          eud("unit.sizeClass", { unit: MARINE }, LARGE),
+          createUnit(VULTURE, P2, HOME),
+          setSwitch(30, true),
+        ]),
+        h.once(16, [switchIs(30, true), eudIs("unit.sizeClass", { unit: MARINE }, LARGE)], "Read back: the Marine's size byte is 3 (large)."),
+        ...onKey(h, "2", "Vulture: organic flag (your vulture is at 20 HP: the medic should heal it). Marine: mechanical flag (an SCV should be able to repair one). Marine: cloakable, burrowable, hero, robotic flags, read back in four lines.", [
+          eud("unit.organic", { unit: VULTURE }, 1),
+          eud("unit.mechanical", { unit: MARINE }, 1),
+          eud("unit.cloakable", { unit: MARINE }, 1),
+          eud("unit.burrowable", { unit: MARINE }, 1),
+          eud("unit.hero", { unit: MARINE }, 1),
+          eud("unit.robotic", { unit: MARINE }, 1),
+          setSwitch(31, true),
+        ]),
+        h.once(17, [switchIs(31, true), eudIs("unit.cloakable", { unit: MARINE }, 1)], "Read back: Marine cloakable flag set (bit 9)."),
+        h.once(18, [switchIs(31, true), eudIs("unit.burrowable", { unit: MARINE }, 1)], "Read back: Marine burrowable flag set (bit 20)."),
+        h.once(19, [switchIs(31, true), eudIs("unit.hero", { unit: MARINE }, 1)], "Read back: Marine hero flag set (bit 6)."),
+        h.once(20, [switchIs(31, true), eudIs("unit.robotic", { unit: MARINE }, 1)], "Read back: Marine robotic flag set (bit 14)."),
+        ...onKey(h, "3", "Marine: 1 mineral, 1 gas, 4 supply. Supply Depot: provides 30, then a new depot at Home. Expect: the Barracks shows 1/1 and 4 supply; the top bar's provided supply rises by 30.", [
+          eud("unit.mineralCost", { unit: MARINE }, 1),
+          eud("unit.gasCost", { unit: MARINE }, 1),
+          eud("unit.supplyRequired", { unit: MARINE }, 4),
+          eud("unit.supplyProvided", { unit: SUPPLY_DEPOT }, 30),
+          createUnit(SUPPLY_DEPOT, P1, HOME),
+        ]),
+        ...onKey(h, "4", "Marine: sight 1 tile, target acquisition 1, then a new marine at the Beacon. Expect: it reveals only a tiny circle; a read-back line for the acquisition range.", [
+          eud("unit.sightRange", { unit: MARINE }, 1),
+          eud("unit.seekRange", { unit: MARINE }, 1),
+          createUnit(MARINE, P1, BEACON),
+          setSwitch(32, true),
+        ]),
+        h.once(21, [switchIs(32, true), eudIs("unit.seekRange", { unit: MARINE }, 1)], "Read back: the Marine's target acquisition range byte is 1."),
+        ...onKey(h, "5", "Marine: ground weapon = Arclite Shock Cannon, air weapon = none; two enemy zerglings and an overlord at Home. Expect: zerglings die in one splash shot; the overlord is ignored.", [
+          eud("unit.groundWeapon", { unit: MARINE }, ARCLITE_SHOCK_CANNON),
+          eud("unit.airWeapon", { unit: MARINE }, NO_WEAPON),
+          createUnit(ZERGLING, P2, HOME, 2),
+          createUnit(OVERLORD, P2, HOME),
+        ]),
+        ...onKey(h, "6", "Gauss Rifle: cooldown 1, damage factor 2, +10 per upgrade, and Infantry Weapons level 3; two enemy zerglings at Home. Expect: marines fire without pause and each volley takes about 72.", [
+          eud("weapon.cooldown", { weapon: GAUSS_RIFLE }, 1),
+          eud("weapon.factor", { weapon: GAUSS_RIFLE }, 2),
+          eud("weapon.bonus", { weapon: GAUSS_RIFLE }, 10),
+          eud("player.upgradeLevel", { player: 0, upgrade: INFANTRY_WEAPONS }, 3),
+          createUnit(ZERGLING, P2, HOME, 2),
+        ]),
+        ...onKey(h, "7", "Gauss Rifle: minimum range 3 tiles; an enemy zergling at Home. Expect: marines cannot shoot it while it is close, only after backing off.", [
+          eud("weapon.minRange", { weapon: GAUSS_RIFLE }, 3 * 32),
+          createUnit(ZERGLING, P2, HOME),
+        ]),
+        ...onKey(h, "8", "Vision: Player 1's row, Player 2's bit on. Expect: the Pen (enemy tanks) shows, or nothing.", [eud("player.vision", { player: 0, other: 1 }, 1)]),
+        ...onKey(h, "9", "Vision: Player 2's row, Player 1's bit on. Expect: the Pen shows, or nothing. Whichever of 8 and 9 shows it settles the direction.", [eud("player.vision", { player: 1, other: 0 }, 1)]),
+        ...onKey(h, "0", "Alliance: Player 2 allied to you. Expect: walk a marine to the Pen — the tanks hold fire.", [eud("player.alliance", { player: 1, other: 0 }, 1)]),
+        ...onKey(h, "Q", "Alliance: you allied to Player 2. Expect: your marines stop attacking enemy units on their own.", [eud("player.alliance", { player: 0, other: 1 }, 1)]),
+        ...onKey(h, "W", "Your zealot (slot 1699): hallucination flag. Expect: it turns hallucination (tinted, double damage) and dies after a while.", [eud("cunit.hallucination", { index: ZEALOT_SLOT }, 1)]),
+        // Reads at start and on your doing.
+        ...[2, 1, 0, 3, 4, 5, 6, 7, 8].map((v) => h.once(12, [eudIs("player.slotType", { player: 0 }, v)], `Read: your slot's type byte is ${v} (2 = a human).`)),
+        ...[0, 1, 2, 3, 4, 5, 6, 7, 8].map((v) => h.once(13, [eudIs("player.slotType", { player: 2 }, v)], `Read: Player 3's slot type byte is ${v} (nobody is in that slot; 0 = empty).`)),
+        ...[0, 1, 2].map((v) => h.once(14, [eudIs("player.race", { player: 0 }, v)], `Read: your race byte is ${v} (0 zerg, 1 terran, 2 protoss).`)),
+        h.once(15, [eudIs("player.left", { player: 1 }, 1)], "Read: Player 2 has left (only a human who leaves sets this)."),
+        h.once(22, [eudIs("player.supplyUsed", { race: TERRAN, player: 0 }, 1, Comparison.AtLeast)], "Read: your Terran supply used is at least 1."),
+        h.once(23, [eudIs("cunit.cloaked", { index: GHOST_SLOT }, 1)], "Read: your ghost is cloaked (slot 0's cloak bit)."),
+        h.once(24, [eudIs("cunit.x", { index: GHOST_SLOT }, 1024, Comparison.AtLeast)], "Read: your ghost is east of the middle (x ≥ 1024)."),
+        h.once(25, [eudIs("cunit.y", { index: GHOST_SLOT }, 1024, Comparison.AtLeast)], "Read: your ghost is south of the middle (y ≥ 1024)."),
+        h.once(26, [eudIs("game.screenX", {}, 1024, Comparison.AtLeast)], "Read: the screen scrolled right of the middle (screen x ≥ 1024)."),
+        h.once(27, [eudIs("game.screenY", {}, 1024, Comparison.AtLeast)], "Read: the screen scrolled below the middle (screen y ≥ 1024)."),
         h.trigger([P1], [always()], [h.comment("Magenta: run triggers every frame"), everyFrame(), preserve()]),
       ]);
     },

@@ -281,7 +281,7 @@ EUD maps. Each says on screen what to look for. All four were played on 2026-09-
 | `magenta-eud-3-reads.scx` | Triggers every frame; reads of the local player, the game speed, the mouse crossing the middle of the screen, and the A key's states. |
 | `magenta-aplus-counters.scx` | A comparison (A > B) at start, a copy of A into B on the beacon, then B = 1234 and A = B: the generated runs, 153 triggers in all. |
 
-Four more, the **probe maps**, test the candidates in `docs/candidates.md` — one key per
+Five more, the **probe maps**, test the candidates in `docs/candidates.md` — one key per
 candidate, and each map says on screen what to press and what to look for. `npx tsx
 scripts/make-probe-maps.mts --build URL` writes them; 6 and 7 need the build server (a local
 eud-server container with the spec-3 plugin), and their `-eud.scx` copies are the ones to play.
@@ -292,6 +292,7 @@ eud-server container with the spec-3 plugin), and their `-eud.scx` copies are th
 | `magenta-probe-6-units-eud.scx` | The per-unit verbs and reads of the build server's plugin: orders (two routes), spell timers, cooldown lock, resource amounts, cloak, no-clip, position, the weakest and nearest unit, and scans for attacking, under attack, target, burrowed, moving. |
 | `magenta-probe-7-input-eud.scx` | Held keys and the mouse through MSQC, chat commands with a number in them. |
 | `magenta-probe-8-catalogue.scx` | The 0.3 entries as the catalogue itself writes them (speed as four records, colour as two, the name from a string, the looks through units.dat, the flags, supply by race, upgrade and technology costs), the reads probe 5 left unreported (the frame counter, the clock, slot type and race), and the entries no map had touched: sight range, weapon range and cooldown, build time, gas, an upgrade's level, alliance, a placed unit's energy, shields, position and cloak, the screen. |
+| `magenta-probe-9-rest.scx` | What 8 left unverified: size class by a vulture's shots, the flags with an effect and the rest read back, unit costs and supply, sight, weapon swaps, a weapon's cooldown, factor, bonus and minimum range, vision and alliance both ways, the hallucination flag, and the slot, race, supply-used, cloak, position and screen reads. |
 
 What a run of these settles, in the catalogue: the `verified` flag on each entry that worked,
 which way round the vision bit goes (map 2 with two players), and what the key states 1 and 2

@@ -200,6 +200,26 @@ at 10 HP; lockdown and personnel cloaking are researched; two enemy tanks sit in
 Player 2's "has left" line cannot fire alone (a computer never sets it); a second human who
 leaves would.
 
+**Probe 9 — the rest** (`magenta-probe-9-rest.scx`, no build; written 2026-09-14 after probe 8's
+reports, not yet played). What probe 8 left unverified, each with an effect to watch or a
+read-back line. Press 6 and 7 before 5 (5 swaps the marines' weapon away from the Gauss
+Rifle). Your marines start at 10 HP and your vulture at 20; personnel cloaking is researched.
+
+| Key | Writes | Pass looks like |
+| --- | --- | --- |
+| 1 | Marine size class large, an enemy vulture at Home | its shots take 5 off a marine, not 20; "Read back: … size byte is 3" |
+| 2 | Vulture organic, Marine mechanical, cloakable, burrowable, hero, robotic | the medic heals the vulture; an SCV can repair a marine; four read-back lines |
+| 3 | Marine 1 mineral, 1 gas, 4 supply; Supply Depot provides 30, then a new depot at Home | the Barracks shows 1/1 and 4 supply; provided supply rises by 30 |
+| 4 | Marine sight 1, acquisition 1, a new marine at the Beacon | it reveals only a tiny circle; a read-back line |
+| 5 | Marine ground weapon Arclite Shock Cannon, air weapon none; two zerglings and an overlord at Home | zerglings die in one splash shot; the overlord is ignored |
+| 6 | Gauss Rifle cooldown 1, factor 2, +10 a level, Infantry Weapons 3; two zerglings at Home | marines fire without pause, a volley takes about 72 |
+| 7 | Gauss Rifle minimum range 3 tiles; a zergling at Home | marines cannot shoot it up close, only after backing off |
+| 8 / 9 | vision: P1's row bit P2, then P2's row bit P1 | the Pen shows under one of them — that settles the direction |
+| 0 / Q | alliance: P2 allied to you, then you to P2 | the tanks hold fire on a marine sent to the Pen; your marines stop attacking on their own |
+| W | the zealot's hallucination flag | tinted, double damage, dies after a while |
+| — | reads at start | your slot type (2), Player 3's (0), your race (1), supply used ≥ 1 |
+| — | reads on your doing | cloak the ghost; walk it east and south past the middle; scroll the screen right and down |
+
 **Probe 8, played 2026-09-14** (first report). Passes: the speed entry (1 crawls, K sprints —
 the four-record group as the catalogue writes it), the upgrade and technology costs and the
 lockdown energy cost (2), the name from a map string (3, with a question: the report says
