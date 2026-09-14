@@ -281,6 +281,10 @@ the first created unit and counts down from 1699 after it, and a User Selectable
 game hand out melee units and drop the placed ones. The templates of §1.4 were left out; the search row's browse mode
 covers the category tree.
 
+What comes after Tier A+ and the build rows — the candidate conditions and actions the build
+server makes possible, and the probe maps that decide which ship — is `candidates.md`
+(2026-09-14).
+
 ## Tier B, as built (2026-09-12)
 
 Not the payload of §3's Tier B but its shortcut: euddraft runs as its own service on Cloud
