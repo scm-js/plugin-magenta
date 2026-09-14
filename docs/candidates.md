@@ -200,6 +200,20 @@ at 10 HP; lockdown and personnel cloaking are researched; two enemy tanks sit in
 Player 2's "has left" line cannot fire alone (a computer never sets it); a second human who
 leaves would.
 
+**Probe 8, played 2026-09-14** (first report). Passes: the speed entry (1 crawls, K sprints —
+the four-record group as the catalogue writes it), the upgrade and technology costs and the
+lockdown energy cost (2), the name from a map string (3, with a question: the report says
+"everyone" was named Gunner, being checked), regeneration on marines already on the map and
+the invincible flag on a zergling made afterwards (4), the colour group (5), supply provided
+and cap (6: 7/200), the looks entry (a marine drawn as a zealot, and marines trained later
+keep the look), the build time (8: trained in a second), gas and the upgrade level (9), a
+placed zealot's shields (0). Fail: the ghost's energy (0: unchanged after a write of 250 —
+its maximum is 200; retry with 100). Unreported: every "Read" and "Read back" line (the speed
+read-back did not show, as in probe 5; the frame counter, the clock, the slot and race bytes,
+the supply-used read, the cloak, position and screen reads were not mentioned), the armor
+level cap, max HP / sight / weapon range and cooldown (8), the alliance (9). Probe 9 will carry
+a control line for the read construct itself.
+
 ## After the play-through
 
 The server side is done: `plugins/magenta.py` takes spec version 3 with every hook above,

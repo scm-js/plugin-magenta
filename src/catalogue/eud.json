@@ -180,7 +180,8 @@
         "write": true
       },
       "source": "units.dat build time (eud-book)",
-      "note": "Stored in frames at Normal speed: 15 per game second."
+      "note": "Stored in frames at Normal speed: 15 per game second. Verified: a Barracks trained a marine in a second (probe 8).",
+      "verified": true
     },
     {
       "id": "unit.mineralCost",
@@ -620,7 +621,7 @@
         "write": true
       },
       "source": "flingy.dat movement control, top speed, acceleration, halt distance (DatEdit's layout)",
-      "note": "Four records: the unit's flingy is switched to table control and given this top speed, with acceleration and stopping distance to match. Units made after this move at the new speed; the ones already on the map keep theirs. A Marine walks at 4, a Vulture at 6.7. Hero units that share a type's flingy change with it.",
+      "note": "Four records: the unit's flingy is switched to table control and given this top speed, with acceleration and stopping distance to match. Units made after this move at the new speed; the ones already on the map keep theirs. A Marine walks at 4, a Vulture at 6.7. Hero units that share a type's flingy change with it. Reading the top speed back through a condition never fired in two runs, so treat the movement tables as write-only.",
       "verified": true
     },
     {
@@ -663,7 +664,7 @@
         "write": true
       },
       "source": "units.dat map string index (Remastered's unit names from the map's strings)",
-      "note": "The name comes from one of the map's strings, shown wherever the unit's name appears. Remastered only.",
+      "note": "The name comes from one of the map's strings, shown wherever the unit's name appears. Remastered only. Probe 8 reported other units showing the name too; whether the write reaches more than the one type is being checked.",
       "verified": true
     },
     {
@@ -1027,7 +1028,8 @@
         "write": true
       },
       "source": "units.dat special ability flags (DatEdit's bit order)",
-      "note": "A units.dat flag: units made after this have it; the ones already on the map keep what they were made with."
+      "note": "A units.dat flag. Verified on marines already on the map: their hit points climbed at once (probe 8).",
+      "verified": true
     },
     {
       "id": "unit.invincible",
@@ -1079,7 +1081,8 @@
         "write": true
       },
       "source": "units.dat special ability flags (DatEdit's bit order)",
-      "note": "A units.dat flag: units made after this have it; the ones already on the map keep what they were made with."
+      "note": "A units.dat flag: units made after this cannot be hurt; the ones already on the map keep what they were made with (probe 8).",
+      "verified": true
     },
     {
       "id": "unit.hero",
@@ -1881,7 +1884,8 @@
         "write": true
       },
       "source": "techdata.dat energy cost (DatEdit's layout)",
-      "note": "What a cast of the spell takes. Not yet seen working in Remastered."
+      "note": "What a cast of the spell takes. Verified: lockdown at 10 energy (probe 8).",
+      "verified": true
     },
     {
       "id": "player.minerals",
@@ -3117,7 +3121,8 @@
         "write": true
       },
       "source": "CUnit shieldPoints at +0x60 (eud-book)",
-      "note": "Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out. Start locations take no slot; nor does a unit of a human player who is not in the game (it is removed at load), so slots after one shift by one when that player is missing."
+      "note": "Verified: a placed Zealot set to 0 shields (probe 8).",
+      "verified": true
     },
     {
       "id": "cunit.energy",
@@ -3160,7 +3165,7 @@
         "write": true
       },
       "source": "CUnit energy at +0xA2 (community CUnit layout)",
-      "note": "Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out. Start locations take no slot; nor does a unit of a human player who is not in the game (it is removed at load), so slots after one shift by one when that player is missing."
+      "note": "A write of 250 energy to a placed Ghost did nothing in probe 8 (its maximum is 200 without the upgrade); not yet seen working."
     },
     {
       "id": "cunit.owner",
