@@ -81,7 +81,7 @@ export function openBuildDialog(api: PluginApi, host: Host, store: Store, everyF
     size: "md",
     mount(body) {
       body.append(
-        w.hint(t("The map goes to the build server as it stands, euddraft adds the code for the rows below, and the built map comes back as a file to save. The server keeps nothing. Only StarCraft: Remastered plays the result, and this editor cannot open it yet: keep this map as the source.")),
+        w.hint(t("The map goes to the build server as it stands, euddraft adds the code for the rows below, and the built map comes back as a file to save. The server keeps nothing. Only StarCraft: Remastered plays the result. Keep this map as the source: the built one is the compiled output, the way a program is.")),
         summary,
         w.group(t("Map-wide"),
           w.column(cameraOn, w.form([{ label: t("Location"), field: cameraLoc }, { label: t("Inertia"), field: inertia }, { label: t("Max speed"), field: maxspeed }]), cameraStart),

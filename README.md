@@ -212,11 +212,9 @@ In the map these are one private counter cell each: the trigger sets it (an acti
 it (a condition), so it stays an ordinary trigger everywhere. **⋯ ▸ Build EUD map…** sends
 the map as it stands to the server, which adds the code behind the rows and hands back a
 built map to save beside the source, `name-eud.scx`. Nothing about the map is kept on the
-server. Only StarCraft: Remastered plays a built map, and this editor cannot open one yet,
-so keep the source map: the built one is what players get, the way a compiled program is.
-The **Build server** field of the dialog is the server address (`https://eud.scmjs.dev` by
-default; a build server of your own is the [eud-server](https://github.com/scm-js/eud-server)
-container).
+server. Only StarCraft: Remastered plays a built map. Keep the source map: the built one is
+what players get, the way a compiled program is, and while the editor opens it, the rows
+behind its triggers are gone into eudplib's code.
 
 An action row does its work right after the map's triggers in the cycle its trigger fired;
 a chat command or an input fires once per message, press or click, and a check is fresh
