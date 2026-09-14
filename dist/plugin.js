@@ -596,7 +596,8 @@ var eud_default = {
         write: true
       },
       source: "units.dat sight range (eud-book)",
-      note: "The game caps sight at 11 tiles."
+      note: "In tiles, up to 11. Verified: a marine with sight 1 revealed only a tiny circle (probe 9). A beacon reveals around itself, so stand clear of one to see it.",
+      verified: true
     },
     {
       id: "unit.seekRange",
@@ -721,7 +722,8 @@ var eud_default = {
         write: true
       },
       source: "units.dat air weapon (eud-book)",
-      note: "130 is no weapon."
+      note: "Verified: marines with no air weapon ignored an overlord (probe 9).",
+      verified: true
     },
     {
       id: "unit.speed",
@@ -1134,7 +1136,8 @@ var eud_default = {
         write: true
       },
       source: "units.dat special ability flags (DatEdit's bit order)",
-      note: "A units.dat flag: units made after this have it; the ones already on the map keep what they were made with."
+      note: "A units.dat flag, bit 9. Verified as a write and read (probe 9); what the game does with it for a type that never had it was not checked \u2014 the flag alone gives no button.",
+      verified: true
     },
     {
       id: "unit.burrowable",
@@ -1184,7 +1187,8 @@ var eud_default = {
         write: true
       },
       source: "units.dat special ability flags (DatEdit's bit order)",
-      note: "A units.dat flag: units made after this have it; the ones already on the map keep what they were made with."
+      note: "A units.dat flag, bit 20. Verified as a write and read (probe 9); what the game does with it for a type that never had it was not checked \u2014 the flag alone gives no button.",
+      verified: true
     },
     {
       id: "unit.regeneratesHp",
@@ -1340,7 +1344,8 @@ var eud_default = {
         write: true
       },
       source: "units.dat special ability flags (DatEdit's bit order)",
-      note: "A units.dat flag: units made after this have it; the ones already on the map keep what they were made with."
+      note: "A units.dat flag, bit 6. Verified as a write and read (probe 9); what the game does with it for a type that never had it was not checked \u2014 the flag alone gives no button.",
+      verified: true
     },
     {
       id: "unit.organic",
@@ -1495,7 +1500,8 @@ var eud_default = {
         write: true
       },
       source: "units.dat special ability flags (DatEdit's bit order)",
-      note: "A units.dat flag: units made after this have it; the ones already on the map keep what they were made with."
+      note: "A units.dat flag, bit 14. Verified as a write and read (probe 9); what the game does with it for a type that never had it was not checked \u2014 the flag alone gives no button.",
+      verified: true
     },
     {
       id: "weapon.damage",
@@ -2652,7 +2658,8 @@ var eud_default = {
         write: true
       },
       source: "supply tables: used (eud-book)",
-      note: "The left-hand number of the top bar. The game recounts it when a unit is made or dies. Each race has its own table; a player's is the one for the race they play."
+      note: "The left-hand number of the top bar. The game recounts it when a unit is made or dies. Each race has its own table; a player's is the one for the race they play. Verified as a read (probe 9).",
+      verified: true
     },
     {
       id: "player.supplyMax",
@@ -2791,7 +2798,8 @@ var eud_default = {
         write: false
       },
       source: "player slot types 0x57F1B4 (eud-book)",
-      note: "What the slot holds once the game has started: a human, a computer, or nothing. Not yet seen working in Remastered."
+      note: "What the slot holds once the game has started: a human, a computer, or nothing. Verified: read at the start of probe 9.",
+      verified: true
     },
     {
       id: "player.race",
@@ -2862,7 +2870,8 @@ var eud_default = {
         write: false
       },
       source: "player slot races 0x57F1C0 (eud-book)",
-      note: "The race the player picked, once the game has started. Not yet seen working in Remastered."
+      note: "The race the player picked, once the game has started. Verified: read at the start of probe 9.",
+      verified: true
     },
     {
       id: "player.left",

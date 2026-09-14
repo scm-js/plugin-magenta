@@ -229,7 +229,7 @@ both ways (0, Q), the hallucination flag (W: the unit reads "Hallucination" in g
 tint and no timed death — those come from a real cast), and the cloak and position reads on
 the ghost. Fail: the acquisition-range read-back after a write of 1 (4). Unreported: the
 tiny sight circle (4), the overlord ignored (5), the four flag read-back lines (2), the
-start lines (slot type, race, supply used) and the screen reads.
+start lines and the screen reads. Second report: the start lines showed (slot type, race, supply used), the marine with sight 1 revealed only a tiny circle once off the beacon, the overlord was ignored (the ghost, whose air weapon was not touched, still shot it), and the four flag read-back lines showed. Only the screen reads went unmentioned.
 
 **Probe 8, played 2026-09-14** (first report). Passes: the speed entry (1 crawls, K sprints —
 the four-record group as the catalogue writes it), the upgrade and technology costs and the
