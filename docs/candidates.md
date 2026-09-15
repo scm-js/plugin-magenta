@@ -237,6 +237,13 @@ start at 40, 20, 12 and 8 HP; five zerglings are yours; a hydralisk and a tank s
 | 6 | read the Pen's first unit's type and owner, and the first marine's HP % | "type id 38 … owner 1", "the first marine is at N%" |
 | middle click | a synced middle click | "Middle click" line |
 
+**Probe 11, played 2026-09-15.** Everything passed: the percent scan line at the start, damage
+with the kill at 0 (1), healing with the cap (2), the random pick (3), the unit under the mouse
+within 48 px (4), the location slid by an offset (5), the type, owner and percent reads (6),
+the middle click. Key 6 printed its two lines several times over — a held key auto-repeats
+into several presses, as probe 7 found, so each press read and printed again; not the rows.
+Slice 5 is verified as shipped in 0.4.0.
+
 **Probe 10 — presentation** (`magenta-probe-10-presentation-eud.scx`, built through the
 spec-4 server; written 2026-09-14, not yet played). Slice 4's two candidates as hooks in
 `plugins/magenta.py`: `terrain` rewrites every tile under a location in the MTXM array the
@@ -419,7 +426,7 @@ worked. Magenta now warns on that shape.
   (count, draw, second pass) and `near: {"mouse": slot}` with a `radius`; `setloc` with
   `relative`; the middle mouse button. Plugin: the take / give verbs, the "at random" and
   "a player's mouse… within N px" pick chips, the to / by chip on the location row, the new
-  fields, search words. Probe 11 written; not yet played.
+  fields, search words. Probe 11 played the same day: every row passed.
 - Slice 4 (2026-09-15): probe 10 failed both candidates — terrain writes through the MTXM pointer
   changed nothing on screen, and a draw-function write on a sprite's images ended the game with
   "EUD not supported". Presentation is dropped; the plugin gets no terrain or tint row. The
