@@ -97,8 +97,8 @@ Catalogue entries, no build needed, if the probe shows the write takes.
 
 | Sentence | How | Confidence | Probe |
 | --- | --- | --- | --- |
-| *Change the terrain at a location* | writing the tile buffer (0x5993C4 points at it); walkability does not follow | open | later, own map |
-| *Tint / flash / fade a matching unit* | sprite image flags and colouring | open | later |
+| *Change the terrain at a location* | writing the tile buffer (0x5993C4 points at it); walkability does not follow | **failed**, dropped: the writes changed nothing on screen (probe 10, keys 1–3, with a scroll away and back) — Remastered's EUD layer does not reach the buffer the renderer draws from | 10, keys 1–3 |
+| *Tint / flash / fade a matching unit* | sprite image flags and colouring | **failed**, dropped: the first draw-function write ended the game with "EUD not supported" (probe 10, key 4), as the position write did | 10, key 4 |
 
 ### Not planned
 
@@ -239,6 +239,11 @@ of the warp flash — without the state behind it.
 | 8 | the enemy zerglings with the hallucination look | blue zerglings |
 
 For each: does the look show, and does it stay (an animation frame may reset it).
+
+**Probe 10, played 2026-09-15.** Keys 1, 2 and 3 changed nothing on screen; key 4 ended the game with
+"EUD not supported", so 5 to 8 were never reached. Slice 4 is dropped: neither the tile array the
+game draws from nor a sprite's images can be written through Remastered's EUD layer. The server keeps
+the two hooks unoffered, like `nudge`.
 
 **Probe 9, played 2026-09-14.** Passes: size class (1: a vulture took 5 off a marine, the
 read-back showed), the organic and mechanical flags (2: the medic healed, the SCV repaired),
@@ -391,3 +396,7 @@ worked. Magenta now warns on that shape.
 - Owed: probe 8 played (the six unreported reads, the ten unverified entries of this slice,
   the never-probed older ones it carries); slice 4 only if a probe shows terrain or tint
   working.
+- Slice 4 (2026-09-15): probe 10 failed both candidates — terrain writes through the MTXM pointer
+  changed nothing on screen, and a draw-function write on a sprite's images ended the game with
+  "EUD not supported". Presentation is dropped; the plugin gets no terrain or tint row. The
+  catalogue and build rows as of 0.3.5 are the full set.
