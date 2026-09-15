@@ -220,6 +220,23 @@ Rifle). Your marines start at 10 HP and your vulture at 20; personnel cloaking i
 | — | reads at start | your slot type (2), Player 3's (0), your race (1), supply used ≥ 1 |
 | — | reads on your doing | cloak the ghost; walk it east and south past the middle; scroll the screen right and down |
 
+**Probe 11 — slice 5** (`magenta-probe-11-slice5-eud.scx`, built through the spec-5 server;
+written 2026-09-15, not yet played). The cheap, sure additions after slice 4 fell: percent
+fields, damage and healing with a floor and a cap, a random pick, the unit under a player's
+mouse, a location moved by an offset, the type and owner reads, the middle button. Marines
+start at 40, 20, 12 and 8 HP; five zerglings are yours; a hydralisk and a tank sit in the Pen.
+
+| Key | Does | Pass looks like |
+| --- | --- | --- |
+| — | scan: any marine below 30% | a line at once (the 8 HP marine is at 20%) |
+| 1 | every marine: take 15 hit points | 40→25→10→dead, 20→5→dead, 12 and 8 die at once |
+| 2 | every marine: give 10 hit points | up by 10, never past 40 |
+| 3 | a random zergling of yours dies | a different one each press |
+| 4 | the unit of yours nearest the mouse, within 48 px, dies | point and press; pointing at nothing does nothing |
+| 5 | the Beacon location slides 64 px right, then a ping | the ping moves right each press |
+| 6 | read the Pen's first unit's type and owner, and the first marine's HP % | "type id 38 … owner 1", "the first marine is at N%" |
+| middle click | a synced middle click | "Middle click" line |
+
 **Probe 10 — presentation** (`magenta-probe-10-presentation-eud.scx`, built through the
 spec-4 server; written 2026-09-14, not yet played). Slice 4's two candidates as hooks in
 `plugins/magenta.py`: `terrain` rewrites every tile under a location in the MTXM array the
@@ -396,6 +413,13 @@ worked. Magenta now warns on that shape.
 - Owed: probe 8 played (the six unreported reads, the ten unverified entries of this slice,
   the never-probed older ones it carries); slice 4 only if a probe shows terrain or tint
   working.
+- Slice 5 (2026-09-15, 0.4.0): spec 5 in `plugins/magenta.py` — fields hpPct / shieldsPct /
+  energyPct (against units.dat's maximum, 250 for energy) / unitType / owner; the `adjust`
+  verb (damage or heal, floored at 0 with a kill, capped at the maximum); pick `by: "random"`
+  (count, draw, second pass) and `near: {"mouse": slot}` with a `radius`; `setloc` with
+  `relative`; the middle mouse button. Plugin: the take / give verbs, the "at random" and
+  "a player's mouse… within N px" pick chips, the to / by chip on the location row, the new
+  fields, search words. Probe 11 written; not yet played.
 - Slice 4 (2026-09-15): probe 10 failed both candidates — terrain writes through the MTXM pointer
   changed nothing on screen, and a draw-function write on a sprite's images ended the game with
   "EUD not supported". Presentation is dropped; the plugin gets no terrain or tint row. The

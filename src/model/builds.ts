@@ -17,7 +17,7 @@ import type { Cell } from "./counters";
 export type TextPart = { text: string } | { counter: Cell } | { player: number } | { color: number };
 
 /** A unit's field a pass can read or test. */
-export type UnitField = "hp" | "shields" | "energy" | "kills" | "x" | "y" | "order" | "hasTarget" | "underAttack" | "burrowed" | "inTransport" | "buildTime" | "resources" | "cooldown" | "speed";
+export type UnitField = "hp" | "shields" | "energy" | "kills" | "x" | "y" | "order" | "hasTarget" | "underAttack" | "burrowed" | "inTransport" | "buildTime" | "resources" | "cooldown" | "speed" | "hpPct" | "shieldsPct" | "energyPct" | "unitType" | "owner";
 
 /** The fields as the chips show them; `yesNo` fields read 1 or 0 and take an "is / is not" chip instead of a comparison. */
 export const UNIT_FIELDS: readonly { field: UnitField; label: string; yesNo?: boolean }[] = [
@@ -26,6 +26,8 @@ export const UNIT_FIELDS: readonly { field: UnitField; label: string; yesNo?: bo
   { field: "order", label: "order id" }, { field: "hasTarget", label: "targeting something", yesNo: true }, { field: "underAttack", label: "under attack", yesNo: true },
   { field: "burrowed", label: "burrowed", yesNo: true }, { field: "inTransport", label: "in a transport", yesNo: true }, { field: "speed", label: "moving", yesNo: true },
   { field: "buildTime", label: "remaining build time" }, { field: "resources", label: "resources" }, { field: "cooldown", label: "weapon cooldown" },
+  { field: "hpPct", label: "hit points %" }, { field: "shieldsPct", label: "shields %" }, { field: "energyPct", label: "energy %" },
+  { field: "unitType", label: "unit type id" }, { field: "owner", label: "owner" },
 ];
 
 /** The spell timers a pass can set. The game counts them down about once per eight frames, so a second at fastest is three ticks. */
@@ -56,7 +58,12 @@ export type ForEachDo =
   /** Ground, air and spell cooldowns held at this value; written every cycle it keeps the unit from firing. */
   | { cooldown: number }
   /** Walk through anything. */
-  | { status: "noclip"; on: boolean };
+  | { status: "noclip"; on: boolean }
+  /** Damage or heal: the field moved by `delta` points, floored at 0 (hit points at 0 kill the unit) and capped at the type's maximum. */
+  | { adjust: "hp" | "shields" | "energy"; delta: number };
+
+/** What a nearest pick measures from: a location, or the location MSQC keeps a player's mouse in. */
+export type PickNear = number | { mouse: number } | null;
 
 export interface UnitFilter {
   unit: number | null;
@@ -74,11 +81,11 @@ export type BuildRecord =
    * The one matching unit with the least or greatest field, or the nearest to a location's centre:
    * a small box is centred on it (`locate`), its value goes into a counter (`to`), and a pass verb acts on it (`do`).
    */
-  | ({ id: string; kind: "pick"; flag: Cell; by: "min" | "max" | "nearest"; field: UnitField; near: number | null; locate: number | null; to: Cell | null; do: ForEachDo | null } & UnitFilter)
+  | ({ id: string; kind: "pick"; flag: Cell; by: "min" | "max" | "nearest" | "random"; field: UnitField; near: PickNear; radius?: number | null; locate: number | null; to: Cell | null; do: ForEachDo | null } & UnitFilter)
   /** Read a field of the first matching unit into a counter (0 when there is none). */
   | ({ id: string; kind: "read"; flag: Cell; field: UnitField; to: Cell } & UnitFilter)
-  /** Move a location by numbers: its top-left to (x, y) map pixels, keeping its size unless one is given. */
-  | { id: string; kind: "setloc"; flag: Cell; location: number; x: number; y: number; width: number | null; height: number | null }
+  /** Move a location by numbers: its top-left to (x, y) map pixels, keeping its size unless one is given; with `relative`, by (x, y) from where it is. */
+  | { id: string; kind: "setloc"; flag: Cell; location: number; x: number; y: number; width: number | null; height: number | null; relative?: boolean }
   /** Every cycle: 1 in `cell` while some matching unit's field compares so, else 0. A condition reads the cell. */
   | ({ id: string; kind: "scan"; cell: Cell; field: UnitField; cmp: "<" | ">" | "="; value: number } & UnitFilter)
   /**
@@ -128,7 +135,7 @@ export interface Msqc {
   qcPlayer: number;
   /** Key code → counter unit id: `deaths(player, unit)` counts that player's presses. */
   keys: Record<string, number>;
-  /** "L" / "R" → counter unit id, per click. */
+  /** "L" / "R" / "M" → counter unit id, per click. */
   clicks: Record<string, number>;
   /** The location number MSQC keeps Player 1's mouse in — 1-based, like a trigger's — with the next seven for the other players; null until the mouse is used. */
   mouseBase: number | null;
@@ -159,7 +166,7 @@ export interface BuildPlugins {
   [plugin: string]: Record<string, string | number>;
 }
 
-export const MAGENTA_SPEC_VERSION = 3;
+export const MAGENTA_SPEC_VERSION = 5;
 
 export interface MagentaSpec {
   version: number;

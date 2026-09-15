@@ -7,7 +7,7 @@
  */
 import type { PluginApi, ActionRecord, ConditionRecord, TriggerRecord } from "@scm-js/plugin-api";
 import { ActionType, Comparison, ConditionType, PlayerGroup, SetModifier } from "../../vendor/triggers";
-import type { BuildRecord, ChatArgs, ChatCell, ChatRecord, ForEachDo, Msqc, UnitFilter } from "../model/builds";
+import type { BuildRecord, ChatArgs, ChatCell, ChatRecord, ForEachDo, Msqc, UnitField, UnitFilter } from "../model/builds";
 import { checkChatMessage, DEFAULT_MSQC, HOLD_FIRE_COOLDOWN, isChatPattern, nextChatValue, TIMER_TICKS_PER_SECOND, TIMERS, UNIT_FIELDS } from "../model/builds";
 import type { Cell } from "../model/counters";
 import type { CounterName } from "../model/sidecar";
@@ -166,10 +166,22 @@ export function renderHook(api: PluginApi, host: Host, store: Store, hook: HookR
     x.addEventListener("click", () => pickNumber(api, x, hook.x, (v) => update({ x: v }), { min: 0, max: 65535, unit: "px" }));
     const y = chip(api, String(hook.y), "");
     y.addEventListener("click", () => pickNumber(api, y, hook.y, (v) => update({ y: v }), { min: 0, max: 65535, unit: "px" }));
+    const MODE = [{ value: 0, label: t("to") }, { value: 1, label: t("by") }];
+    const mode = chip(api, hook.relative ? MODE[1].label : MODE[0].label, "");
+    mode.title = t("To: the top-left corner lands on x, y. By: the whole location shifts by x, y from where it is (negative goes left or up).");
+    mode.addEventListener("click", () => pickChoice(api, mode, MODE, (v) => update({ relative: v === 1 }), { current: hook.relative ? 1 : 0 }));
+    if (hook.relative) {
+      const dx = chip(api, String(hook.x), "");
+      dx.addEventListener("click", () => pickNumber(api, dx, hook.x, (v) => update({ x: v }), { min: -65535, max: 65535, unit: "px" }));
+      const dy = chip(api, String(hook.y), "");
+      dy.addEventListener("click", () => pickNumber(api, dy, hook.y, (v) => update({ y: v }), { min: -65535, max: 65535, unit: "px" }));
+      into.append(t("Move "), loc, " ", mode, " ", dx, ", ", dy, tag(api));
+      return;
+    }
     const size = chip(api, hook.width === null || hook.height === null ? t("its size") : `${hook.width} × ${hook.height}`, "");
     size.title = t("Width × height in map pixels, 32 per tile; 0 keeps the location's own size");
     size.addEventListener("click", () => pickNumber(api, size, hook.width ?? 0, (wv) => pickNumber(api, size, hook.height ?? 0, (hv) => update({ width: wv > 0 ? wv : null, height: hv > 0 ? hv : null }), { min: 0, max: 65535, unit: t("px high") }), { min: 0, max: 65535, unit: t("px wide") }));
-    into.append(t("Move "), loc, t(" to "), x, ", ", y, t(" keeping "), size, tag(api));
+    into.append(t("Move "), loc, " ", mode, " ", x, ", ", y, t(" keeping "), size, tag(api));
     return;
   }
   // foreach
@@ -196,9 +208,10 @@ function doChips(api: PluginApi, host: Host, store: Store, d: ForEachDo | null, 
     { value: 18, label: t("hold fire"), make: () => ({ cooldown: HOLD_FIRE_COOLDOWN }) },
     { value: 19, label: t("set the resources"), make: () => ({ set: "resources", value: 1500 }) }, { value: 20, label: t("set the remaining build time"), make: () => ({ set: "buildTime", value: 0 }) }, { value: 21, label: t("set the rank"), make: () => ({ set: "rank", value: 0 }) },
     { value: 22, label: t("walk through anything"), make: () => ({ status: "noclip", on: true }) }, { value: 23, label: t("collide again"), make: () => ({ status: "noclip", on: false }) },
+    { value: 25, label: t("take"), make: () => ({ adjust: "hp", delta: -20 }) }, { value: 26, label: t("give"), make: () => ({ adjust: "hp", delta: 20 }) },
     ...(allowNothing ? [{ value: 24, label: t("do nothing to it"), make: () => null }] : []),
   ];
-  const current = d === null ? 24 : "set" in d ? ({ hp: 0, shields: 1, energy: 2, kills: 3, resources: 19, buildTime: 20, rank: 21 } as const)[d.set] : "kill" in d ? 4 : "remove" in d ? 5 : "invincible" in d ? (d.invincible ? 6 : 7) : "hallucination" in d ? (d.hallucination ? 8 : 9) : "speed" in d ? (d.speed ? 10 : 11) : "give" in d ? 12 : "locate" in d ? 13 : "order" in d ? ({ move: 14, patrol: 15, attack: 16 } as const)[d.order] : "timer" in d ? 17 : "cooldown" in d ? 18 : d.on ? 22 : 23;
+  const current = d === null ? 24 : "set" in d ? ({ hp: 0, shields: 1, energy: 2, kills: 3, resources: 19, buildTime: 20, rank: 21 } as const)[d.set] : "kill" in d ? 4 : "remove" in d ? 5 : "invincible" in d ? (d.invincible ? 6 : 7) : "hallucination" in d ? (d.hallucination ? 8 : 9) : "speed" in d ? (d.speed ? 10 : 11) : "give" in d ? 12 : "locate" in d ? 13 : "order" in d ? ({ move: 14, patrol: 15, attack: 16 } as const)[d.order] : "timer" in d ? 17 : "cooldown" in d ? 18 : "adjust" in d ? (d.delta < 0 ? 25 : 26) : d.on ? 22 : 23;
   const what = chip(api, DOS.find((x) => x.value === current)?.label ?? "?", "");
   what.addEventListener("click", () => pickChoice(api, what, DOS, (v) => {
     const entry = DOS.find((x) => x.value === v)!;
@@ -235,6 +248,16 @@ function doChips(api: PluginApi, host: Host, store: Store, d: ForEachDo | null, 
   } else if ("cooldown" in d) {
     const note = api.ui.el("span", { className: "hint", title: t("The cooldowns are written each time the trigger fires; to keep a unit from firing, the trigger must fire every cycle (preserved, with triggers running every frame).") }, t(" (each cycle)"));
     out.push(note);
+  } else if ("adjust" in d) {
+    // "take 20 hit points" / "give 20 shields": the sign is the verb, the number is always positive.
+    const ADJ = [{ value: 0, label: t("hit points"), field: "hp" as const }, { value: 1, label: t("shields"), field: "shields" as const }, { value: 2, label: t("energy"), field: "energy" as const }];
+    const sign = d.delta < 0 ? -1 : 1;
+    const n = chip(api, String(Math.abs(d.delta)), "");
+    n.addEventListener("click", () => pickNumber(api, n, Math.abs(d.delta), (v) => onChange({ adjust: d.adjust, delta: sign * Math.max(1, v) }), { min: 1, max: 65535 }));
+    const f = chip(api, ADJ.find((x) => x.field === d.adjust)?.label ?? d.adjust, "");
+    f.title = d.delta < 0 ? t("Never below 0; a unit whose hit points reach 0 dies.") : t("Never above the type's maximum.");
+    f.addEventListener("click", () => pickChoice(api, f, ADJ, (v) => onChange({ adjust: ADJ[v].field, delta: d.delta }), { current: ADJ.findIndex((x) => x.field === d.adjust) }));
+    out.push(" ", n, " ", f);
   }
   return out;
 }
@@ -243,14 +266,35 @@ function doChips(api: PluginApi, host: Host, store: Store, d: ForEachDo | null, 
 function renderPick(api: PluginApi, host: Host, store: Store, hook: PickRecord, into: HTMLElement, update: (patch: Record<string, unknown>) => void): void {
   const t = api.i18n.t;
   const namer = host.namer(store.sidecar);
-  const BY = [{ value: 0, label: t("with the least"), by: "min" as const }, { value: 1, label: t("with the greatest"), by: "max" as const }, { value: 2, label: t("nearest to"), by: "nearest" as const }];
+  const BY = [{ value: 0, label: t("with the least"), by: "min" as const }, { value: 1, label: t("with the greatest"), by: "max" as const }, { value: 2, label: t("nearest to"), by: "nearest" as const }, { value: 3, label: t("at random"), by: "random" as const }];
   const by = chip(api, BY.find((b) => b.by === hook.by)!.label, "");
   by.addEventListener("click", () => pickChoice(api, by, BY, (v) => update({ by: BY[v].by, near: BY[v].by === "nearest" ? hook.near ?? host.locations().find((l) => l.value !== 64)?.value ?? 1 : hook.near }), { current: BY.findIndex((b) => b.by === hook.by) }));
   into.append(t("Take the "), ...filterChips(api, host, store, hook, update), " ", by, " ");
   if (hook.by === "nearest") {
-    const near = chip(api, hook.near ? namer.location(hook.near) : t("a location"), "");
-    near.addEventListener("click", () => pickLocation(api, host, near, hook.near ?? 1, (v) => { if (v > 0 && v < 64) update({ near: v }); }));
+    const mouseOf = typeof hook.near === "object" && hook.near !== null ? hook.near.mouse : null;
+    const near = chip(api, mouseOf !== null ? t("{player}'s mouse", { player: namer.player(mouseOf) }) : typeof hook.near === "number" ? namer.location(hook.near) : t("a location"), "");
+    near.addEventListener("click", () => {
+      const pop = pickLocation(api, host, near, typeof hook.near === "number" ? hook.near : 1, (v) => { if (v > 0 && v < 64) update({ near: v, radius: null }); });
+      // A player's mouse as the point: MSQC has to carry the mouse for that.
+      const foot = pop.root.querySelector(".mg-pop-foot");
+      foot?.prepend(api.ui.widgets.button(t("A player's mouse…"), { ghost: true, onClick: () => {
+        pop.close();
+        pickChoice(api, near, Array.from({ length: 8 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null })), (p) => {
+          const m = withMsqc(host, store, true);
+          if (!m) { api.ui.toast({ kind: "error", title: t("No room for the mouse"), detail: t("It needs nine free location slots for MSQC.") }); return; }
+          store.commit(t("Pick near the mouse"), () => store.list, { sidecar: { msqc: m, builds: store.sidecar.builds.map((b) => (b.id === hook.id ? { ...b, near: { mouse: p }, radius: hook.radius ?? 64 } as BuildRecord : b)) } });
+        }, { current: mouseOf ?? 0, width: 200 });
+      } }));
+    });
     into.append(near);
+    if (mouseOf !== null) {
+      const radius = chip(api, hook.radius === null || hook.radius === undefined ? t("any distance") : `${hook.radius} px`, "");
+      radius.title = t("How far from the mouse a unit still counts, in map pixels (32 a tile); farther, and the pick finds nothing.");
+      radius.addEventListener("click", () => pickNumber(api, radius, hook.radius ?? 64, (v) => update({ radius: v > 0 ? v : null }), { min: 0, max: 4096, unit: "px", hint: t("0 for any distance") }));
+      into.append(t(" within "), radius);
+    }
+  } else if (hook.by === "random") {
+    // Nothing to choose: one of the matches, drawn each time the trigger fires.
   } else {
     const numeric = FIELDS.filter((f) => !f.yesNo);
     const field = chip(api, FIELDS[fieldIndex(hook.field)].label, "");
@@ -343,14 +387,14 @@ export function renderConditionRow(api: PluginApi, host: Host, store: Store, row
     return;
   }
   if (row.kind === "click") {
-    const button = chip(api, row.button === "L" ? t("left") : t("right"), "");
-    button.addEventListener("click", () => pickChoice(api, button, [{ value: 0, label: t("left") }, { value: 1, label: t("right") }], (v) => {
-      const b = v === 0 ? "L" : "R";
+    const button = chip(api, row.button === "L" ? t("left") : row.button === "M" ? t("middle") : t("right"), "");
+    button.addEventListener("click", () => pickChoice(api, button, [{ value: 0, label: t("left") }, { value: 1, label: t("right") }, { value: 2, label: t("middle") }], (v) => {
+      const b = v === 0 ? "L" : v === 1 ? "R" : "M";
       const unit = m.clicks[b] ?? freeUnit(store, host);
       if (unit === null) return;
       store.commit(t("Change button"), () => store.list, { sidecar: { msqc: { ...m, clicks: { ...m.clicks, [b]: unit } } } });
       replace(deathsIs([row.player, unit], Comparison.AtLeast, 1));
-    }, { current: row.button === "L" ? 0 : 1 }));
+    }, { current: row.button === "L" ? 0 : row.button === "R" ? 1 : 2 }));
     into.append(playerChip(row.player, (p) => replace(deathsIs([p, m.clicks[row.button]], Comparison.AtLeast, 1))), t(" clicked the "), button, t(" button"), tag(api, INPUT_NOTE));
     return;
   }
@@ -408,7 +452,7 @@ function withMsqc(host: Host, store: Store, needMouse: boolean): Msqc | null {
 }
 
 /** A new input condition: the MSQC bookkeeping and the condition to insert. */
-export function newInput(host: Host, store: Store, what: "key" | "click" | "mouseIn", options: { code?: number; button?: "L" | "R"; location?: number } = {}): { condition: ConditionRecord; msqc: Msqc } | null {
+export function newInput(host: Host, store: Store, what: "key" | "click" | "mouseIn", options: { code?: number; button?: "L" | "R" | "M"; location?: number } = {}): { condition: ConditionRecord; msqc: Msqc } | null {
   const m = withMsqc(host, store, what !== "key");
   if (!m) return null;
   if (what === "key") {
@@ -434,21 +478,25 @@ export function newInput(host: Host, store: Store, what: "key" | "click" | "mous
 }
 
 /** A new unit check: a cell of its own, the record and the condition. */
-export function newScan(host: Host, store: Store): { condition: ConditionRecord; builds: BuildRecord[] } | null {
+export function newScan(host: Host, store: Store, query = "", unit: number | null = 0): { condition: ConditionRecord; builds: BuildRecord[] } | null {
   const cell = freeCell(store, host);
   if (!cell) return null;
-  const record: BuildRecord = { id: `s${Date.now().toString(36)}`, kind: "scan", cell, unit: 0, owner: PlayerGroup.Player1, location: null, field: "hp", cmp: "<", value: 20 };
+  const pct = /percent|%/i.test(query);
+  const field: UnitField = /shield/i.test(query) ? (pct ? "shieldsPct" : "shields") : /energy|mana/i.test(query) ? (pct ? "energyPct" : "energy") : /under attack/i.test(query) ? "underAttack" : /target/i.test(query) ? "hasTarget" : /burrow/i.test(query) ? "burrowed" : /moving/i.test(query) ? "speed" : /attacking|order/i.test(query) ? "order" : /kills/i.test(query) ? "kills" : pct ? "hpPct" : "hp";
+  const yesNo = FIELDS[fieldIndex(field)].yesNo;
+  const record: BuildRecord = { id: `s${Date.now().toString(36)}`, kind: "scan", cell, unit, owner: PlayerGroup.Player1, location: null, field, cmp: yesNo ? "=" : /above|over|more/i.test(query) ? ">" : "<", value: yesNo ? 1 : pct ? 30 : 20 };
   return { condition: deathsIs(cell, Comparison.Exactly, 1), builds: [...store.sidecar.builds, record] };
 }
 
 /** A new action hook: a flag cell, the record, and the flag action to insert. */
-export function newHook(host: Host, store: Store, what: "text" | "math" | "foreach" | "count" | "read" | "setloc" | "pick", query = ""): { action: ActionRecord; builds: BuildRecord[] } | null {
+export function newHook(host: Host, store: Store, what: "text" | "math" | "foreach" | "count" | "read" | "setloc" | "pick", query = "", named_: { unit?: number | null; location?: number | null } = {}): { action: ActionRecord; builds: BuildRecord[] } | null {
   const flag = freeCell(store, host);
   if (!flag) return null;
   const named = store.sidecar.counters;
   const a: Cell = named[0] ? [named[0].player, named[0].unit] : freeCell(store, host, [flag]) ?? [0, 181];
   const id = `b${Date.now().toString(36)}`;
-  const filter: UnitFilter = { unit: 0, owner: PlayerGroup.Player1, location: null };
+  // "damage every zergling at lava": the unit and the location the box recognised go into the filter.
+  const filter: UnitFilter = { unit: named_.unit === undefined ? 0 : named_.unit, owner: PlayerGroup.Player1, location: named_.location ?? null };
   const record: BuildRecord = what === "text"
     ? { id, kind: "text", flag, parts: [{ text: "Score: " }, { counter: a }], to: "all" }
     : what === "math"
@@ -458,10 +506,10 @@ export function newHook(host: Host, store: Store, what: "text" | "math" | "forea
         : what === "read"
           ? { id, kind: "read", flag, ...filter, field: "hp", to: a }
           : what === "setloc"
-            ? { id, kind: "setloc", flag, location: host.locations().find((l) => l.value !== 64)?.value ?? 1, x: 0, y: 0, width: null, height: null }
+            ? { id, kind: "setloc", flag, location: host.locations().find((l) => l.value !== 64)?.value ?? 1, x: 0, y: 0, width: null, height: null, ...(/\bby\b|shift|offset|slide|scroll/i.test(query) ? { relative: true, x: 32 } : {}) }
             : what === "pick"
-              ? { id, kind: "pick", flag, ...filter, by: /near|clos/i.test(query) ? "nearest" : /strong|most|great|high/i.test(query) ? "max" : "min", field: /kill/i.test(query) ? "kills" : "hp", near: /near|clos/i.test(query) ? host.locations().find((l) => l.value !== 64)?.value ?? 1 : null, locate: null, to: null, do: /kill/i.test(query) ? { kill: true } : null }
-          : { id, kind: "foreach", flag, ...filter, do: /give/i.test(query) ? { give: 1 } : /kill/i.test(query) ? { kill: true } : { set: "hp", value: 100 } };
+              ? { id, kind: "pick", flag, ...filter, by: /random|lottery|any one/i.test(query) ? "random" : /near|clos|mouse|under/i.test(query) ? "nearest" : /strong|most|great|high/i.test(query) ? "max" : "min", field: /kill/i.test(query) ? "kills" : "hp", near: /near|clos|mouse|under/i.test(query) ? host.locations().find((l) => l.value !== 64)?.value ?? 1 : null, locate: null, to: null, do: /kill/i.test(query) ? { kill: true } : null }
+          : { id, kind: "foreach", flag, ...filter, do: /give to|owner/i.test(query) ? { give: 1 } : /kill/i.test(query) ? { kill: true } : /damage|hurt|take|drain/i.test(query) ? { adjust: /shield/i.test(query) ? "shields" : /energy|mana/i.test(query) ? "energy" : "hp", delta: -20 } : /heal|restore|regen/i.test(query) ? { adjust: /shield/i.test(query) ? "shields" : /energy|mana/i.test(query) ? "energy" : "hp", delta: 20 } : { set: "hp", value: 100 } };
   return { action: flagAction({ cell: flag }), builds: [...store.sidecar.builds, record] };
 }
 

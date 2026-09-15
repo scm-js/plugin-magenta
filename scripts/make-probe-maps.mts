@@ -25,6 +25,9 @@
  *  10  presentation (slice 4): the terrain under a location rewritten in the MTXM array the
  *      game draws from, and a unit's look through its images' draw functions — the
  *      see-through of a cloaked unit, the blue of a hallucination, the warp flash.
+ *  11  slice 5: percent fields, damage and healing with a floor and a cap, a random pick, the
+ *      unit under a player's mouse, a location moved by an offset, the type and owner reads,
+ *      and the middle mouse button.
  *
  * Maps 6, 7 and 10 need the build server (`--build http://localhost:8085`, the eud-server
  * container with the spec-4 plugin); their built copies end in `-eud.scx`, and those are
@@ -725,6 +728,65 @@ const MAPS: ProbeMap[] = [
       ]);
       const spec = { version: 4, everyFrame: true, chat: null, hooks, scans: [], msqc: null };
       return { plugins: { magenta: { spec: JSON.stringify(spec) }, eudTurbo: {} } };
+    },
+  },
+  /* ────────────────────────────────────────────────────────────────────────────── */
+  {
+    name: "Magenta probe 11 — slice 5", file: "magenta-probe-11-slice5.scx",
+    place(place) {
+      // Marines first: slots 0, 1699, 1698, 1697 for the start trigger's HP.
+      for (let i = 0; i < 4; i++) place(MARINE, 0, 12.5 + i, 12.5);
+      for (let i = 0; i < 5; i++) place(ZERGLING, 0, 12.5 + i, 15.5);
+      place(HYDRALISK, 1, 38.5, 14.5); place(SIEGE_TANK, 1, 41.5, 14.5);
+      place(BEACON_UNIT, 11, 20, 10);
+    },
+    build(scn, h) {
+      const cell = (u: number): [number, number] => [11, u];
+      const F = { damage: cell(181), heal: cell(182), random: cell(183), mouse: cell(184), slide: cell(185), readType: cell(186), readOwner: cell(187), readPct: cell(188), tell: cell(189), tellPct: cell(190) };
+      const V = { low: cell(200), type: cell(201), owner: cell(202), pct: cell(203) };
+      const CLICK_M = 195;
+      const MOUSE_BASE = 50;
+      const flag = (c: [number, number]) => setDeaths(c, 1);
+      const P1MARINE = { unit: MARINE, owner: 0, location: null }, P1ZERGLING = { unit: ZERGLING, owner: 0, location: null };
+      const hooks = [
+        { id: "d", kind: "foreach", flag: F.damage, ...P1MARINE, do: { adjust: "hp", delta: -15 } },
+        { id: "h", kind: "foreach", flag: F.heal, ...P1MARINE, do: { adjust: "hp", delta: 10 } },
+        { id: "r", kind: "pick", flag: F.random, ...P1ZERGLING, by: "random", field: "hp", near: null, locate: null, to: null, do: { kill: true } },
+        { id: "m", kind: "pick", flag: F.mouse, unit: null, owner: 0, location: null, by: "nearest", field: "hp", near: { mouse: 0 }, radius: 48, locate: null, to: null, do: { kill: true } },
+        { id: "s", kind: "setloc", flag: F.slide, location: BEACON, relative: true, x: 64, y: 0 },
+        { id: "rt", kind: "read", flag: F.readType, unit: null, owner: null, location: PEN, field: "unitType", to: V.type },
+        { id: "ro", kind: "read", flag: F.readOwner, unit: null, owner: null, location: PEN, field: "owner", to: V.owner },
+        { id: "rp", kind: "read", flag: F.readPct, ...P1MARINE, field: "hpPct", to: V.pct },
+        { id: "t", kind: "text", flag: F.tell, parts: [{ text: "Read: the first unit in the Pen has type id " }, { counter: V.type }, { text: " (38 = Hydralisk) and owner " }, { counter: V.owner }, { text: " (1 = Player 2)." }], to: "all" },
+        { id: "tp", kind: "text", flag: F.tellPct, parts: [{ text: "Read: the first marine is at " }, { counter: V.pct }, { text: "% hit points." }], to: "all" },
+      ];
+      const scans = [{ id: "s1", kind: "scan", cell: V.low, ...P1MARINE, field: "hpPct", cmp: "<", value: 30 }];
+      applyTriggers(scn, [
+        h.trigger([P1], [always()], [
+          h.comment("start: marines at 40, 20, 12, 8 HP"),
+          eud("cunit.hp", { index: 0 }, 40), eud("cunit.hp", { index: 1699 }, 20), eud("cunit.hp", { index: 1698 }, 12), eud("cunit.hp", { index: 1697 }, 8),
+          h.text("Probe 11, slice 5. Marines at 40, 20, 12, 8 HP. 1 takes 15 HP off every marine (dies at 0), 2 gives 10 back (capped at 40), 3 kills a random zergling, 4 kills the unit under your mouse (within 48 px), 5 slides the Beacon 64 px right (pinged), 6 reads the Pen's first unit and the first marine's HP %, middle click prints a line."),
+          h.text("A line comes at once if any marine is below 30% (the 8 HP one is at 20%)."),
+        ]),
+        ...onKey(h, "1", "every marine: take 15 hit points. Expect: 40→25→10→dead, 20→5→dead, 12 and 8 die at once.", [flag(F.damage)]),
+        ...onKey(h, "2", "every marine: give 10 hit points. Expect: up by 10, never past 40.", [flag(F.heal)]),
+        ...onKey(h, "3", "a random zergling of yours dies. Expect: a different one each press.", [flag(F.random)]),
+        ...onKey(h, "4", "the unit of yours nearest your mouse, within 48 px, dies. Expect: point at a unit and press; pointing at nothing does nothing.", [flag(F.mouse)]),
+        ...onKey(h, "5", "the Beacon location slides 64 px right, then a ping. Expect: the ping moves right each press.", [flag(F.slide), setSwitch(4, true)]),
+        h.trigger([P1], [switchIs(4, true)], [h.comment("next cycle: ping the moved Beacon"), setSwitch(4, false), ping(BEACON), preserve()]),
+        ...onKey(h, "6", "read the Pen's first unit's type and owner, and the first marine's HP %; two lines follow.", [flag(F.readType), flag(F.readOwner), flag(F.readPct), setSwitch(5, true)]),
+        h.trigger([P1], [switchIs(5, true)], [h.comment("next cycle: tell"), setSwitch(5, false), flag(F.tell), flag(F.tellPct), preserve()]),
+        h.once(10, [deathsIs(V.low, 1)], "Scan: a marine is below 30% hit points."),
+        h.trigger([ALL], [deathsIs([CP, CLICK_M], 1, Comparison.AtLeast)], [h.comment("middle click"), h.text("Middle click (synced through MSQC)."), preserve()]),
+        h.trigger([P1], [always()], [h.comment("Magenta: run triggers every frame"), everyFrame(), preserve()]),
+      ]);
+      const spec = { version: 5, everyFrame: true, chat: null, hooks, scans, msqc: { clear: [CLICK_M], mouseBase: MOUSE_BASE, mouseIn: [], select: null } };
+      const plugins: BuildPlugins = {
+        MSQC: { QCUnit: 58, QCLoc: 62, QCPlayer: 11, QCDebug: "false", "MouseDown(M)": `${CLICK_M}, 1`, Mouse: MOUSE_BASE },
+        magenta: { spec: JSON.stringify(spec) },
+        eudTurbo: {},
+      };
+      return { plugins };
     },
   },
 ];

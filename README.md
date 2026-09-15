@@ -184,17 +184,18 @@ Conditions:
   and puts the 250 in a counter named *Chat number*, for the trigger's other rows to use.
   `^…$` writes a pattern of your own, as in `^-give .*$`; the chat plugin wants two `.*` in
   one, and Magenta adds the second.
-- **Player 1 pressed A**, **Player 1 clicked the left button**, **Player 1's mouse is over
-  Beacon**: input that works in multiplayer. Each player's keys, clicks and mouse go out
+- **Player 1 pressed A**, **Player 1 clicked the left button** (or the right, or since 0.4 the
+  middle), **Player 1's mouse is over Beacon**: input that works in multiplayer. Each player's keys, clicks and mouse go out
   as game commands (the MSQC plugin), so every client agrees on them in the same cycle;
   the plain EUD reads in the catalogue are local to one computer and cannot do that. With
   *Current Player* as the player, one trigger serves everyone. Typing in chat does not
   count as key presses.
 - **Any Marine owned by Player 1 at Beacon has hit points below 20**: a check over every
   unit of a kind, every cycle; also shields, energy, kills, x or y, the order id, remaining
-  build time, resources and weapon cooldown, below, above or exactly; and **Any Marine owned
-  by Player 1 is under attack**, *is targeting something*, *is burrowed*, *is in a
-  transport*, *is moving* — or is not.
+  build time, resources and weapon cooldown, below, above or exactly; since 0.4 **hit points %**,
+  **shields %** and **energy %** against the type's maximum ("below 30%"), and the unit type id
+  and owner; and **Any Marine owned by Player 1 is under attack**, *is targeting something*,
+  *is burrowed*, *is in a transport*, *is moving* — or is not.
 
 Actions:
 
@@ -214,18 +215,24 @@ Actions:
   irradiate or a defensive matrix — for so many seconds (the effect without the spell's
   overlay graphic), **hold fire** (its cooldowns rewritten each cycle, so put it in a
   trigger that runs every frame), **set the resources** of mineral fields and geysers, the
-  remaining build time, the rank, and **walk through anything** or collide again.
+  remaining build time, the rank, and **walk through anything** or collide again. Since 0.4:
+  **take 20 hit points** or **give 20 hit points** (also shields and energy) — damage and
+  healing that stop at 0 and at the type's maximum, and a unit whose hit points reach 0 dies;
+  a damage zone or a healing aura is one such row in a trigger that fires every cycle.
 - **Take the Marine owned by Player 1 with the least hit points: kill it, center Pick on it,
-  value into Weakest**: the one unit with the least or greatest of a stat, or the **nearest
-  to** a location. It does the pass verb you choose to that unit, centres a location on it
-  for the trigger's other actions, and puts the value (the distance, for the nearest) in a
-  counter — each of those optional.
+  value into Weakest**: the one unit with the least or greatest of a stat, the **nearest
+  to** a location, or since 0.4 **at random** (a different one each time the trigger fires)
+  or the nearest to **a player's mouse** within so many pixels — the unit under the cursor,
+  which with a synced click makes click-to-act gameplay. It does the pass verb you choose to
+  that unit, centres a location on it for the trigger's other actions, and puts the value
+  (the distance, for the nearest) in a counter — each of those optional.
 - **Set A to the number of Marines owned by Player 1 at Beacon**: a count into a counter.
 - **Set A to the hit points of the first Marine owned by Player 1 at Beacon**: a read
   into a counter; also shields, energy, kills, x, y, the order id, remaining build time,
   resources, weapon cooldown, and the yes-or-no fields as 1 or 0.
 - **Move Beacon to 640, 320 keeping its size**: a location placed by numbers, in map
-  pixels (32 per tile), with a new width and height if you give one.
+  pixels (32 per tile), with a new width and height if you give one; or since 0.4 **Move
+  Beacon by 64, 0** — shifted from where it is, for a moving platform or a scrolling lane.
 
 Text with counters in it also takes `{Player 1}` for a player's name and `{Player 1's
 colour}` to switch to that player's colour, and the colour and effect buttons in the text

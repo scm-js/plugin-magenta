@@ -15,7 +15,7 @@ describe("build plugins", () => {
     expect(p.chatEvent).toEqual({ __addr__: "0x58C580", __patternAddr__: "0x58C610", __ptrAddr__: "0x58C5B0", __lenAddr__: "0x58C5E0", "-heal": 2, "^-give .*.*$": 3 });
     expect(p.eudTurbo).toEqual({});
     const spec = JSON.parse(p.magenta.spec as string);
-    expect(spec).toMatchObject({ version: 3, everyFrame: true, chat: { cell: [11, 181], args } });
+    expect(spec).toMatchObject({ version: 5, everyFrame: true, chat: { cell: [11, 181], args } });
     expect(spec.hooks).toHaveLength(2);
     expect(spec.hooks[0].kind).toBe("text");
     expect(spec.scans).toEqual([]);

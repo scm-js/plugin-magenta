@@ -5436,7 +5436,12 @@ var UNIT_FIELDS = [
   { field: "speed", label: "moving", yesNo: true },
   { field: "buildTime", label: "remaining build time" },
   { field: "resources", label: "resources" },
-  { field: "cooldown", label: "weapon cooldown" }
+  { field: "cooldown", label: "weapon cooldown" },
+  { field: "hpPct", label: "hit points %" },
+  { field: "shieldsPct", label: "shields %" },
+  { field: "energyPct", label: "energy %" },
+  { field: "unitType", label: "unit type id" },
+  { field: "owner", label: "owner" }
 ];
 var TIMERS = [
   { timer: "stim", label: "stim" },
@@ -5462,7 +5467,7 @@ function chatKey(c2) {
 }
 var DEFAULT_OPTIONS = { camera: null, bgm: null, noAirCollision: false, unlimiter: false };
 var DEFAULT_MSQC = { qcUnit: 58, qcLoc: 62, qcPlayer: 10, keys: {}, clicks: {}, mouseBase: null, mouseIn: {}, select: null };
-var MAGENTA_SPEC_VERSION = 3;
+var MAGENTA_SPEC_VERSION = 5;
 var cellAddress = (cell) => 5808996 + cell[0] * 4 + cell[1] * 48;
 function msqcKeyName(code) {
   if (code >= 65 && code <= 90) return String.fromCharCode(code);
@@ -6393,15 +6398,15 @@ function paletteItems(kind) {
     items.push({ label: "A player pressed a key (synced)", aliases: ["keyboard", "hotkey", "press", "input"], group: "Build", value: { kind: "build", what: "key" } });
     items.push({ label: "A player clicked (synced)", aliases: ["mouse button", "left click", "right click", "input"], group: "Build", value: { kind: "build", what: "click" } });
     items.push({ label: "A player's mouse is over a location (synced)", aliases: ["hover", "cursor", "pointer", "mouse at"], group: "Build", value: { kind: "build", what: "mouseIn" } });
-    items.push({ label: "Any unit of a kind has a stat below or above", aliases: ["hp check", "low health", "any unit", "damaged", "scan", "is attacking", "under attack", "burrowed", "moving", "has a target"], group: "Build", value: { kind: "build", what: "scan" } });
+    items.push({ label: "Any unit of a kind has a stat below or above", aliases: ["hp check", "low health", "any unit", "damaged", "scan", "is attacking", "under attack", "burrowed", "moving", "has a target", "percent", "below 30%", "hp %"], group: "Build", value: { kind: "build", what: "scan" } });
   } else {
     items.push({ label: "Show text with numbers in it", aliases: ["display counter", "print score", "dynamic text", "message with value"], group: "Build", value: { kind: "build", what: "text" } });
     items.push({ label: "Multiply, divide or randomize a counter", aliases: ["times", "random", "modulo", "remainder", "maths"], group: "Build", value: { kind: "build", what: "math" } });
-    items.push({ label: "For each unit of a kind", aliases: ["all units", "every unit", "loop", "set hp of all", "give units with colour", "order all", "stun", "stim", "ensnare", "plague", "lockdown", "hold fire", "no-clip", "set minerals of field"], group: "Build", value: { kind: "build", what: "foreach" } });
-    items.push({ label: "The weakest, strongest or nearest unit of a kind", aliases: ["pick", "lowest hp", "closest", "nearest", "most kills", "find unit", "one unit"], group: "Build", value: { kind: "build", what: "pick" } });
+    items.push({ label: "For each unit of a kind", aliases: ["all units", "every unit", "loop", "set hp of all", "give units with colour", "order all", "stun", "stim", "ensnare", "plague", "lockdown", "hold fire", "no-clip", "set minerals of field", "damage", "heal", "drain", "take hit points", "restore shields", "damage zone"], group: "Build", value: { kind: "build", what: "foreach" } });
+    items.push({ label: "The weakest, strongest, nearest or a random unit of a kind", aliases: ["pick", "lowest hp", "closest", "nearest", "most kills", "find unit", "one unit", "random unit", "lottery", "under the mouse", "clicked unit", "unit at the cursor"], group: "Build", value: { kind: "build", what: "pick" } });
     items.push({ label: "Count units into a counter", aliases: ["number of", "how many", "tally"], group: "Build", value: { kind: "build", what: "count" } });
-    items.push({ label: "Read a unit's stat into a counter", aliases: ["get hp", "read health", "unit's kills", "position into"], group: "Build", value: { kind: "build", what: "read" } });
-    items.push({ label: "Move a location to coordinates", aliases: ["set location", "place location", "location xy", "pixels"], group: "Build", value: { kind: "build", what: "setloc" } });
+    items.push({ label: "Read a unit's stat into a counter", aliases: ["get hp", "read health", "unit's kills", "position into", "what unit is at", "unit type at", "owner of"], group: "Build", value: { kind: "build", what: "read" } });
+    items.push({ label: "Move a location to coordinates or by an offset", aliases: ["set location", "place location", "location xy", "pixels", "move by", "shift location", "slide", "scroll location"], group: "Build", value: { kind: "build", what: "setloc" } });
     items.push({ label: "Copy a counter into another", aliases: ["set variable", "assign", "transfer"], group: "Counters", value: { kind: "expansion", what: "copy" } });
     items.push({ label: "Add a counter to another", aliases: ["sum", "plus", "variable"], group: "Counters", value: { kind: "expansion", what: "add" } });
     items.push({ label: "Subtract a counter from another", aliases: ["minus", "difference", "variable"], group: "Counters", value: { kind: "expansion", what: "subtract" } });
@@ -7129,10 +7134,22 @@ function renderHook(api, host, store, hook, into) {
     x.addEventListener("click", () => pickNumber(api, x, hook.x, (v) => update({ x: v }), { min: 0, max: 65535, unit: "px" }));
     const y = chip2(api, String(hook.y), "");
     y.addEventListener("click", () => pickNumber(api, y, hook.y, (v) => update({ y: v }), { min: 0, max: 65535, unit: "px" }));
+    const MODE = [{ value: 0, label: t("to") }, { value: 1, label: t("by") }];
+    const mode = chip2(api, hook.relative ? MODE[1].label : MODE[0].label, "");
+    mode.title = t("To: the top-left corner lands on x, y. By: the whole location shifts by x, y from where it is (negative goes left or up).");
+    mode.addEventListener("click", () => pickChoice(api, mode, MODE, (v) => update({ relative: v === 1 }), { current: hook.relative ? 1 : 0 }));
+    if (hook.relative) {
+      const dx = chip2(api, String(hook.x), "");
+      dx.addEventListener("click", () => pickNumber(api, dx, hook.x, (v) => update({ x: v }), { min: -65535, max: 65535, unit: "px" }));
+      const dy = chip2(api, String(hook.y), "");
+      dy.addEventListener("click", () => pickNumber(api, dy, hook.y, (v) => update({ y: v }), { min: -65535, max: 65535, unit: "px" }));
+      into.append(t("Move "), loc, " ", mode, " ", dx, ", ", dy, tag(api));
+      return;
+    }
     const size = chip2(api, hook.width === null || hook.height === null ? t("its size") : `${hook.width} \xD7 ${hook.height}`, "");
     size.title = t("Width \xD7 height in map pixels, 32 per tile; 0 keeps the location's own size");
     size.addEventListener("click", () => pickNumber(api, size, hook.width ?? 0, (wv) => pickNumber(api, size, hook.height ?? 0, (hv) => update({ width: wv > 0 ? wv : null, height: hv > 0 ? hv : null }), { min: 0, max: 65535, unit: t("px high") }), { min: 0, max: 65535, unit: t("px wide") }));
-    into.append(t("Move "), loc, t(" to "), x, ", ", y, t(" keeping "), size, tag(api));
+    into.append(t("Move "), loc, " ", mode, " ", x, ", ", y, t(" keeping "), size, tag(api));
     return;
   }
   into.append(t("For each "), ...filterChips(api, host, store, hook, update), ": ", ...doChips(api, host, store, hook.do, (d) => update({ do: d })), tag(api));
@@ -7176,9 +7193,11 @@ function doChips(api, host, store, d, onChange, allowNothing = false) {
     { value: 21, label: t("set the rank"), make: () => ({ set: "rank", value: 0 }) },
     { value: 22, label: t("walk through anything"), make: () => ({ status: "noclip", on: true }) },
     { value: 23, label: t("collide again"), make: () => ({ status: "noclip", on: false }) },
+    { value: 25, label: t("take"), make: () => ({ adjust: "hp", delta: -20 }) },
+    { value: 26, label: t("give"), make: () => ({ adjust: "hp", delta: 20 }) },
     ...allowNothing ? [{ value: 24, label: t("do nothing to it"), make: () => null }] : []
   ];
-  const current2 = d === null ? 24 : "set" in d ? { hp: 0, shields: 1, energy: 2, kills: 3, resources: 19, buildTime: 20, rank: 21 }[d.set] : "kill" in d ? 4 : "remove" in d ? 5 : "invincible" in d ? d.invincible ? 6 : 7 : "hallucination" in d ? d.hallucination ? 8 : 9 : "speed" in d ? d.speed ? 10 : 11 : "give" in d ? 12 : "locate" in d ? 13 : "order" in d ? { move: 14, patrol: 15, attack: 16 }[d.order] : "timer" in d ? 17 : "cooldown" in d ? 18 : d.on ? 22 : 23;
+  const current2 = d === null ? 24 : "set" in d ? { hp: 0, shields: 1, energy: 2, kills: 3, resources: 19, buildTime: 20, rank: 21 }[d.set] : "kill" in d ? 4 : "remove" in d ? 5 : "invincible" in d ? d.invincible ? 6 : 7 : "hallucination" in d ? d.hallucination ? 8 : 9 : "speed" in d ? d.speed ? 10 : 11 : "give" in d ? 12 : "locate" in d ? 13 : "order" in d ? { move: 14, patrol: 15, attack: 16 }[d.order] : "timer" in d ? 17 : "cooldown" in d ? 18 : "adjust" in d ? d.delta < 0 ? 25 : 26 : d.on ? 22 : 23;
   const what = chip2(api, DOS.find((x) => x.value === current2)?.label ?? "?", "");
   what.addEventListener("click", () => pickChoice(api, what, DOS, (v) => {
     const entry2 = DOS.find((x) => x.value === v);
@@ -7222,22 +7241,53 @@ function doChips(api, host, store, d, onChange, allowNothing = false) {
   } else if ("cooldown" in d) {
     const note = api.ui.el("span", { className: "hint", title: t("The cooldowns are written each time the trigger fires; to keep a unit from firing, the trigger must fire every cycle (preserved, with triggers running every frame).") }, t(" (each cycle)"));
     out.push(note);
+  } else if ("adjust" in d) {
+    const ADJ = [{ value: 0, label: t("hit points"), field: "hp" }, { value: 1, label: t("shields"), field: "shields" }, { value: 2, label: t("energy"), field: "energy" }];
+    const sign = d.delta < 0 ? -1 : 1;
+    const n = chip2(api, String(Math.abs(d.delta)), "");
+    n.addEventListener("click", () => pickNumber(api, n, Math.abs(d.delta), (v) => onChange({ adjust: d.adjust, delta: sign * Math.max(1, v) }), { min: 1, max: 65535 }));
+    const f = chip2(api, ADJ.find((x) => x.field === d.adjust)?.label ?? d.adjust, "");
+    f.title = d.delta < 0 ? t("Never below 0; a unit whose hit points reach 0 dies.") : t("Never above the type's maximum.");
+    f.addEventListener("click", () => pickChoice(api, f, ADJ, (v) => onChange({ adjust: ADJ[v].field, delta: d.delta }), { current: ADJ.findIndex((x) => x.field === d.adjust) }));
+    out.push(" ", n, " ", f);
   }
   return out;
 }
 function renderPick(api, host, store, hook, into, update) {
   const t = api.i18n.t;
   const namer = host.namer(store.sidecar);
-  const BY = [{ value: 0, label: t("with the least"), by: "min" }, { value: 1, label: t("with the greatest"), by: "max" }, { value: 2, label: t("nearest to"), by: "nearest" }];
+  const BY = [{ value: 0, label: t("with the least"), by: "min" }, { value: 1, label: t("with the greatest"), by: "max" }, { value: 2, label: t("nearest to"), by: "nearest" }, { value: 3, label: t("at random"), by: "random" }];
   const by = chip2(api, BY.find((b) => b.by === hook.by).label, "");
   by.addEventListener("click", () => pickChoice(api, by, BY, (v) => update({ by: BY[v].by, near: BY[v].by === "nearest" ? hook.near ?? host.locations().find((l) => l.value !== 64)?.value ?? 1 : hook.near }), { current: BY.findIndex((b) => b.by === hook.by) }));
   into.append(t("Take the "), ...filterChips(api, host, store, hook, update), " ", by, " ");
   if (hook.by === "nearest") {
-    const near = chip2(api, hook.near ? namer.location(hook.near) : t("a location"), "");
-    near.addEventListener("click", () => pickLocation(api, host, near, hook.near ?? 1, (v) => {
-      if (v > 0 && v < 64) update({ near: v });
-    }));
+    const mouseOf = typeof hook.near === "object" && hook.near !== null ? hook.near.mouse : null;
+    const near = chip2(api, mouseOf !== null ? t("{player}'s mouse", { player: namer.player(mouseOf) }) : typeof hook.near === "number" ? namer.location(hook.near) : t("a location"), "");
+    near.addEventListener("click", () => {
+      const pop = pickLocation(api, host, near, typeof hook.near === "number" ? hook.near : 1, (v) => {
+        if (v > 0 && v < 64) update({ near: v, radius: null });
+      });
+      const foot = pop.root.querySelector(".mg-pop-foot");
+      foot?.prepend(api.ui.widgets.button(t("A player's mouse\u2026"), { ghost: true, onClick: () => {
+        pop.close();
+        pickChoice(api, near, Array.from({ length: 8 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null })), (p) => {
+          const m = withMsqc(host, store, true);
+          if (!m) {
+            api.ui.toast({ kind: "error", title: t("No room for the mouse"), detail: t("It needs nine free location slots for MSQC.") });
+            return;
+          }
+          store.commit(t("Pick near the mouse"), () => store.list, { sidecar: { msqc: m, builds: store.sidecar.builds.map((b) => b.id === hook.id ? { ...b, near: { mouse: p }, radius: hook.radius ?? 64 } : b) } });
+        }, { current: mouseOf ?? 0, width: 200 });
+      } }));
+    });
     into.append(near);
+    if (mouseOf !== null) {
+      const radius = chip2(api, hook.radius === null || hook.radius === void 0 ? t("any distance") : `${hook.radius} px`, "");
+      radius.title = t("How far from the mouse a unit still counts, in map pixels (32 a tile); farther, and the pick finds nothing.");
+      radius.addEventListener("click", () => pickNumber(api, radius, hook.radius ?? 64, (v) => update({ radius: v > 0 ? v : null }), { min: 0, max: 4096, unit: "px", hint: t("0 for any distance") }));
+      into.append(t(" within "), radius);
+    }
+  } else if (hook.by === "random") {
   } else {
     const numeric = FIELDS.filter((f) => !f.yesNo);
     const field = chip2(api, FIELDS[fieldIndex(hook.field)].label, "");
@@ -7341,14 +7391,14 @@ function renderConditionRow(api, host, store, row, into, replace) {
     return;
   }
   if (row.kind === "click") {
-    const button = chip2(api, row.button === "L" ? t("left") : t("right"), "");
-    button.addEventListener("click", () => pickChoice(api, button, [{ value: 0, label: t("left") }, { value: 1, label: t("right") }], (v) => {
-      const b = v === 0 ? "L" : "R";
+    const button = chip2(api, row.button === "L" ? t("left") : row.button === "M" ? t("middle") : t("right"), "");
+    button.addEventListener("click", () => pickChoice(api, button, [{ value: 0, label: t("left") }, { value: 1, label: t("right") }, { value: 2, label: t("middle") }], (v) => {
+      const b = v === 0 ? "L" : v === 1 ? "R" : "M";
       const unit = m.clicks[b] ?? freeUnit(store, host);
       if (unit === null) return;
       store.commit(t("Change button"), () => store.list, { sidecar: { msqc: { ...m, clicks: { ...m.clicks, [b]: unit } } } });
       replace(deathsIs2([row.player, unit], Comparison.AtLeast, 1));
-    }, { current: row.button === "L" ? 0 : 1 }));
+    }, { current: row.button === "L" ? 0 : row.button === "R" ? 1 : 2 }));
     into.append(playerChip(row.player, (p) => replace(deathsIs2([p, m.clicks[row.button]], Comparison.AtLeast, 1))), t(" clicked the "), button, t(" button"), tag(api, INPUT_NOTE));
     return;
   }
@@ -7428,20 +7478,23 @@ function newInput(host, store, what, options = {}) {
   m.mouseIn = { ...m.mouseIn, [String(location)]: unit };
   return { condition: deathsIs2([PlayerGroup.CurrentPlayer, unit], Comparison.Exactly, 1), msqc: m };
 }
-function newScan(host, store) {
+function newScan(host, store, query = "", unit = 0) {
   const cell = freeCell(store, host);
   if (!cell) return null;
-  const record = { id: `s${Date.now().toString(36)}`, kind: "scan", cell, unit: 0, owner: PlayerGroup.Player1, location: null, field: "hp", cmp: "<", value: 20 };
+  const pct = /percent|%/i.test(query);
+  const field = /shield/i.test(query) ? pct ? "shieldsPct" : "shields" : /energy|mana/i.test(query) ? pct ? "energyPct" : "energy" : /under attack/i.test(query) ? "underAttack" : /target/i.test(query) ? "hasTarget" : /burrow/i.test(query) ? "burrowed" : /moving/i.test(query) ? "speed" : /attacking|order/i.test(query) ? "order" : /kills/i.test(query) ? "kills" : pct ? "hpPct" : "hp";
+  const yesNo = FIELDS[fieldIndex(field)].yesNo;
+  const record = { id: `s${Date.now().toString(36)}`, kind: "scan", cell, unit, owner: PlayerGroup.Player1, location: null, field, cmp: yesNo ? "=" : /above|over|more/i.test(query) ? ">" : "<", value: yesNo ? 1 : pct ? 30 : 20 };
   return { condition: deathsIs2(cell, Comparison.Exactly, 1), builds: [...store.sidecar.builds, record] };
 }
-function newHook(host, store, what, query = "") {
+function newHook(host, store, what, query = "", named_ = {}) {
   const flag = freeCell(store, host);
   if (!flag) return null;
   const named = store.sidecar.counters;
   const a2 = named[0] ? [named[0].player, named[0].unit] : freeCell(store, host, [flag]) ?? [0, 181];
   const id = `b${Date.now().toString(36)}`;
-  const filter = { unit: 0, owner: PlayerGroup.Player1, location: null };
-  const record = what === "text" ? { id, kind: "text", flag, parts: [{ text: "Score: " }, { counter: a2 }], to: "all" } : what === "math" ? { id, kind: "math", flag, op: /random/i.test(query) ? "rand" : /divid/i.test(query) ? "div" : /modul|remainder/i.test(query) ? "mod" : "mul", a: a2, b: /random/i.test(query) ? 100 : 2, to: a2 } : what === "count" ? { id, kind: "count", flag, ...filter, to: a2 } : what === "read" ? { id, kind: "read", flag, ...filter, field: "hp", to: a2 } : what === "setloc" ? { id, kind: "setloc", flag, location: host.locations().find((l) => l.value !== 64)?.value ?? 1, x: 0, y: 0, width: null, height: null } : what === "pick" ? { id, kind: "pick", flag, ...filter, by: /near|clos/i.test(query) ? "nearest" : /strong|most|great|high/i.test(query) ? "max" : "min", field: /kill/i.test(query) ? "kills" : "hp", near: /near|clos/i.test(query) ? host.locations().find((l) => l.value !== 64)?.value ?? 1 : null, locate: null, to: null, do: /kill/i.test(query) ? { kill: true } : null } : { id, kind: "foreach", flag, ...filter, do: /give/i.test(query) ? { give: 1 } : /kill/i.test(query) ? { kill: true } : { set: "hp", value: 100 } };
+  const filter = { unit: named_.unit === void 0 ? 0 : named_.unit, owner: PlayerGroup.Player1, location: named_.location ?? null };
+  const record = what === "text" ? { id, kind: "text", flag, parts: [{ text: "Score: " }, { counter: a2 }], to: "all" } : what === "math" ? { id, kind: "math", flag, op: /random/i.test(query) ? "rand" : /divid/i.test(query) ? "div" : /modul|remainder/i.test(query) ? "mod" : "mul", a: a2, b: /random/i.test(query) ? 100 : 2, to: a2 } : what === "count" ? { id, kind: "count", flag, ...filter, to: a2 } : what === "read" ? { id, kind: "read", flag, ...filter, field: "hp", to: a2 } : what === "setloc" ? { id, kind: "setloc", flag, location: host.locations().find((l) => l.value !== 64)?.value ?? 1, x: 0, y: 0, width: null, height: null, .../\bby\b|shift|offset|slide|scroll/i.test(query) ? { relative: true, x: 32 } : {} } : what === "pick" ? { id, kind: "pick", flag, ...filter, by: /random|lottery|any one/i.test(query) ? "random" : /near|clos|mouse|under/i.test(query) ? "nearest" : /strong|most|great|high/i.test(query) ? "max" : "min", field: /kill/i.test(query) ? "kills" : "hp", near: /near|clos|mouse|under/i.test(query) ? host.locations().find((l) => l.value !== 64)?.value ?? 1 : null, locate: null, to: null, do: /kill/i.test(query) ? { kill: true } : null } : { id, kind: "foreach", flag, ...filter, do: /give to|owner/i.test(query) ? { give: 1 } : /kill/i.test(query) ? { kill: true } : /damage|hurt|take|drain/i.test(query) ? { adjust: /shield/i.test(query) ? "shields" : /energy|mana/i.test(query) ? "energy" : "hp", delta: -20 } : /heal|restore|regen/i.test(query) ? { adjust: /shield/i.test(query) ? "shields" : /energy|mana/i.test(query) ? "energy" : "hp", delta: 20 } : { set: "hp", value: 100 } };
   return { action: flagAction({ cell: flag }), builds: [...store.sidecar.builds, record] };
 }
 function needsBuild(store, trigger3) {
@@ -7578,7 +7631,7 @@ function renderEditor(deps, root) {
         }
         insert(t("Add chat command"), made.condition, { builds: made.builds, chat: made.chat, ...made.counters ? { counters: made.counters } : {} });
       } else if (pick.what === "scan") {
-        const made = newScan(host, store);
+        const made = newScan(host, store, query, entities.find((e) => e.kind === "unit")?.value ?? 0);
         if (!made) {
           api.ui.toast({ kind: "error", title: t("No free counter cell for the check") });
           return;
@@ -7665,7 +7718,7 @@ function renderEditor(deps, root) {
   if (actions.length < MAX_ACTIONS) actSection.append(addRow(api, "action", ({ pick, entities, query }) => {
     if (pick.kind === "build") {
       if (pick.what === "chat" || pick.what === "scan" || pick.what === "key" || pick.what === "click" || pick.what === "mouseIn") return;
-      const made2 = newHook(host, store, pick.what, query);
+      const made2 = newHook(host, store, pick.what, query, { unit: entities.find((e) => e.kind === "unit")?.value, location: entities.find((e) => e.kind === "location")?.value });
       if (!made2) {
         api.ui.toast({ kind: "error", title: t("No free counter cell for the build row") });
         return;
