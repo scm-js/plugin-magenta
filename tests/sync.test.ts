@@ -14,7 +14,8 @@ const plain = (owner: number, action: number) => setOwners({ ...emptyTrigger(), 
 describe("sync", () => {
   it("puts a copy run after its anchor, takes it out again when the flag action goes, and is idempotent", () => {
     const anchor = setOwners({ ...emptyTrigger(), conditions: [{ ...emptyCondition(), type: ConditionType.Switch, resource: 0, comparison: 2 }], actions: [flagAction({ cell: FLAG }), { ...emptyAction(), type: ActionType.PreserveTrigger }] }, [0]);
-    const list = [plain(0, ActionType.Victory), anchor, plain(1, ActionType.Defeat)];
+    // Harmless actions: the simulator now ends a player's game on Victory, which would stop the run after it.
+    const list = [plain(0, ActionType.MinimapPing), anchor, plain(1, ActionType.Defeat)];
     const x: ExpansionRecord = { id: "c1", kind: "copy", from: A, to: B, flag: FLAG, bits: 16 };
     const r1 = sync(list, [x], text, intern);
     expect(r1.list).toHaveLength(3 + 18);

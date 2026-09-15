@@ -7,12 +7,11 @@ import type { PluginApi, TriggerRecord } from "@scm-js/plugin-api";
 import { ActionType, ConditionType } from "../../vendor/triggers";
 import { check } from "../model/checks";
 import { isEud } from "../model/eud";
-import { commentIndex, isTriggerDisabled, liveActions, liveConditions, owners } from "../model/records";
-import { actionsText, conditionText } from "./describe";
-import { cellLabel, compareOf, counterExpansionOf, RELATION_WORDS } from "./expansionRows";
-import { conditionRowOf, hookOf, needsBuild, renderConditionRow, renderHook } from "./buildRows";
+import { commentIndex, isTriggerDisabled, owners } from "../model/records";
+import { needsBuild } from "./buildRows";
 import type { Host } from "./host";
 import type { Store } from "./store";
+import { actionWords, conditionWords } from "./words";
 
 export interface ListDeps {
   api: PluginApi;
@@ -40,36 +39,12 @@ export interface ItemInfo {
   build: boolean;
 }
 
-/** A build row's sentence as plain words: rendered off-screen, its tags and the "#" chip left out. */
-function rowWords(deps: ListDeps, render: (into: HTMLElement) => void): string {
-  const span = deps.api.ui.el("span");
-  render(span);
-  span.querySelectorAll(".mg-tag").forEach((e) => e.remove());
-  span.querySelectorAll(".mg-chip").forEach((e) => { if (e.textContent === "#") e.remove(); });
-  return (span.textContent ?? "").replace(/\s+/g, " ").trim();
-}
-
 export function itemInfo(deps: ListDeps, index: number, trigger: TriggerRecord): ItemInfo {
   const { api, host, store } = deps;
   const namer = host.namer(store.sidecar);
-  const extra = host.extra();
   const ci = commentIndex(trigger);
-  const cmp = compareOf(store, index, trigger);
-  const conditions = liveConditions(trigger).flatMap((c, i) => {
-    if (cmp && cmp.rows.includes(i)) return i === cmp.rows[0] ? [`${cellLabel(cmp.x.a, namer)} is ${RELATION_WORDS[cmp.relation]} ${cellLabel(cmp.x.b, namer)}`] : [];
-    const brow = conditionRowOf(store, c);
-    if (brow) return [rowWords(deps, (into) => renderConditionRow(api, host, store, brow, into, () => {}))];
-    return [conditionText(c, namer, extra)];
-  });
-  const live = liveActions(trigger);
-  const actions = actionsText(live, namer, extra).filter((s) => live[s.at].type !== ActionType.Comment).map((s) => {
-    const a = live[s.at];
-    const hook = s.group ? null : hookOf(store, a);
-    if (hook) return rowWords(deps, (into) => renderHook(api, host, store, hook, into));
-    const x = s.group ? null : counterExpansionOf(store, a);
-    if (!x) return s.text;
-    return x.kind === "copy" ? `Copy ${cellLabel(x.from, namer)} into ${cellLabel(x.to, namer)}` : x.kind === "add" ? `Add ${cellLabel(x.from, namer)} to ${cellLabel(x.to, namer)}` : `Subtract ${cellLabel(x.from, namer)} from ${cellLabel(x.to, namer)}`;
-  });
+  const conditions = conditionWords(api, host, store, index, trigger).filter(Boolean);
+  const actions = actionWords(api, host, store, trigger).filter(Boolean);
   const title = ci >= 0 ? namer.string(trigger.actions[ci].text) ?? "" : "";
   const summary = [conditions.join(", "), actions.join(", ")].filter(Boolean).join(" → ");
   const own = owners(trigger);

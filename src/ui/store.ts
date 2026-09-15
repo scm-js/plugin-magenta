@@ -26,6 +26,8 @@ export class Store {
   /** Folder id by trigger index. */
   folders = new Map<number, string>();
   selected: number | null = null;
+  /** The "In plain words" fold under the open trigger is open (a session setting, not undone). */
+  showExplain = false;
   /** Where Magenta's own generated runs sit in the list, as the last sync placed them. */
   runs: SyncResult["runs"] = [];
   private undoStack: Snapshot[] = [];

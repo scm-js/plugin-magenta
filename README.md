@@ -91,6 +91,45 @@ Problems appear under the row they belong to: a trigger that never fires, two co
 contradict each other, a Wait inside a preserved trigger, a location or string the map no
 longer has, a sound that is not in the archive, a memory write Remastered does not allow.
 
+### In plain words
+
+Under the rows, **In plain words** folds out to a short paragraph on the open trigger: who
+runs it, when it fires, what it does, whether it fires once or keeps firing, on which clock,
+and how long its Waits hold the owner's other triggers. Below that is what the trigger shares
+with the rest of the list: each switch, counter, location and the countdown timer it touches,
+with the triggers that set or read the same thing. Click a name to go to that trigger. A run
+Magenta generated counts as the trigger that asked for it.
+
+### Dry run
+
+**⋯ ▸ Dry run…** opens a second panel that runs the triggers here, without the game. It
+starts from the map as it is — the placed units, the locations, the player slots and forces —
+and runs the list the way the game does: every player in order, each player's triggers in
+list order, once and then done unless preserved. **Step** runs one cycle, **Run 10** ten,
+**Run on** until someone wins or loses or nothing has happened for a while.
+
+The panel shows:
+
+- **The selected trigger**, with a verdict on each condition and the value the run saw
+  ("has 0"), for the owner picked at the top. This is the answer to "why did it not fire".
+- **Cannot tell**: the conditions the run could not decide — a key press, a chat command, a
+  build row's answer, a memory read of the game's own state. Tick one to pretend it holds.
+- **State**: the switches that are set, the counters and memory cells with their values, the
+  countdown timer, each player's minerals and gas and how many units they have. Click a value
+  to change it; **Put units** adds units of a type for a player at a location, which is how
+  to bring a unit to a beacon without the game.
+- **Log**: what fired, the text that was displayed, who won or lost, and where the run had to
+  skip something (an AI script, an order, a build row).
+
+The run knows switches, death counters and the EUD cells that share their table, the
+countdown timer and elapsed time, resources and scores, units at locations and the actions
+that create, kill, remove, give and move them, Move Location, alliances, victory and defeat,
+and a Wait, which holds the owner's other triggers until it ends. It does not fight, move
+units on its own, or count kills; Modify Unit, Order, sounds, the leader board and the view
+are skipped. A cycle is two seconds, or a frame when the map runs every frame. Resources
+start at 0, as in a Use Map Settings game. Editing a trigger while the panel is open stops the
+run until **Reset**, which starts over from the map as it is now.
+
 ### EUD
 
 The catalogue (`src/catalogue/eud.json`) offers conditions and actions the game has no record

@@ -5,8 +5,9 @@
 import type { PluginApi, TriggerRecord } from "@scm-js/plugin-api";
 import { ActionType, ConditionType, PlayerGroup, SetModifier } from "../../vendor/triggers";
 import { entry } from "../catalogue";
-import { lowerAction, recognizeAction } from "../model/eud";
-import { clone, fingerprint as fingerprintOf, isTriggerDisabled, liveActions, setTriggerDisabled } from "../model/records";
+import { lowerAction } from "../model/eud";
+import { clone, fingerprint as fingerprintOf, isTriggerDisabled, setTriggerDisabled } from "../model/records";
+import { isFrameTrigger } from "./frame";
 import type { Folder } from "../model/sidecar";
 import { setOwners } from "../model/records";
 import { DEFAULT_PLACEHOLDER, HUMAN_PLAYERS } from "../model/sync";
@@ -17,6 +18,7 @@ import { renderEditor } from "./editor";
 import { Host } from "./host";
 import { renderList } from "./list";
 import { openSettingsDialog } from "./settings";
+import { createSimulator } from "./simulate";
 import { closePopover, openPopover } from "./popover";
 import { Store } from "./store";
 import { STYLE } from "./styles";
@@ -60,6 +62,7 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
     host = new Host(api);
     store = new Store(host, hooks.afterCommit);
     const s = store, h = host;
+    const sim = createSimulator(api, h, s, () => everyFrame());
     if (pendingIndex !== null) s.selected = s.anchorOf(pendingIndex);
     else if (s.selected === null && s.list.length) s.selected = 0;
 
@@ -196,12 +199,6 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
 
     /* ── The every-frame switch ── */
     const timerEntry = entry("game.triggerTimer")!;
-    const isFrameTrigger = (tr: TriggerRecord) => {
-      const acts = liveActions(tr).filter((a) => a.type !== ActionType.Comment && a.type !== ActionType.PreserveTrigger);
-      if (acts.length !== 1) return false;
-      const row = recognizeAction(acts[0]);
-      return !!row && row.entry.id === "game.triggerTimer" && row.op === SetModifier.SetTo && row.value === 0;
-    };
     function everyFrame(): boolean { return s.list.some(isFrameTrigger); }
     function setEveryFrame(on: boolean): void {
       if (on === everyFrame()) return;
@@ -246,6 +243,7 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
         item(t("Run triggers every frame"), () => setEveryFrame(!everyFrame()), { checked: everyFrame() }),
         item(t("Counters…"), () => countersDialog()),
         sep(),
+        item(t("Dry run…"), () => sim.open()),
         item(t("Build EUD map…"), () => openBuildDialog(api, h, s, everyFrame())),
         item(t("Settings…"), () => openSettingsDialog(api)),
         sep(),
@@ -332,6 +330,7 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
       offLang.dispose();
       resize.disconnect();
       closePopover();
+      sim.close();
     };
   }
 

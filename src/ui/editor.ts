@@ -20,6 +20,10 @@ import { compareOf, counterExpansionOf, newCompare, newCounterStep, renderCompar
 import { flagAction } from "../model/expansions";
 import { conditionRowOf, hookOf, newChat, newHook, newInput, newScan, renderConditionRow, renderHook } from "./buildRows";
 import type { Store } from "./store";
+import { explain, type Ref } from "../model/explain";
+import { cellOf } from "../model/counters";
+import { cellLabel } from "./expansionRows";
+import { actionWords, conditionWords, titleOf } from "./words";
 
 export interface EditorDeps {
   api: PluginApi;
@@ -254,6 +258,41 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
     writeActions(t("Add action"), [...actions, ...made]);
   }, { names: () => host.parseNames() }));
   root.append(actSection);
+
+  /* ── In plain words ── */
+  const w = api.ui.widgets;
+  const fold = w.fold({ text: t("In plain words"), open: store.showExplain });
+  fold.addEventListener("toggle", () => { store.showExplain = fold.open; });
+  const x = explain(trigger, index, store.list, {
+    conditions: conditionWords(api, host, store, index, trigger),
+    actions: actionWords(api, host, store, trigger),
+    player: (g) => groups.find((g2) => g2.value === g)?.label ?? String(g),
+    perPlayer: perPlayer ? { players: perPlayer.players, placeholder: perPlayer.placeholder } : null,
+    everyFrame: !!store.sidecar.settings.everyFrame,
+    anchorOf: (i) => store.anchorOf(i),
+  });
+  const words = el("div", { className: "mg-explain" }, ...x.lines.map((line) => el("p", {}, line)));
+  const shared = x.refs.filter((r) => r.others.length);
+  if (shared.length) {
+    const refs = el("div", { className: "mg-refs" });
+    for (const r of shared) refs.append(refLine(r));
+    words.append(refs);
+  } else if (x.refs.length) words.append(el("div", { className: "mg-refs" }, el("span", {}, t("No other trigger uses the switches, counters or locations this one touches."))));
+  fold.body.append(words);
+  root.append(fold);
+
+  function refLine(r: Ref): HTMLElement {
+    const label = r.kind === "switch" ? namer.switch(r.id) : r.kind === "counter" ? cellLabel(cellOf(r.id), namer) : r.kind === "location" ? namer.location(r.id) : r.kind === "timer" ? t("The countdown timer") : t("memory at 0x{addr}", { addr: r.id.toString(16).toUpperCase() });
+    const verbs = r.kind === "switch" || r.kind === "timer" ? { writes: t("set by"), reads: t("read by"), both: t("set and read by") } : r.kind === "location" ? { writes: t("moved by"), reads: t("used by"), both: t("moved and used by") } : { writes: t("changed by"), reads: t("read by"), both: t("changed and read by") };
+    const line = el("div", { className: "mg-ref" }, el("b", {}, label));
+    for (const use of ["writes", "reads", "both"] as const) {
+      const who = r.others.filter((o) => o.use === use);
+      if (!who.length) continue;
+      line.append(el("span", {}, verbs[use]));
+      who.forEach((o, k) => line.append(el("button", { type: "button", className: "mg-sim-link", onclick: () => store.select(o.index) }, titleOf(api, host, store, o.index) + (k < who.length - 1 ? "," : ""))));
+    }
+    return line;
+  }
 }
 
 /** A fresh condition for a pick: StarEdit's defaults for a native one, the entry's for an EUD one. */

@@ -281,6 +281,17 @@ the first created unit and counts down from 1699 after it, and a User Selectable
 game hand out melee units and drop the placed ones. The templates of §1.4 were left out; the search row's browse mode
 covers the category tree.
 
+**2026-09-15, 0.5.0:** the two readouts the roadmap called "explain / simulate". *In plain words*
+(`src/model/explain.ts`) folds out under the open trigger: the shape in prose (owners, when,
+then, once or preserved, the clock, the Waits) and the switches, counters, locations and timer
+the trigger shares with the rest of the list, a generated run counted as its anchor. *Dry run*
+(`src/model/simulate.ts`, `src/ui/simulate.ts`) is a second panel that runs the list from the
+map's state — the old deaths-only test interpreter grown into a model of switches, counters
+and EUD cells, the timer and clock, resources, scores, units as points in locations, alliances,
+Waits and results — with a verdict per condition of the selected trigger, a "cannot tell" list
+whose entries can be assumed true, a state that can be poked, and a log. What it cannot know
+it reports rather than guesses.
+
 What comes after Tier A+ and the build rows — the candidate conditions and actions the build
 server makes possible, and the probe maps that decide which ship — is `candidates.md`
 (2026-09-14).

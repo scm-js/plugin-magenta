@@ -4625,6 +4625,14 @@ function actionsText(actions, namer, extra, briefing = false) {
   if (briefing) return actions.map((a2, at) => ({ at, count: 1, group: null, text: actionText(a2, namer, extra, true) }));
   return actionSpans(actions).map((s) => ({ at: s.at, count: s.count, group: s.group, text: s.group ? words(s.group, "action", namer, extra) : actionText(actions[s.at], namer, extra) }));
 }
+function memoryCellText(flatIndex, raw, namer, extra) {
+  const row = recognize("action", flatIndex, 0, 0, 0, raw, SetModifier.SetTo);
+  if (!row) return `memory 0x${(5808996 + flatIndex * 4).toString(16).toUpperCase()} = ${raw}`;
+  const segs = describeEud(row, "action", namer, extra);
+  const value = segs.find((s) => s.kind === "echip" && s.slot === "value");
+  const words2 = segs.filter((s) => !(s.kind === "echip" && (s.slot === "value" || s.slot === "op"))).map((s) => s.kind === "text" ? s.text : s.label).join("").replace(/\s+/g, " ").trim().replace(/^(Set|Make|Name) /, "");
+  return `${words2} = ${value && value.kind === "echip" ? value.label : raw}`;
+}
 
 // src/model/expansions.ts
 var MARKER_PREFIX = "magenta:";
@@ -4853,6 +4861,7 @@ function slotsOf(unitIds) {
 var PLAYER_SLOTS = 12;
 var UNIT_CLASS_FIRST = 228;
 var cellKey = (player, unit) => unit * PLAYER_SLOTS + player;
+var cellOf = (key) => [key % PLAYER_SLOTS, Math.floor(key / PLAYER_SLOTS)];
 function playerSlots(player, triggerOwners) {
   if (player < PLAYER_SLOTS) return [player];
   if (player >= PLAYER_GROUP_COUNT) return [];
@@ -4865,20 +4874,20 @@ function playerSlots(player, triggerOwners) {
   return Array.from({ length: PLAYER_SLOTS }, (_, i) => i);
 }
 function usage(list) {
-  const cells = /* @__PURE__ */ new Set();
+  const cells2 = /* @__PURE__ */ new Set();
   const switches = /* @__PURE__ */ new Set();
   for (const t of list) {
     const own = owners(t);
     for (const c2 of t.conditions) {
-      if (c2.type === ConditionType.Deaths && c2.unitId < UNIT_CLASS_FIRST) for (const p of playerSlots(c2.player, own)) cells.add(cellKey(p, c2.unitId));
+      if (c2.type === ConditionType.Deaths && c2.unitId < UNIT_CLASS_FIRST) for (const p of playerSlots(c2.player, own)) cells2.add(cellKey(p, c2.unitId));
       if (c2.type === ConditionType.Switch) switches.add(c2.resource);
     }
     for (const a2 of t.actions) {
-      if (a2.type === ActionType.SetDeaths && a2.unitId < UNIT_CLASS_FIRST) for (const p of playerSlots(a2.player, own)) cells.add(cellKey(p, a2.unitId));
+      if (a2.type === ActionType.SetDeaths && a2.unitId < UNIT_CLASS_FIRST) for (const p of playerSlots(a2.player, own)) cells2.add(cellKey(p, a2.unitId));
       if (a2.type === ActionType.SetSwitch) switches.add(a2.target);
     }
   }
-  return { cells, switches };
+  return { cells: cells2, switches };
 }
 var COUNTER_UNITS = [
   181,
@@ -5175,6 +5184,14 @@ var Host = class {
   }
 };
 
+// src/ui/frame.ts
+function isFrameTrigger(tr) {
+  const acts = liveActions(tr).filter((a2) => a2.type !== ActionType.Comment && a2.type !== ActionType.PreserveTrigger);
+  if (acts.length !== 1) return false;
+  const row = recognizeAction(acts[0]);
+  return !!row && row.entry.id === "game.triggerTimer" && row.op === SetModifier.SetTo && row.value === 0;
+}
+
 // src/model/sync.ts
 function clean(list, text) {
   return list.filter((t) => !markerOf(t, text));
@@ -5209,27 +5226,27 @@ function sync(list, expansions, text, intern) {
     if (x.kind === "copy" || x.kind === "add" || x.kind === "subtract") {
       const at = base.findIndex((t) => t.actions.some((a2) => isFlagAction(a2, { cell: x.flag })));
       if (at < 0) continue;
-      const run = counterRun(x, ownersAt(at), { cell: x.flag }, markers(x.id));
+      const run2 = counterRun(x, ownersAt(at), { cell: x.flag }, markers(x.id));
       const s = slot(at);
-      s.after.push(...run);
-      s.ids.push({ id: x.id, where: "after", count: run.length });
+      s.after.push(...run2);
+      s.ids.push({ id: x.id, where: "after", count: run2.length });
       kept.push(x);
     } else if (x.kind === "compare") {
       const at = anchorOf(base, x.anchor);
       if (at < 0) continue;
-      const run = compareRun(x, ownersAt(at), markers(x.id));
+      const run2 = compareRun(x, ownersAt(at), markers(x.id));
       const s = slot(at);
-      s.before.push(...run);
-      s.ids.push({ id: x.id, where: "before", count: run.length });
+      s.before.push(...run2);
+      s.ids.push({ id: x.id, where: "before", count: run2.length });
       kept.push({ ...x, anchor: { i: at, h: fingerprint(base[at]) } });
     } else if (x.kind === "forEachPlayer") {
       const at = anchorOf(base, x.anchor);
       if (at < 0) continue;
       if (owners(base[at]).length) out[at] = setOwners(base[at], []);
-      const run = forEachPlayerRun(x, base[at], markers(x.id));
+      const run2 = forEachPlayerRun(x, base[at], markers(x.id));
       const s = slot(at);
-      s.after.push(...run);
-      s.ids.push({ id: x.id, where: "after", count: run.length });
+      s.after.push(...run2);
+      s.ids.push({ id: x.id, where: "after", count: run2.length });
       kept.push({ ...x, anchor: { i: at, h: fingerprint(out[at]) } });
     }
   }
@@ -6532,8 +6549,8 @@ function renderRow(ctx, kind, index, record, problems, h) {
   const sentence = el("span", { className: "mg-sentence" });
   const eud = kind === "condition" ? recognizeCondition(record) : recognizeAction(record);
   const hh = h;
-  const lower = (row) => kind === "condition" ? lowerCondition(row) : lowerAction(row);
-  if (eud) renderEud(ctx, kind, eud, sentence, (row) => hh.onChange(lower(row)), (text, rowFor) => hh.onChangeWithText(text, (i) => lower(rowFor(i))));
+  const lower2 = (row) => kind === "condition" ? lowerCondition(row) : lowerAction(row);
+  if (eud) renderEud(ctx, kind, eud, sentence, (row) => hh.onChange(lower2(row)), (text, rowFor) => hh.onChangeWithText(text, (i) => lower2(rowFor(i))));
   else if (kind === "condition") renderNative(ctx, "condition", record, describeCondition(record, ctx.namer).segments, sentence, h);
   else renderNative(ctx, "action", record, describeAction(record, ctx.namer).segments, sentence, h);
   return rowShell(ctx, kind, index, sentence, disabled, problems, h);
@@ -7501,6 +7518,198 @@ function needsBuild(store, trigger3) {
   return trigger3.actions.some((a2) => a2.type === ActionType.SetDeaths && a2.modifier === SetModifier.SetTo && hookOf(store, a2) !== null) || trigger3.conditions.some((c2) => conditionRowOf(store, c2) !== null);
 }
 
+// src/model/explain.ts
+var join = (parts, word) => parts.length <= 1 ? parts.join("") : `${parts.slice(0, -1).join(", ")} ${word} ${parts[parts.length - 1]}`;
+var VERBS = /* @__PURE__ */ new Set(["show", "set", "end", "unpause", "run", "remove", "pause", "kill", "create", "center", "wait", "unmute", "play", "ping", "order", "mute", "move", "load", "give", "enable", "display", "disable", "add", "make", "name", "the", "vision", "invincibility", "placed", "copy", "subtract", "compare", "count", "read", "pick", "for", "every", "while"]);
+var lower = (s) => {
+  const word = s.split(/\s/, 1)[0] ?? "";
+  return VERBS.has(word.toLowerCase()) ? s[0].toLowerCase() + s.slice(1) : s;
+};
+function waitSeconds(trigger3) {
+  let ms = 0;
+  for (const a2 of liveActions(trigger3)) {
+    if (isActionDisabled(a2)) continue;
+    if (a2.type === ActionType.Wait) ms += a2.time;
+    if (a2.type === ActionType.Transmission) ms += a2.modifier === 8 ? a2.time + a2.target : a2.modifier === 9 ? Math.max(0, a2.time - a2.target) : a2.modifier === 7 ? a2.target : a2.time;
+  }
+  return Math.round(ms / 100) / 10;
+}
+var isPreserved = (t) => (t.flags & TriggerFlag.Preserve) !== 0 || liveActions(t).some((a2) => a2.type === ActionType.PreserveTrigger && !isActionDisabled(a2));
+function usesCurrentPlayer(t) {
+  return liveConditions(t).some((c2) => !isConditionDisabled(c2) && c2.player === PlayerGroup.CurrentPlayer) || liveActions(t).some((a2) => !isActionDisabled(a2) && (a2.player === PlayerGroup.CurrentPlayer || a2.type === ActionType.GiveUnits && a2.target === PlayerGroup.CurrentPlayer));
+}
+function explain(trigger3, index, list, input) {
+  const lines = [];
+  const own = owners(trigger3);
+  if (input.perPlayer) lines.push(`Runs once for each of ${join(input.perPlayer.players.map(input.player), "and")}, with ${input.player(input.perPlayer.placeholder)} standing for the player in every condition and action.`);
+  else if (own.length === 0) lines.push("No player owns this trigger, so it never runs.");
+  else if (own.length === 1 && own[0] === PlayerGroup.AllPlayers) lines.push("Every player runs this trigger, each on their own.");
+  else if (own.length === 1) lines.push(`${input.player(own[0])} runs this trigger.`);
+  else lines.push(`${join(own.map(input.player), "and")} each run this trigger on their own.`);
+  const conditions = liveConditions(trigger3);
+  const live = conditions.map((c2, i) => ({ c: c2, text: input.conditions[i] ?? "" })).filter(({ c: c2 }) => !isConditionDisabled(c2));
+  const skipped = conditions.length - live.length;
+  const never = live.some(({ c: c2 }) => c2.type === ConditionType.Never);
+  const always2 = live.every(({ c: c2 }) => c2.type === ConditionType.Always);
+  const actions = liveActions(trigger3);
+  const does = actions.map((a2, i) => ({ a: a2, text: input.actions[i] ?? "" })).filter(({ a: a2, text }) => !isActionDisabled(a2) && a2.type !== ActionType.Comment && a2.type !== ActionType.PreserveTrigger && text);
+  if (never) lines.push("A Never condition means it never fires.");
+  else {
+    if (always2) lines.push("It fires on the first cycle.");
+    else {
+      const when = live.filter(({ c: c2 }) => c2.type !== ConditionType.Always).map((x) => lower(x.text));
+      lines.push(`It fires when ${join(when, "and")}${when.length === 2 ? " both hold" : when.length > 2 ? " all hold" : ""}.`);
+    }
+    lines.push(does.length ? `Then: ${does.map((d) => lower(d.text)).join("; ")}.` : "It does nothing when it fires.");
+  }
+  if (skipped) lines.push(skipped === 1 ? "One disabled condition is ignored." : `${skipped} disabled conditions are ignored.`);
+  const clock = input.everyFrame ? "every frame" : "every two seconds";
+  if (!never && own.length) {
+    if (isPreserved(trigger3)) lines.push(always2 ? `It is preserved, so it runs again every cycle (${clock}).` : `It is preserved, so it fires again on every cycle (${clock}) its conditions hold.`);
+    else lines.push(own.length > 1 || own[0] === PlayerGroup.AllPlayers || input.perPlayer ? "It fires once for each owner and then stops." : "It fires once and then stops.");
+  }
+  const wait = waitSeconds(trigger3);
+  if (wait > 0) lines.push(`Its Waits hold the owner's other triggers for ${wait} second${wait === 1 ? "" : "s"} in all${isPreserved(trigger3) ? ", every time it fires" : ""}.`);
+  if (usesCurrentPlayer(trigger3) && (own.length > 1 || own[0] >= 12 || input.perPlayer)) lines.push("Current Player is whichever owner is running it.");
+  return { lines, refs: refsOf(list, index, input.anchorOf) };
+}
+var merge = (a2, b) => a2 === void 0 || a2 === b ? b : "both";
+function touches(t) {
+  const out = /* @__PURE__ */ new Map();
+  const add = (kind, id, use) => {
+    const key = `${kind}:${id}`;
+    const old = out.get(key);
+    out.set(key, { kind, id, use: merge(old?.use, use) });
+  };
+  const own = owners(t);
+  const counter = (player, unit, use) => {
+    if (isEud(player)) {
+      const k = player + unit * 12;
+      if (k < 228 * 12) add("counter", k, use);
+      else add("memory", 5808996 + k * 4 >>> 0, use);
+      return;
+    }
+    if (unit >= 228) return;
+    for (const p of playerSlots(player, own)) add("counter", cellKey(p, unit), use);
+  };
+  for (const c2 of liveConditions(t)) {
+    if (isConditionDisabled(c2)) continue;
+    if (c2.type === ConditionType.Switch) add("switch", c2.resource, "reads");
+    else if (c2.type === ConditionType.Deaths) counter(c2.player, c2.unitId, "reads");
+    else if (c2.type === ConditionType.CountdownTimer) add("timer", 0, "reads");
+    const def = conditionDef(c2.type);
+    if (def) {
+      for (const arg of def.args) if (arg.kind === "location") {
+        const n = c2[arg.field];
+        if (n > 0 && n < 64) add("location", n, "reads");
+      }
+    }
+  }
+  for (const a2 of liveActions(t)) {
+    if (isActionDisabled(a2)) continue;
+    if (a2.type === ActionType.SetSwitch) add("switch", a2.target, "writes");
+    else if (a2.type === ActionType.SetDeaths) counter(a2.player, a2.unitId, "writes");
+    else if (a2.type === ActionType.SetCountdownTimer || a2.type === ActionType.PauseTimer || a2.type === ActionType.UnpauseTimer) add("timer", 0, "writes");
+    else if (a2.type === ActionType.MoveLocation) {
+      if (a2.target > 0 && a2.target < 64) add("location", a2.target, "writes");
+      if (a2.location > 0 && a2.location < 64) add("location", a2.location, "reads");
+      continue;
+    }
+    const def = actionDef(a2.type);
+    if (def) {
+      for (const arg of def.args) if (arg.kind === "location") {
+        const n = a2[arg.field];
+        if (n > 0 && n < 64) add("location", n, "reads");
+      }
+    }
+  }
+  return out;
+}
+function mergeInto(into, from) {
+  for (const [key, x] of from) {
+    const old = into.get(key);
+    into.set(key, { ...x, use: merge(old?.use, x.use) });
+  }
+}
+function refsOf(list, index, anchorOf2 = (i) => i) {
+  const mine = /* @__PURE__ */ new Map();
+  const theirs = /* @__PURE__ */ new Map();
+  list.forEach((t, i) => {
+    const at = anchorOf2(i);
+    if (at === index) {
+      mergeInto(mine, touches(t));
+      return;
+    }
+    const acc = theirs.get(at) ?? /* @__PURE__ */ new Map();
+    mergeInto(acc, touches(t));
+    theirs.set(at, acc);
+  });
+  if (!mine.size) return [];
+  const refs = [...mine.values()].map((x) => ({ ...x, others: [] }));
+  for (const [at, touch] of [...theirs.entries()].sort((a2, b) => a2[0] - b[0])) {
+    for (const r of refs) {
+      const hit = touch.get(`${r.kind}:${r.id}`);
+      if (hit) r.others.push({ index: at, use: hit.use });
+    }
+  }
+  return refs.filter((r) => r.kind !== "location" || r.others.some((o) => o.use !== "reads") || r.use !== "reads").sort((a2, b) => b.others.length - a2.others.length);
+}
+
+// src/ui/words.ts
+function rowWords(api, render) {
+  const span = api.ui.el("span");
+  render(span);
+  span.querySelectorAll(".mg-tag").forEach((e) => e.remove());
+  span.querySelectorAll(".mg-chip").forEach((e) => {
+    if (e.textContent === "#") e.remove();
+  });
+  return (span.textContent ?? "").replace(/\s+/g, " ").trim();
+}
+function conditionWords(api, host, store, index, trigger3) {
+  const namer = host.namer(store.sidecar);
+  const extra = host.extra();
+  const cmp = compareOf(store, index, trigger3);
+  return liveConditions(trigger3).map((c2, i) => {
+    if (cmp && cmp.rows.includes(i)) return i === cmp.rows[0] ? `${cellLabel(cmp.x.a, namer)} is ${RELATION_WORDS[cmp.relation]} ${cellLabel(cmp.x.b, namer)}` : "";
+    const brow = conditionRowOf(store, c2);
+    if (brow) return rowWords(api, (into) => renderConditionRow(api, host, store, brow, into, () => {
+    }));
+    return conditionText(c2, namer, extra);
+  });
+}
+function actionWords(api, host, store, trigger3) {
+  const namer = host.namer(store.sidecar);
+  const extra = host.extra();
+  const live = liveActions(trigger3);
+  const ci = commentIndex(trigger3);
+  const out = live.map(() => "");
+  for (const s of actionsText(live, namer, extra)) {
+    const a2 = live[s.at];
+    if (s.at === ci || a2.type === ActionType.Comment) continue;
+    const hook = s.group ? null : hookOf(store, a2);
+    if (hook) {
+      out[s.at] = rowWords(api, (into) => renderHook(api, host, store, hook, into));
+      continue;
+    }
+    const x = s.group ? null : counterExpansionOf(store, a2);
+    if (x) {
+      out[s.at] = x.kind === "copy" ? `Copy ${cellLabel(x.from, namer)} into ${cellLabel(x.to, namer)}` : x.kind === "add" ? `Add ${cellLabel(x.from, namer)} to ${cellLabel(x.to, namer)}` : `Subtract ${cellLabel(x.from, namer)} from ${cellLabel(x.to, namer)}`;
+      continue;
+    }
+    out[s.at] = s.text;
+  }
+  return out;
+}
+function titleOf(api, host, store, index) {
+  const trigger3 = store.list[index];
+  if (!trigger3) return "";
+  const ci = commentIndex(trigger3);
+  const title = ci >= 0 ? host.namer(store.sidecar).string(trigger3.actions[ci].text) ?? "" : "";
+  if (title) return title;
+  const first = conditionWords(api, host, store, index, trigger3).find(Boolean) ?? actionWords(api, host, store, trigger3).find(Boolean);
+  return first ?? api.i18n.t("Trigger {n}", { n: store.cleanIndex(index) + 1 });
+}
+
 // src/ui/editor.ts
 function renderEditor(deps, root) {
   const { api, host, store } = deps;
@@ -7537,7 +7746,7 @@ function renderEditor(deps, root) {
       for (const a2 of tr.actions) if (a2.type === ActionType.SetDeaths && a2.player < PLAYER_GROUP_COUNT && a2.unitId < 228) for (const p of playerSlots(a2.player, own2)) claimedCells.add(cellKey(p, a2.unitId));
     }
   }
-  const perPlayer = store.sidecar.expansions.find((x) => x.kind === "forEachPlayer" && x.anchor.i === store.cleanIndex(index));
+  const perPlayer = store.sidecar.expansions.find((x2) => x2.kind === "forEachPlayer" && x2.anchor.i === store.cleanIndex(index));
   const problems = check(trigger3, { everyFrame: store.sidecar.settings.everyFrame, locationExists: (n) => host.locationExists(n), stringExists: (i) => host.stringExists(i), wavPresent: (i) => host.wavPresent(i), claimedCells, template: !!perPlayer });
   const general = problems.filter((p) => !p.at);
   const at = (kind, i) => problems.filter((p) => p.at?.kind === kind && p.at.index === i);
@@ -7570,15 +7779,15 @@ function renderEditor(deps, root) {
   const groups = host.playerGroups();
   const players = host.players();
   for (const g of own) {
-    const chip3 = el("button", { type: "button", className: "mg-chip", title: t("Click to remove") }, g < 12 && players[g]?.color ? el("span", { className: "mg-dot", style: `background:${players[g].color}` }) : null, groups.find((x) => x.value === g)?.label ?? String(g));
-    chip3.addEventListener("click", () => replace(t("Change owners"), setOwners(trigger3, own.filter((x) => x !== g))));
+    const chip3 = el("button", { type: "button", className: "mg-chip", title: t("Click to remove") }, g < 12 && players[g]?.color ? el("span", { className: "mg-dot", style: `background:${players[g].color}` }) : null, groups.find((x2) => x2.value === g)?.label ?? String(g));
+    chip3.addEventListener("click", () => replace(t("Change owners"), setOwners(trigger3, own.filter((x2) => x2 !== g))));
     playersRow.append(chip3);
   }
   const addOwner = el("button", { type: "button", className: "mg-chip", title: t("Add a player or group") }, "+");
   addOwner.addEventListener("click", () => pickChoice(api, addOwner, groups.filter((g) => !own.includes(g.value)).map((g) => ({ value: g.value, label: g.label, color: g.value < 12 ? players[g.value]?.color ?? null : void 0 })), (v) => replace(t("Change owners"), setOwners(trigger3, [...own, v])), { width: 220 }));
   playersRow.append(addOwner);
   if (perPlayer) {
-    playersRow.replaceChildren(el("span", { className: "hint" }, t("Runs once for each of")), ...perPlayer.players.map((p) => el("span", { className: "mg-chip" }, players[p]?.color ? el("span", { className: "mg-dot", style: `background:${players[p].color}` }) : null, groups.find((x) => x.value === p)?.label ?? String(p))), el("span", { className: "hint" }, t("with {group} standing for the player", { group: groups.find((x) => x.value === perPlayer.placeholder)?.label ?? "" })));
+    playersRow.replaceChildren(el("span", { className: "hint" }, t("Runs once for each of")), ...perPlayer.players.map((p) => el("span", { className: "mg-chip" }, players[p]?.color ? el("span", { className: "mg-dot", style: `background:${players[p].color}` }) : null, groups.find((x2) => x2.value === p)?.label ?? String(p))), el("span", { className: "hint" }, t("with {group} standing for the player", { group: groups.find((x2) => x2.value === perPlayer.placeholder)?.label ?? "" })));
   }
   root.append(playersRow);
   for (const p of general) root.append(el("div", { className: `mg-problem ${p.level}`, style: "padding-left:6px" }, p.text));
@@ -7590,7 +7799,7 @@ function renderEditor(deps, root) {
     const brow = conditionRowOf(store, c2);
     if (brow) {
       const sentence = el("span", { className: "mg-sentence" });
-      renderConditionRow(api, host, store, brow, sentence, (next) => writeConditions(t("Edit condition"), conditions.map((x, j) => j === i ? next : x)));
+      renderConditionRow(api, host, store, brow, sentence, (next) => writeConditions(t("Edit condition"), conditions.map((x2, j) => j === i ? next : x2)));
       const ownRecord = brow.kind === "chat" || brow.kind === "scan" ? brow.record.id : null;
       const remove = api.ui.widgets.button("\u2715", { ghost: true, title: t("Remove"), onClick: () => store.commit(t("Remove condition"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, conditions: conditions.filter((_, k) => k !== i) }), ownRecord ? { sidecar: { builds: store.sidecar.builds.filter((b) => b.id !== ownRecord) } } : {}) });
       condSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove))));
@@ -7600,13 +7809,13 @@ function renderEditor(deps, root) {
       if (i !== cmp.rows[0]) return;
       const sentence = el("span", { className: "mg-sentence" });
       renderCompare(api, host, store, index, trigger3, cmp, sentence);
-      const remove = api.ui.widgets.button("\u2715", { ghost: true, title: t("Remove"), onClick: () => store.commit(t("Remove comparison"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, conditions: conditions.filter((_, k) => !cmp.rows.includes(k)) }), { sidecar: { expansions: store.sidecar.expansions.filter((x) => x.id !== cmp.x.id) } }) });
+      const remove = api.ui.widgets.button("\u2715", { ghost: true, title: t("Remove"), onClick: () => store.commit(t("Remove comparison"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, conditions: conditions.filter((_, k) => !cmp.rows.includes(k)) }), { sidecar: { expansions: store.sidecar.expansions.filter((x2) => x2.id !== cmp.x.id) } }) });
       condSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove))));
       return;
     }
     condSection.append(renderRow(ctx, "condition", i, c2, at("condition", i), {
-      onChange: (rec) => writeConditions(t("Edit condition"), conditions.map((x, j) => j === i ? rec : x)),
-      onChangeWithText: (text, apply) => store.commit(t("Edit condition"), (intern) => store.list.map((tr, j) => j !== index ? tr : { ...tr, conditions: conditions.map((x, k) => k === i ? apply(intern(text)) : x) })),
+      onChange: (rec) => writeConditions(t("Edit condition"), conditions.map((x2, j) => j === i ? rec : x2)),
+      onChangeWithText: (text, apply) => store.commit(t("Edit condition"), (intern) => store.list.map((tr, j) => j !== index ? tr : { ...tr, conditions: conditions.map((x2, k) => k === i ? apply(intern(text)) : x2) })),
       onRemove: () => writeConditions(t("Remove condition"), conditions.filter((_, j) => j !== i)),
       onMove: (d) => {
         const to = i + d;
@@ -7615,7 +7824,7 @@ function renderEditor(deps, root) {
         [next[i], next[to]] = [next[to], next[i]];
         writeConditions(t("Move condition"), next);
       },
-      onToggle: () => writeConditions(t("Toggle condition"), conditions.map((x, j) => j === i ? setConditionDisabled(x, !(x.flags & 2)) : x))
+      onToggle: () => writeConditions(t("Toggle condition"), conditions.map((x2, j) => j === i ? setConditionDisabled(x2, !(x2.flags & 2)) : x2))
     }));
   });
   if (conditions.length < MAX_CONDITIONS) condSection.append(addRow(api, "condition", ({ pick, entities, query }) => {
@@ -7687,7 +7896,7 @@ function renderEditor(deps, root) {
         onChangeWithText: (text, apply) => store.commit(t("Edit action"), (intern) => store.list.map((tr, j) => j !== index ? tr : { ...tr, actions: splice(apply(intern(text))) })),
         onRemove: () => writeActions(t("Remove action"), splice([])),
         onMove: (d) => moveSpan(pos, d),
-        onToggle: () => writeActions(t("Toggle action"), splice(records.map((x) => setActionDisabled(x, !records.every((r) => r.flags & 2)))))
+        onToggle: () => writeActions(t("Toggle action"), splice(records.map((x2) => setActionDisabled(x2, !records.every((r) => r.flags & 2)))))
       }));
       continue;
     }
@@ -7708,11 +7917,11 @@ function renderEditor(deps, root) {
       continue;
     }
     actSection.append(renderRow(ctx, "action", i, a2, at("action", i), {
-      onChange: (rec) => writeActions(t("Edit action"), actions.map((x, j) => j === i ? rec : x)),
-      onChangeWithText: (text, apply) => store.commit(t("Edit action"), (intern) => store.list.map((tr, j) => j !== index ? tr : { ...tr, actions: actions.map((x, k) => k === i ? apply(intern(text)) : x) })),
+      onChange: (rec) => writeActions(t("Edit action"), actions.map((x2, j) => j === i ? rec : x2)),
+      onChangeWithText: (text, apply) => store.commit(t("Edit action"), (intern) => store.list.map((tr, j) => j !== index ? tr : { ...tr, actions: actions.map((x2, k) => k === i ? apply(intern(text)) : x2) })),
       onRemove: () => writeActions(t("Remove action"), actions.filter((_, j) => j !== i)),
       onMove: (d) => moveSpan(pos, d),
-      onToggle: () => writeActions(t("Toggle action"), actions.map((x, j) => j === i ? setActionDisabled(x, !(x.flags & 2)) : x))
+      onToggle: () => writeActions(t("Toggle action"), actions.map((x2, j) => j === i ? setActionDisabled(x2, !(x2.flags & 2)) : x2))
     }));
   }
   if (actions.length < MAX_ACTIONS) actSection.append(addRow(api, "action", ({ pick, entities, query }) => {
@@ -7751,6 +7960,40 @@ function renderEditor(deps, root) {
     writeActions(t("Add action"), [...actions, ...made]);
   }, { names: () => host.parseNames() }));
   root.append(actSection);
+  const w = api.ui.widgets;
+  const fold = w.fold({ text: t("In plain words"), open: store.showExplain });
+  fold.addEventListener("toggle", () => {
+    store.showExplain = fold.open;
+  });
+  const x = explain(trigger3, index, store.list, {
+    conditions: conditionWords(api, host, store, index, trigger3),
+    actions: actionWords(api, host, store, trigger3),
+    player: (g) => groups.find((g2) => g2.value === g)?.label ?? String(g),
+    perPlayer: perPlayer ? { players: perPlayer.players, placeholder: perPlayer.placeholder } : null,
+    everyFrame: !!store.sidecar.settings.everyFrame,
+    anchorOf: (i) => store.anchorOf(i)
+  });
+  const words2 = el("div", { className: "mg-explain" }, ...x.lines.map((line) => el("p", {}, line)));
+  const shared = x.refs.filter((r) => r.others.length);
+  if (shared.length) {
+    const refs = el("div", { className: "mg-refs" });
+    for (const r of shared) refs.append(refLine(r));
+    words2.append(refs);
+  } else if (x.refs.length) words2.append(el("div", { className: "mg-refs" }, el("span", {}, t("No other trigger uses the switches, counters or locations this one touches."))));
+  fold.body.append(words2);
+  root.append(fold);
+  function refLine(r) {
+    const label = r.kind === "switch" ? namer.switch(r.id) : r.kind === "counter" ? cellLabel(cellOf(r.id), namer) : r.kind === "location" ? namer.location(r.id) : r.kind === "timer" ? t("The countdown timer") : t("memory at 0x{addr}", { addr: r.id.toString(16).toUpperCase() });
+    const verbs = r.kind === "switch" || r.kind === "timer" ? { writes: t("set by"), reads: t("read by"), both: t("set and read by") } : r.kind === "location" ? { writes: t("moved by"), reads: t("used by"), both: t("moved and used by") } : { writes: t("changed by"), reads: t("read by"), both: t("changed and read by") };
+    const line = el("div", { className: "mg-ref" }, el("b", {}, label));
+    for (const use of ["writes", "reads", "both"]) {
+      const who = r.others.filter((o) => o.use === use);
+      if (!who.length) continue;
+      line.append(el("span", {}, verbs[use]));
+      who.forEach((o, k) => line.append(el("button", { type: "button", className: "mg-sim-link", onclick: () => store.select(o.index) }, titleOf(api, host, store, o.index) + (k < who.length - 1 ? "," : ""))));
+    }
+    return line;
+  }
 }
 function newCondition(api, pick, entities = [], query = "") {
   if (pick.kind === "native") return fillCondition(api.triggers.newCondition(pick.type), entities);
@@ -7772,37 +8015,12 @@ function newActions(api, pick, entities = [], query = "") {
 }
 
 // src/ui/list.ts
-function rowWords(deps, render) {
-  const span = deps.api.ui.el("span");
-  render(span);
-  span.querySelectorAll(".mg-tag").forEach((e) => e.remove());
-  span.querySelectorAll(".mg-chip").forEach((e) => {
-    if (e.textContent === "#") e.remove();
-  });
-  return (span.textContent ?? "").replace(/\s+/g, " ").trim();
-}
 function itemInfo(deps, index, trigger3) {
   const { api, host, store } = deps;
   const namer = host.namer(store.sidecar);
-  const extra = host.extra();
   const ci = commentIndex(trigger3);
-  const cmp = compareOf(store, index, trigger3);
-  const conditions = liveConditions(trigger3).flatMap((c2, i) => {
-    if (cmp && cmp.rows.includes(i)) return i === cmp.rows[0] ? [`${cellLabel(cmp.x.a, namer)} is ${RELATION_WORDS[cmp.relation]} ${cellLabel(cmp.x.b, namer)}`] : [];
-    const brow = conditionRowOf(store, c2);
-    if (brow) return [rowWords(deps, (into) => renderConditionRow(api, host, store, brow, into, () => {
-    }))];
-    return [conditionText(c2, namer, extra)];
-  });
-  const live = liveActions(trigger3);
-  const actions = actionsText(live, namer, extra).filter((s) => live[s.at].type !== ActionType.Comment).map((s) => {
-    const a2 = live[s.at];
-    const hook = s.group ? null : hookOf(store, a2);
-    if (hook) return rowWords(deps, (into) => renderHook(api, host, store, hook, into));
-    const x = s.group ? null : counterExpansionOf(store, a2);
-    if (!x) return s.text;
-    return x.kind === "copy" ? `Copy ${cellLabel(x.from, namer)} into ${cellLabel(x.to, namer)}` : x.kind === "add" ? `Add ${cellLabel(x.from, namer)} to ${cellLabel(x.to, namer)}` : `Subtract ${cellLabel(x.from, namer)} from ${cellLabel(x.to, namer)}`;
-  });
+  const conditions = conditionWords(api, host, store, index, trigger3).filter(Boolean);
+  const actions = actionWords(api, host, store, trigger3).filter(Boolean);
   const title = ci >= 0 ? namer.string(trigger3.actions[ci].text) ?? "" : "";
   const summary = [conditions.join(", "), actions.join(", ")].filter(Boolean).join(" \u2192 ");
   const own = owners(trigger3);
@@ -7946,6 +8164,877 @@ function openSettingsDialog(api) {
   });
 }
 
+// src/model/simulate.ts
+var HUMAN_PLAYERS2 = 8;
+var SLOTS = 12;
+var flat = (player, unit) => player + unit * 12;
+var secondsPerCycle = (world) => world.everyFrame ? 1 / 24 : 2;
+var defaultWorld = () => ({
+  locations: [],
+  active: Array.from({ length: SLOTS }, (_, i) => i < HUMAN_PLAYERS2),
+  force: Array.from({ length: SLOTS }, () => -1),
+  allied: Array.from({ length: SLOTS }, () => Array.from({ length: SLOTS }, () => false)),
+  isBuilding: (id) => id >= 106 && id <= 201,
+  string: () => null,
+  unknownCells: /* @__PURE__ */ new Set(),
+  hookCells: /* @__PURE__ */ new Set(),
+  everyFrame: false
+});
+var DEFAULT_WORLD = defaultWorld();
+function newState(world = DEFAULT_WORLD) {
+  return {
+    deaths: /* @__PURE__ */ new Map(),
+    switches: /* @__PURE__ */ new Set(),
+    spent: /* @__PURE__ */ new Set(),
+    cycle: 0,
+    seconds: 0,
+    countdown: 0,
+    countdownPaused: false,
+    units: [],
+    nextUnit: 1,
+    players: Array.from({ length: SLOTS }, () => ({ minerals: 0, gas: 0, score: Array.from({ length: 8 }, () => 0), result: null, wait: null })),
+    allied: world.allied.map((row) => [...row]),
+    kills: /* @__PURE__ */ new Map(),
+    assumptions: /* @__PURE__ */ new Map(),
+    unknown: /* @__PURE__ */ new Map(),
+    log: [],
+    rand: 625341585
+  };
+}
+function slotsOf2(group, current2, s, world) {
+  if (group < SLOTS) return [group];
+  if (group >= 27) return [];
+  const active = (p) => world.active[p];
+  switch (group) {
+    case PlayerGroup.CurrentPlayer:
+      return [current2];
+    case PlayerGroup.AllPlayers:
+      return Array.from({ length: SLOTS }, (_, p) => p);
+    case PlayerGroup.Foes:
+    case PlayerGroup.NonAlliedVictoryPlayers:
+      return range(SLOTS).filter((p) => p !== current2 && active(p) && !s.allied[current2][p]);
+    case PlayerGroup.Allies:
+      return range(SLOTS).filter((p) => p === current2 || active(p) && s.allied[current2][p]);
+    case PlayerGroup.NeutralPlayers:
+      return [11];
+    case PlayerGroup.Force1:
+    case PlayerGroup.Force2:
+    case PlayerGroup.Force3:
+    case PlayerGroup.Force4:
+      return range(HUMAN_PLAYERS2).filter((p) => world.force[p] === group - PlayerGroup.Force1);
+    default:
+      return [];
+  }
+}
+var range = (n) => Array.from({ length: n }, (_, i) => i);
+function runsFor(t, player, world) {
+  if (t.players[player] || t.players[PlayerGroup.AllPlayers]) return true;
+  const f = world.force[player];
+  return f >= 0 && !!t.players[PlayerGroup.Force1 + f];
+}
+function matchesUnit(world, unitId, wanted) {
+  if (wanted < UnitClass.Any) return unitId === wanted;
+  if (wanted === UnitClass.Any) return true;
+  if (wanted === UnitClass.Men) return !world.isBuilding(unitId);
+  return world.isBuilding(unitId);
+}
+function inLocation(world, u, location) {
+  if (location === 64) return true;
+  const r = world.locations[location];
+  return !!r && u.x >= r.left && u.x < r.right && u.y >= r.top && u.y < r.bottom;
+}
+function unitsOf(s, world, slots, unitId, location) {
+  return s.units.filter((u) => slots.includes(u.owner) && matchesUnit(world, u.unitId, unitId) && (location === null || inLocation(world, u, location)));
+}
+function putUnits(s, world, owner, unitId, count, location) {
+  const r = location === 64 ? { left: 0, top: 0, right: 64, bottom: 64 } : world.locations[location];
+  if (!r) return [];
+  const cx = (r.left + r.right) / 2, cy = (r.top + r.bottom) / 2;
+  const made = [];
+  for (let k = 0; k < count; k++) {
+    const u = { id: s.nextUnit++, owner, unitId, x: Math.min(r.right - 1, cx + k % 4), y: Math.min(r.bottom - 1, cy + Math.floor(k / 4)) };
+    s.units.push(u);
+    made.push(u);
+  }
+  return made;
+}
+function compare(cmp, have, want) {
+  if (cmp === Comparison.AtLeast) return have >= want;
+  if (cmp === Comparison.AtMost) return have <= want;
+  return have === want;
+}
+function resourcesOf(p, kind) {
+  return kind === ResourceType.Ore ? p.minerals : kind === ResourceType.Gas ? p.gas : p.minerals + p.gas;
+}
+function scoreOf(p, kind) {
+  const sc = p.score;
+  switch (kind) {
+    case ScoreType.UnitsAndBuildings:
+      return sc[ScoreType.Units] + sc[ScoreType.Buildings];
+    case ScoreType.KillsAndRazings:
+      return sc[ScoreType.Kills] + sc[ScoreType.Razings];
+    case ScoreType.Total:
+      return sc[ScoreType.Total] + sc[ScoreType.Units] + sc[ScoreType.Buildings] + sc[ScoreType.Kills] + sc[ScoreType.Razings] + sc[ScoreType.Custom];
+    default:
+      return sc[kind] ?? 0;
+  }
+}
+function modify(op, old, amount) {
+  if (op === SetModifier.Add) return old + amount;
+  if (op === SetModifier.Subtract) return Math.max(0, old - amount);
+  return amount;
+}
+function random(s) {
+  let x = s.rand;
+  x ^= x << 13;
+  x >>>= 0;
+  x ^= x >>> 17;
+  x ^= x << 5;
+  x >>>= 0;
+  s.rand = x;
+  return x;
+}
+function cells(player, unit, current2, s, world) {
+  if (player >= 27) return [player + unit * 12];
+  return slotsOf2(player, current2, s, world).map((p) => flat(p, unit));
+}
+var most = (world, current2, value, least) => {
+  const mine = value(current2);
+  return range(HUMAN_PLAYERS2).every((p) => p === current2 || !world.active[p] || (least ? value(p) >= mine : value(p) <= mine));
+};
+function evaluate(c2, current2, s, world, key) {
+  const assume = () => ({ ok: s.assumptions.get(key) ?? false, known: false, key });
+  const count = (slots, location) => unitsOf(s, world, slots, c2.unitId, location).length;
+  const commanded = (p, location) => unitsOf(s, world, [p], c2.unitId, location).length;
+  switch (c2.type) {
+    case ConditionType.Always:
+    case ConditionType.Briefing:
+      return { ok: true, known: true };
+    case ConditionType.Never:
+      return { ok: false, known: true };
+    case ConditionType.Switch:
+      return { ok: c2.comparison === SwitchState.Set === s.switches.has(c2.resource), known: true };
+    case ConditionType.Deaths: {
+      const list = cells(c2.player, c2.unitId, current2, s, world);
+      if (list.some((cell) => world.unknownCells.has(cell))) return assume();
+      if (isEud(c2.player) && !list.every((cell) => s.deaths.has(cell))) return assume();
+      const mask = c2.mask === MASK_MARKER ? c2.location >>> 0 : 4294967295;
+      const sum = list.reduce((n, cell) => n + (((s.deaths.get(cell) ?? 0) & mask) >>> 0), 0) >>> 0;
+      return { ok: compare(c2.comparison, sum, c2.amount >>> 0), known: true, have: sum };
+    }
+    case ConditionType.CountdownTimer: {
+      const have = Math.floor(s.countdown);
+      return { ok: compare(c2.comparison, have, c2.amount), known: true, have };
+    }
+    case ConditionType.ElapsedTime: {
+      const have = Math.floor(s.seconds);
+      return { ok: compare(c2.comparison, have, c2.amount), known: true, have };
+    }
+    case ConditionType.Accumulate: {
+      const have = slotsOf2(c2.player, current2, s, world).reduce((n, p) => n + resourcesOf(s.players[p], c2.resource), 0);
+      return { ok: compare(c2.comparison, have, c2.amount), known: true, have };
+    }
+    case ConditionType.Score: {
+      const have = slotsOf2(c2.player, current2, s, world).reduce((n, p) => n + scoreOf(s.players[p], c2.resource), 0);
+      return { ok: compare(c2.comparison, have, c2.amount), known: true, have };
+    }
+    case ConditionType.Bring: {
+      if (c2.location === 0) return { ok: false, known: true, have: 0 };
+      const have = count(slotsOf2(c2.player, current2, s, world), c2.location);
+      return { ok: compare(c2.comparison, have, c2.amount), known: true, have };
+    }
+    case ConditionType.Command: {
+      const have = count(slotsOf2(c2.player, current2, s, world), null);
+      return { ok: compare(c2.comparison, have, c2.amount), known: true, have };
+    }
+    case ConditionType.Kill: {
+      const have = slotsOf2(c2.player, current2, s, world).reduce((n, p) => n + (s.kills.get(flat(p, c2.unitId)) ?? 0), 0);
+      return { ok: compare(c2.comparison, have, c2.amount), known: true, have };
+    }
+    case ConditionType.Opponents: {
+      const me = slotsOf2(c2.player, current2, s, world)[0] ?? current2;
+      const have = range(HUMAN_PLAYERS2).filter((p) => p !== me && world.active[p] && !s.allied[me][p] && s.players[p].result === null).length;
+      return { ok: compare(c2.comparison, have, c2.amount), known: true, have };
+    }
+    case ConditionType.CommandTheMost:
+      return { ok: most(world, current2, (p) => commanded(p, null), false), known: true, have: commanded(current2, null) };
+    case ConditionType.CommandTheLeast:
+      return { ok: most(world, current2, (p) => commanded(p, null), true), known: true, have: commanded(current2, null) };
+    case ConditionType.CommandTheMostAt:
+      return { ok: most(world, current2, (p) => commanded(p, c2.location), false), known: true, have: commanded(current2, c2.location) };
+    case ConditionType.CommandTheLeastAt:
+      return { ok: most(world, current2, (p) => commanded(p, c2.location), true), known: true, have: commanded(current2, c2.location) };
+    case ConditionType.MostKills:
+      return { ok: most(world, current2, (p) => s.kills.get(flat(p, c2.unitId)) ?? 0, false), known: true, have: s.kills.get(flat(current2, c2.unitId)) ?? 0 };
+    case ConditionType.LeastKills:
+      return { ok: most(world, current2, (p) => s.kills.get(flat(p, c2.unitId)) ?? 0, true), known: true, have: s.kills.get(flat(current2, c2.unitId)) ?? 0 };
+    case ConditionType.HighestScore:
+      return { ok: most(world, current2, (p) => scoreOf(s.players[p], c2.resource), false), known: true, have: scoreOf(s.players[current2], c2.resource) };
+    case ConditionType.LowestScore:
+      return { ok: most(world, current2, (p) => scoreOf(s.players[p], c2.resource), true), known: true, have: scoreOf(s.players[current2], c2.resource) };
+    case ConditionType.MostResources:
+      return { ok: most(world, current2, (p) => resourcesOf(s.players[p], c2.resource), false), known: true, have: resourcesOf(s.players[current2], c2.resource) };
+    case ConditionType.LeastResources:
+      return { ok: most(world, current2, (p) => resourcesOf(s.players[p], c2.resource), true), known: true, have: resourcesOf(s.players[current2], c2.resource) };
+    default:
+      return assume();
+  }
+}
+var assumptionKey = (trigger3, condition) => `${trigger3}:${condition}`;
+function verdicts(list, index, player, s, world) {
+  const t = list[index];
+  if (!t) return [];
+  return liveConditions(t).map((c2, i) => ({ condition: i, verdict: isConditionDisabled(c2) ? { ok: true, known: true } : evaluate(c2, player, s, world, assumptionKey(index, i)) }));
+}
+function runAction(a2, i, current2, s, world) {
+  const note = (text2) => s.log.push({ cycle: s.cycle, player: current2, trigger: i, kind: "note", text: text2 });
+  const slots = (group) => slotsOf2(group, current2, s, world);
+  const text = (index) => world.string(index) ?? "";
+  switch (a2.type) {
+    case ActionType.Victory:
+    case ActionType.Defeat:
+    case ActionType.Draw: {
+      const result = a2.type === ActionType.Victory ? "victory" : a2.type === ActionType.Defeat ? "defeat" : "draw";
+      s.players[current2].result = result;
+      s.log.push({ cycle: s.cycle, player: current2, trigger: i, kind: "end", result });
+      return {};
+    }
+    case ActionType.Wait:
+      return { wait: a2.time / 1e3 };
+    case ActionType.Transmission: {
+      if (a2.text) s.log.push({ cycle: s.cycle, player: current2, trigger: i, kind: "text", text: text(a2.text) });
+      return { wait: modify(a2.modifier, a2.time, a2.target) / 1e3 };
+    }
+    case ActionType.DisplayText:
+      s.log.push({ cycle: s.cycle, player: current2, trigger: i, kind: "text", text: text(a2.text) });
+      return {};
+    case ActionType.SetMissionObjectives:
+      s.log.push({ cycle: s.cycle, player: current2, trigger: i, kind: "objectives", text: text(a2.text) });
+      return {};
+    case ActionType.SetSwitch: {
+      if (a2.modifier === SwitchAction.Set) s.switches.add(a2.target);
+      else if (a2.modifier === SwitchAction.Clear) s.switches.delete(a2.target);
+      else if (a2.modifier === SwitchAction.Toggle) {
+        if (s.switches.has(a2.target)) s.switches.delete(a2.target);
+        else s.switches.add(a2.target);
+      } else if (a2.modifier === SwitchAction.Randomize) {
+        if (random(s) & 1) s.switches.add(a2.target);
+        else s.switches.delete(a2.target);
+      }
+      return {};
+    }
+    case ActionType.SetCountdownTimer:
+      s.countdown = modify(a2.modifier, s.countdown, a2.time);
+      return {};
+    case ActionType.PauseTimer:
+      s.countdownPaused = true;
+      return {};
+    case ActionType.UnpauseTimer:
+      s.countdownPaused = false;
+      return {};
+    case ActionType.SetDeaths: {
+      const mask = a2.mask === MASK_MARKER ? a2.location >>> 0 : 4294967295;
+      for (const cell of cells(a2.player, a2.unitId, current2, s, world)) {
+        const old = s.deaths.get(cell) ?? 0;
+        const field = (old & mask) >>> 0;
+        let next;
+        if (a2.modifier === SetModifier.SetTo) next = a2.target & mask;
+        else if (a2.modifier === SetModifier.Add) next = field + a2.target >>> 0 & mask;
+        else next = Math.max(0, field - a2.target) & mask;
+        s.deaths.set(cell, (old & ~mask | next) >>> 0);
+        if (world.hookCells.has(cell)) note("A build row runs here in the game; the dry run skips it.");
+      }
+      return {};
+    }
+    case ActionType.SetResources: {
+      for (const p of slots(a2.player)) {
+        const pl = s.players[p];
+        if (a2.unitId === ResourceType.Ore || a2.unitId === ResourceType.OreAndGas) pl.minerals = modify(a2.modifier, pl.minerals, a2.target);
+        if (a2.unitId === ResourceType.Gas || a2.unitId === ResourceType.OreAndGas) pl.gas = modify(a2.modifier, pl.gas, a2.target);
+      }
+      return {};
+    }
+    case ActionType.SetScore: {
+      const kinds = a2.unitId === ScoreType.UnitsAndBuildings ? [ScoreType.Units, ScoreType.Buildings] : a2.unitId === ScoreType.KillsAndRazings ? [ScoreType.Kills, ScoreType.Razings] : [a2.unitId];
+      for (const p of slots(a2.player)) for (const k of kinds) s.players[p].score[k] = modify(a2.modifier, s.players[p].score[k] ?? 0, a2.target);
+      return {};
+    }
+    case ActionType.CreateUnit:
+    case ActionType.CreateUnitWithProperties: {
+      if (a2.location === 0 || a2.unitId >= UnitClass.Any) return {};
+      for (const p of slots(a2.player)) putUnits(s, world, p, a2.unitId, Math.max(1, a2.modifier), a2.location);
+      return {};
+    }
+    case ActionType.KillUnit:
+    case ActionType.KillUnitAt:
+    case ActionType.RemoveUnit:
+    case ActionType.RemoveUnitAt: {
+      const at = a2.type === ActionType.KillUnitAt || a2.type === ActionType.RemoveUnitAt;
+      if (at && a2.location === 0) return {};
+      let hit = unitsOf(s, world, slots(a2.player), a2.unitId, at ? a2.location : null);
+      if (at && a2.modifier > 0) hit = hit.slice(0, a2.modifier);
+      const gone = new Set(hit.map((u) => u.id));
+      s.units = s.units.filter((u) => !gone.has(u.id));
+      if (a2.type === ActionType.KillUnit || a2.type === ActionType.KillUnitAt) for (const u of hit) s.deaths.set(flat(u.owner, u.unitId), (s.deaths.get(flat(u.owner, u.unitId)) ?? 0) + 1);
+      return {};
+    }
+    case ActionType.GiveUnits: {
+      if (a2.location === 0) return {};
+      const to = slots(a2.target)[0];
+      if (to === void 0) return {};
+      let hit = unitsOf(s, world, slots(a2.player), a2.unitId, a2.location);
+      if (a2.modifier > 0) hit = hit.slice(0, a2.modifier);
+      for (const u of hit) u.owner = to;
+      return {};
+    }
+    case ActionType.MoveUnit: {
+      if (a2.location === 0 || a2.target === 0) return {};
+      const dest = a2.target === 64 ? { left: 0, top: 0, right: 64, bottom: 64 } : world.locations[a2.target];
+      if (!dest) return {};
+      let hit = unitsOf(s, world, slots(a2.player), a2.unitId, a2.location);
+      if (a2.modifier > 0) hit = hit.slice(0, a2.modifier);
+      for (const u of hit) {
+        u.x = (dest.left + dest.right) / 2;
+        u.y = (dest.top + dest.bottom) / 2;
+      }
+      return {};
+    }
+    case ActionType.MoveLocation: {
+      if (a2.location === 0 || a2.target === 0 || a2.target === 64) return {};
+      const r = world.locations[a2.target];
+      const u = unitsOf(s, world, slots(a2.player), a2.unitId, a2.location)[0];
+      if (!r || !u) return {};
+      const w = r.right - r.left, h = r.bottom - r.top;
+      world.locations[a2.target] = { left: u.x - w / 2, top: u.y - h / 2, right: u.x + w / 2, bottom: u.y + h / 2 };
+      return {};
+    }
+    case ActionType.SetAllianceStatus: {
+      for (const p of slots(a2.player)) if (p !== current2) s.allied[current2][p] = a2.unitId !== AllianceStatus.Enemy;
+      return {};
+    }
+    case ActionType.RunAiScript:
+    case ActionType.RunAiScriptAt:
+      note("An AI script runs here in the game; the dry run does not have one.");
+      return {};
+    case ActionType.Order:
+      note("An order is given here; the dry run does not move units.");
+      return {};
+    case ActionType.SetNextScenario:
+      note(`The next scenario is set to "${text(a2.text)}".`);
+      return {};
+    case ActionType.PlayWav:
+      note("A sound plays here.");
+      return {};
+    default:
+      return {};
+  }
+}
+var isPreserved2 = (t) => (t.flags & TriggerFlag.Preserve) !== 0 || liveActions(t).some((a2) => a2.type === ActionType.PreserveTrigger && !isActionDisabled(a2));
+function runActions(list, i, from, player, s, world) {
+  const t = list[i];
+  const actions = liveActions(t);
+  for (let j = from; j < actions.length; j++) {
+    const a2 = actions[j];
+    if (isActionDisabled(a2)) continue;
+    const out = runAction(a2, i, player, s, world);
+    if (out.wait !== void 0) {
+      s.players[player].wait = { until: s.seconds + out.wait, trigger: i, action: j + 1 };
+      s.log.push({ cycle: s.cycle, player, trigger: i, kind: "wait", seconds: out.wait });
+      return true;
+    }
+    if (s.players[player].result !== null) return true;
+  }
+  return false;
+}
+function runPlayer(list, player, s, world) {
+  const fired = [];
+  const p = s.players[player];
+  if (p.result !== null) return fired;
+  let start = 0;
+  if (p.wait) {
+    if (s.seconds < p.wait.until - 1e-9) return fired;
+    const { trigger: trigger3, action } = p.wait;
+    p.wait = null;
+    if (runActions(list, trigger3, action, player, s, world)) return fired;
+    start = trigger3 + 1;
+  }
+  for (let i = start; i < list.length; i++) {
+    const t = list[i];
+    if (!runsFor(t, player, world) || s.spent.has(i * 16 + player)) continue;
+    let ok = true;
+    liveConditions(t).forEach((c2, k) => {
+      if (!ok || isConditionDisabled(c2)) return;
+      const key = assumptionKey(i, k);
+      const v = evaluate(c2, player, s, world, key);
+      if (!v.known) s.unknown.set(key, { key, trigger: i, condition: k, player });
+      if (!v.ok) ok = false;
+    });
+    if (!ok) continue;
+    fired.push(i);
+    s.log.push({ cycle: s.cycle, player, trigger: i, kind: "fired" });
+    if (!isPreserved2(t)) s.spent.add(i * 16 + player);
+    if (runActions(list, i, 0, player, s, world)) return fired;
+  }
+  return fired;
+}
+function cycle(list, s, world = DEFAULT_WORLD) {
+  s.cycle++;
+  const fired = [];
+  for (let player = 0; player < HUMAN_PLAYERS2; player++) {
+    if (!world.active[player]) continue;
+    fired.push(...runPlayer(list, player, s, world));
+  }
+  const dt = secondsPerCycle(world);
+  s.seconds += dt;
+  if (!s.countdownPaused && s.countdown > 0) s.countdown = Math.max(0, s.countdown - dt);
+  return fired;
+}
+var isOver = (s, world) => range(HUMAN_PLAYERS2).every((p) => !world.active[p] || s.players[p].result !== null);
+function run(list, s, world, max, idle = 50, counts = () => true) {
+  let quiet = 0, n = 0;
+  for (; n < max; n++) {
+    const fired = cycle(list, s, world).filter(counts);
+    const waiting = s.players.some((p) => p.wait !== null);
+    quiet = fired.length || waiting ? 0 : quiet + 1;
+    if (isOver(s, world) || quiet >= idle) {
+      n++;
+      break;
+    }
+  }
+  return n;
+}
+
+// src/ui/styles.ts
+var STYLE = `
+.mg { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 8px; font-size: var(--fs-sm, 11.5px); }
+.mg .mg-head { display: flex; align-items: center; gap: 6px; }
+.mg .mg-head .input { flex: 1; min-width: 80px; }
+.mg .mg-split { display: flex; flex: 1; min-height: 0; gap: 10px; }
+.mg .mg-list { width: 240px; flex: none; display: flex; flex-direction: column; min-height: 0; background: var(--bg-0); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--bevel-sunken); overflow: auto; outline: none; }
+.mg.narrow .mg-list { width: 150px; }
+.mg .mg-editor { flex: 1; min-width: 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 4px; }
+.mg .mg-empty { color: var(--text-faint); padding: 20px; text-align: center; }
+
+.mg .mg-folder { display: flex; align-items: center; gap: 6px; padding: 4px 6px; color: var(--text-dim); text-transform: uppercase; font-size: var(--fs-xs); letter-spacing: 0.04em; cursor: pointer; user-select: none; border-top: 1px solid var(--border); }
+.mg .mg-folder:first-child { border-top: 0; }
+.mg .mg-folder .mg-count { margin-left: auto; color: var(--text-faint); text-transform: none; letter-spacing: 0; }
+.mg .mg-folder.drop { background: var(--bg-3); }
+.mg .mg-item { display: grid; grid-template-columns: 1fr auto; gap: 2px 6px; padding: 4px 8px 4px 14px; cursor: default; border-left: 2px solid transparent; }
+.mg .mg-item.top { padding-left: 8px; }
+.mg .mg-item:hover { background: var(--bg-3); }
+.mg .mg-item.selected { background: var(--sel); color: #fff; border-left-color: #f28ccb; }
+.mg .mg-item.selected .mg-sub, .mg .mg-item.selected .mg-badge { color: rgba(255,255,255,0.75); }
+.mg .mg-item.drop-before { box-shadow: inset 0 2px 0 var(--teal); }
+.mg .mg-item .mg-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mg .mg-item.disabled .mg-title { text-decoration: line-through; color: var(--text-faint); }
+.mg .mg-item .mg-sub { grid-column: 1 / -1; color: var(--text-faint); font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mg .mg-badges { display: flex; gap: 4px; align-items: center; }
+.mg .mg-badge { font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; padding: 1px 4px; border-radius: 2px; background: var(--bg-3); color: var(--text-dim); }
+.mg .mg-badge.eud { background: rgba(79, 209, 197, 0.18); color: var(--teal); }
+.mg .mg-badge.warn { background: rgba(224, 165, 69, 0.18); color: var(--warn); }
+.mg .mg-badge.error { background: rgba(217, 83, 79, 0.2); color: var(--danger); }
+.mg .mg-badge.lock { background: rgba(230, 185, 92, 0.18); color: var(--gold); }
+
+.mg .mg-titlebar { display: flex; align-items: center; gap: 8px; }
+.mg .mg-titlebar .input { font-size: var(--fs-lg); font-weight: 600; height: 30px; }
+.mg .mg-section { display: flex; flex-direction: column; gap: 4px; }
+.mg .mg-section-head { display: flex; align-items: center; gap: 8px; color: var(--text-dim); text-transform: uppercase; font-size: var(--fs-xs); letter-spacing: 0.06em; padding-bottom: 2px; border-bottom: 1px solid var(--border); }
+.mg .mg-section-head .grow { flex: 1; }
+.mg .mg-players { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+
+.mg .mg-row { display: flex; align-items: flex-start; gap: 6px; padding: 4px 6px; border-radius: var(--radius); outline: none; }
+.mg .mg-row:hover, .mg .mg-row:focus-within { background: var(--bg-2); }
+.mg .mg-row:focus-visible { box-shadow: var(--focus); }
+.mg .mg-row.disabled .mg-sentence { opacity: 0.45; text-decoration: line-through; }
+.mg .mg-row .mg-sentence { flex: 1; min-width: 0; line-height: 24px; word-break: break-word; }
+.mg .mg-row .mg-tools { display: none; gap: 2px; flex: none; }
+.mg .mg-row:hover .mg-tools, .mg .mg-row:focus-within .mg-tools { display: flex; }
+.mg .mg-row .mg-tools .btn { min-width: 20px; height: 20px; padding: 0 4px; font-size: 10px; }
+.mg .mg-problem { font-size: var(--fs-xs); padding: 2px 8px 2px 24px; color: var(--warn); }
+.mg .mg-problem.error { color: var(--danger); }
+.mg .mg-problem.info { color: var(--text-dim); }
+
+.mg .mg-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; height: 20px; padding: 0 6px; margin: 0 1px; vertical-align: middle; border-radius: 3px; border: 1px solid var(--border-strong); background: var(--bg-3); color: var(--text); font: inherit; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: var(--bevel-raised); }
+.mg .mg-chip:hover { background: var(--bg-4); border-color: var(--teal-dim); }
+.mg .mg-chip:focus-visible { outline: none; box-shadow: var(--bevel-raised), var(--focus); }
+.mg .mg-chip.eud { border-color: var(--teal-dim); }
+.mg .mg-chip.counter { border-color: var(--gold-dim); color: var(--gold-hi); }
+.mg .mg-chip.text { font-style: italic; }
+.mg .mg-chip .mg-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; border: 1px solid rgba(0,0,0,0.5); }
+.mg .mg-tag { display: inline-block; vertical-align: middle; margin-left: 6px; font-size: 9px; letter-spacing: 0.08em; padding: 1px 4px; border-radius: 2px; background: rgba(79, 209, 197, 0.18); color: var(--teal); cursor: help; }
+.mg .mg-tag.ro { background: rgba(224, 165, 69, 0.18); color: var(--warn); }
+.mg .mg-tag.unverified { background: transparent; outline: 1px dashed rgba(79, 209, 197, 0.6); outline-offset: -1px; }
+
+.mg .mg-add { display: flex; align-items: center; gap: 6px; padding: 2px 6px; }
+.mg .mg-add .input { flex: 1; height: 24px; }
+.mg .mg-note { color: var(--text-dim); font-size: var(--fs-xs); padding: 2px 6px; }
+.mg .mg-explain { display: flex; flex-direction: column; gap: 6px; padding: 4px 6px; }
+.mg .mg-explain p { margin: 0; line-height: 1.45; }
+.mg .mg-explain .mg-refs { display: flex; flex-direction: column; gap: 3px; border-top: 1px solid var(--border); padding-top: 6px; color: var(--text-dim); }
+.mg .mg-explain .mg-ref { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.mg .mg-explain .mg-ref b { color: var(--text); font-weight: 600; }
+.mg .mg-sim-link { border: 0; background: none; padding: 0 2px; color: var(--teal); cursor: pointer; font: inherit; text-decoration: underline dotted; }
+.mg .mg-sim-link:hover { color: var(--teal-hi, var(--teal)); }
+.mg.mg-sim .mg-head .grow { flex: 1; }
+.mg.mg-sim .mg-sim-clock { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.mg.mg-sim .mg-sim-body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 4px; }
+.mg.mg-sim .mg-sim-title { display: flex; align-items: center; gap: 6px; padding: 2px 6px; }
+.mg.mg-sim .mg-sim-verdict { display: flex; align-items: center; gap: 6px; padding: 2px 6px; line-height: 20px; }
+.mg.mg-sim .mg-sim-verdict .grow { flex: 1; min-width: 0; }
+.mg.mg-sim .mg-sim-mark { width: 14px; text-align: center; flex: none; font-weight: 700; }
+.mg.mg-sim .mg-sim-verdict.ok .mg-sim-mark { color: var(--teal); }
+.mg.mg-sim .mg-sim-verdict.no .mg-sim-mark { color: var(--danger); }
+.mg.mg-sim .mg-sim-verdict.unknown .mg-sim-mark { color: var(--warn); }
+.mg.mg-sim .mg-sim-verdict label { margin: 0; }
+.mg.mg-sim .mg-sim-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 2px 6px; }
+.mg.mg-sim .mg-sim-label { width: 110px; flex: none; color: var(--text-dim); }
+.mg.mg-sim .mg-sim-log { display: flex; align-items: baseline; gap: 6px; padding: 1px 6px; font-variant-numeric: tabular-nums; }
+.mg.mg-sim .mg-sim-log .mg-sim-cycle { width: 32px; flex: none; text-align: right; color: var(--text-faint); }
+.mg.mg-sim .mg-sim-log .mg-sim-who { width: 64px; flex: none; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mg.mg-sim .mg-sim-log.end { color: var(--gold-hi); }
+.mg.mg-sim .mg-sim-log .mg-sim-text { font-style: italic; }
+.mg .mg-locked { padding: 10px; border: 1px dashed var(--gold-dim); border-radius: var(--radius); color: var(--text-dim); display: flex; flex-direction: column; gap: 8px; }
+
+.mg-pop { position: fixed; z-index: 60; min-width: 180px; max-width: 360px; max-height: 320px; display: flex; flex-direction: column; gap: 6px; padding: 6px; background: var(--bg-2); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); box-shadow: var(--shadow-pop); font-size: var(--fs-sm, 11.5px); color: var(--text); }
+.mg-pop .input, .mg-pop .textarea { width: 100%; }
+.mg-pop .mg-options { overflow: auto; min-height: 0; display: flex; flex-direction: column; }
+.mg-pop .mg-option { flex: none; display: flex; align-items: center; gap: 8px; height: 22px; padding: 0 8px; border: 0; background: none; color: var(--text); text-align: left; cursor: pointer; border-radius: 2px; font: inherit; white-space: nowrap; overflow: hidden; }
+.mg-pop .mg-option .grow { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.mg-pop .mg-option .hint { flex: none; }
+.mg-pop .mg-option:hover, .mg-pop .mg-option.active { background: var(--bg-4); }
+.mg-pop .mg-option.current { color: var(--gold-hi); }
+.mg-pop .mg-option.disabled { color: var(--text-faint); }
+.mg-pop .mg-option.group { color: var(--text-faint); text-transform: uppercase; font-size: 9.5px; letter-spacing: 0.06em; pointer-events: none; margin-top: 4px; height: 18px; }
+.mg-pop .mg-option .mg-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; border: 1px solid rgba(0,0,0,0.5); }
+.mg-pop .mg-pop-foot { display: flex; gap: 6px; align-items: center; border-top: 1px solid var(--border); padding-top: 6px; }
+.mg-pop .mg-pop-foot .grow { flex: 1; }
+.mg-pop .mg-codes { display: flex; flex-wrap: wrap; gap: 3px; }
+.mg-pop .mg-code { width: 18px; height: 18px; border-radius: 2px; border: 1px solid var(--border-strong); cursor: pointer; padding: 0; font-size: 9px; }
+.mg-pop.menu { gap: 0; max-height: calc(100vh - 16px); overflow-y: auto; }
+.mg-pop .mg-menu-item { flex: none; display: flex; align-items: center; gap: 8px; height: 24px; padding: 0 10px; border: 0; background: none; color: var(--text); text-align: left; cursor: pointer; border-radius: 2px; font: inherit; white-space: nowrap; overflow: hidden; }
+.mg-pop .mg-menu-item .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.mg-pop .mg-menu-item:hover { background: var(--sel); color: #fff; }
+.mg-pop .mg-menu-item .shortcut { flex: none; margin-left: auto; padding-left: 20px; color: var(--text-faint); font-size: var(--fs-xs); }
+.mg-pop .mg-menu-item:hover .shortcut { color: rgba(255,255,255,0.7); }
+.mg-pop .mg-menu-item[disabled] { color: var(--text-faint); pointer-events: none; }
+.mg-pop .mg-menu-sep { height: 1px; background: var(--border); margin: 3px 0; }
+.mg-pop .mg-hit-group { margin-left: auto; font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+.mg-pop .mg-hit-group.eud { color: var(--teal); }
+`;
+
+// src/ui/simulate.ts
+var PANEL_WIDTH = 520;
+var PANEL_HEIGHT = 560;
+var LOG_LINES = 120;
+var RUNS_TRIGGERS = /* @__PURE__ */ new Set([1, 2, 5, 6]);
+function worldFromMap(api, host, store, everyFrame) {
+  const scn = api.document.scenario();
+  const locations = [];
+  const w = (scn?.width ?? 64) * 32, h = (scn?.height ?? 64) * 32;
+  scn?.locations.forEach((l, i) => {
+    if (i === 63 || l.left === l.right && l.top === l.bottom) return;
+    locations[i + 1] = { left: Math.min(l.left, l.right), top: Math.min(l.top, l.bottom), right: Math.max(l.left, l.right), bottom: Math.max(l.top, l.bottom) };
+  });
+  locations[64] = { left: 0, top: 0, right: w, bottom: h };
+  const players = api.settings.players();
+  const active = Array.from({ length: 12 }, (_, p) => p < 8 && RUNS_TRIGGERS.has(players[p]?.type ?? 0));
+  const force = Array.from({ length: 12 }, (_, p) => players[p]?.force ?? -1);
+  const allied = Array.from({ length: 12 }, () => Array.from({ length: 12 }, () => false));
+  for (const f of api.settings.forces()) if (f.allied) {
+    for (const a2 of f.players) for (const b of f.players) if (a2 !== b) allied[a2][b] = true;
+  }
+  const dat = api.data.units();
+  const isBuilding = dat ? (id) => id < dat.flags.length && (dat.flags[id] & 1) !== 0 : (id) => id >= 106 && id <= 201;
+  const sc = store.sidecar;
+  const unknownCells = /* @__PURE__ */ new Set();
+  const hookCells = /* @__PURE__ */ new Set();
+  const everySlot = (unit) => {
+    for (let p = 0; p < 12; p++) unknownCells.add(flat(p, unit));
+  };
+  for (const b of sc.builds) {
+    if (b.kind === "scan") unknownCells.add(flat(b.cell[0], b.cell[1]));
+    else if ("flag" in b) hookCells.add(flat(b.flag[0], b.flag[1]));
+  }
+  if (sc.chat) {
+    unknownCells.add(flat(sc.chat.cell[0], sc.chat.cell[1]));
+    if (sc.chat.args) for (const c2 of [sc.chat.args.pattern, sc.chat.args.number, sc.chat.args.ptr, sc.chat.args.len]) unknownCells.add(flat(c2[0], c2[1]));
+  }
+  if (sc.msqc) {
+    for (const u of Object.values(sc.msqc.keys)) everySlot(u);
+    for (const u of Object.values(sc.msqc.clicks)) everySlot(u);
+    for (const u of Object.values(sc.msqc.mouseIn)) everySlot(u);
+    if (sc.msqc.select) {
+      everySlot(sc.msqc.select.ptr);
+      everySlot(sc.msqc.select.type);
+    }
+  }
+  const world = { locations, active, force, allied, isBuilding, string: (i) => host.string(i), unknownCells, hookCells, everyFrame };
+  const units = (scn?.units ?? []).filter((u) => u.owner < 12 && u.unitId !== 214).map((u) => ({ owner: u.owner, unitId: u.unitId, x: u.x, y: u.y }));
+  return { world, units };
+}
+function createSimulator(api, host, store, everyFrame) {
+  let handle = null;
+  const open = () => {
+    if (handle?.isOpen()) return;
+    handle = api.ui.panel({
+      title: api.i18n.t("Magenta: dry run"),
+      width: PANEL_WIDTH,
+      height: PANEL_HEIGHT,
+      resizable: true,
+      mount: (body) => mount(body),
+      onClose: () => {
+        handle = null;
+      }
+    });
+  };
+  function mount(body) {
+    const el = api.ui.el;
+    const t = api.i18n.t;
+    const w = api.ui.widgets;
+    let world;
+    let state;
+    let snapshot = [];
+    let owner = 0;
+    let stale = false;
+    const reset = () => {
+      const made = worldFromMap(api, host, store, everyFrame());
+      world = made.world;
+      state = newState(world);
+      for (const u of made.units) state.units.push({ id: state.nextUnit++, owner: u.owner, unitId: u.unitId, x: u.x, y: u.y });
+      snapshot = store.list.map(fingerprint);
+      stale = false;
+    };
+    reset();
+    const root = el("div", { className: "mg mg-sim" }, el("style", {}, STYLE));
+    body.append(root);
+    const namer = () => host.namer(store.sidecar);
+    const groups = () => host.playerGroups();
+    const playerLabel = (p) => groups().find((g) => g.value === p)?.label ?? `P${p + 1}`;
+    const seconds = (n) => Number.isInteger(n) ? String(n) : n.toFixed(1);
+    const hidden = (i) => store.isRun(i) || !!store.list[i] && isFrameTrigger(store.list[i]);
+    const step = (n) => {
+      if (stale) return;
+      if (n === 1) cycle(store.list, state, world);
+      else run(store.list, state, world, n, 50, (i) => !hidden(i));
+      render();
+    };
+    const render = () => {
+      root.replaceChildren(el("style", {}, STYLE));
+      const list = store.list;
+      stale = list.length !== snapshot.length || list.some((tr, i) => fingerprint(tr) !== snapshot[i]);
+      const over = isOver(state, world);
+      const bar = el(
+        "div",
+        { className: "mg-head" },
+        w.button(t("Step"), { primary: true, title: t("Run one trigger cycle"), disabled: stale || over, onClick: () => step(1) }),
+        w.button(t("Run 10"), { disabled: stale || over, onClick: () => step(10) }),
+        w.button(t("Run on"), { title: t("Up to 500 cycles: until someone wins or loses, or nothing has happened for 50 cycles"), disabled: stale || over, onClick: () => step(500) }),
+        w.button(t("Reset"), { ghost: true, title: t("Start over from the map as it is now"), onClick: () => {
+          reset();
+          render();
+        } }),
+        el("span", { className: "grow" }),
+        el("span", { className: "mg-sim-clock", title: t("Triggers run {clock}", { clock: world.everyFrame ? t("every frame") : t("every two seconds") }) }, t("cycle {n} \xB7 {s} s", { n: state.cycle, s: seconds(Math.round(state.seconds * 10) / 10) }))
+      );
+      root.append(bar);
+      if (stale) root.append(el("div", { className: "mg-problem warn" }, t("The triggers changed since this run started. Reset to run the list as it is now.")));
+      else if (over) root.append(el("div", { className: "mg-note" }, t("The game is over for every player.")));
+      const scroll = el("div", { className: "mg-sim-body" });
+      root.append(scroll);
+      const index = store.selected;
+      const trigger3 = index !== null ? list[index] : null;
+      const watched = el("div", { className: "mg-section" }, el("div", { className: "mg-section-head" }, t("Selected trigger")));
+      if (trigger3 && index !== null) {
+        const owners2 = Array.from({ length: 8 }, (_, p) => p).filter((p) => world.active[p] && runsFor(trigger3, p, world));
+        if (!owners2.includes(owner)) owner = owners2[0] ?? 0;
+        const head = el("div", { className: "mg-sim-title" }, el("b", {}, titleOf(api, host, store, index)));
+        if (owners2.length > 1) {
+          const sel = w.select(owners2.map((p) => ({ value: p, label: playerLabel(p) })), { value: owner, onChange: (v) => {
+            owner = Number(v);
+            render();
+          } });
+          head.append(el("span", { className: "hint" }, t("as")), sel);
+        } else if (owners2.length === 1) head.append(el("span", { className: "hint" }, t("as {player}", { player: playerLabel(owners2[0]) })));
+        watched.append(head);
+        if (!owners2.length) watched.append(el("div", { className: "mg-note" }, t("No active player runs this trigger, so it cannot fire.")));
+        else {
+          const fired = state.log.filter((e) => e.kind === "fired" && e.trigger === index && e.player === owner).length;
+          const p = state.players[owner];
+          const status = p.wait && p.wait.trigger === index ? t("waiting inside its actions") : state.spent.has(index * 16 + owner) ? t("fired and done") : fired ? t("fired {n} times so far", { n: fired }) : t("has not fired yet");
+          watched.append(el("div", { className: "mg-note" }, status));
+          const words2 = conditionWords(api, host, store, index, trigger3);
+          const rows = verdicts(list, index, owner, state, world);
+          if (!rows.length) watched.append(el("div", { className: "mg-note" }, t("No conditions: it fires on the first cycle.")));
+          for (const { condition, verdict } of rows) {
+            if (!words2[condition]) continue;
+            const c2 = liveConditions(trigger3)[condition];
+            const disabled = (c2.flags & 2) !== 0;
+            const mark = disabled ? "\u2013" : !verdict.known ? "?" : verdict.ok ? "\u2713" : "\u2717";
+            const kind = disabled ? "" : !verdict.known ? "unknown" : verdict.ok ? "ok" : "no";
+            const row = el("div", { className: `mg-sim-verdict ${kind}` }, el("span", { className: "mg-sim-mark" }, mark), el("span", { className: "grow" }, words2[condition]));
+            if (verdict.have !== void 0 && !disabled) row.append(el("span", { className: "hint" }, t("has {n}", { n: verdict.have })));
+            if (!verdict.known && verdict.key) row.append(assumeBox(verdict.key));
+            watched.append(row);
+          }
+        }
+      } else watched.append(el("div", { className: "mg-note" }, t("Pick a trigger in the Magenta panel to see its conditions decided here.")));
+      scroll.append(watched);
+      const unknown = [...state.unknown.values()].filter((u) => !hidden(u.trigger));
+      if (unknown.length) {
+        const sec = el("div", { className: "mg-section" }, el("div", { className: "mg-section-head" }, t("Cannot tell"), el("span", { className: "grow" }), el("span", { className: "hint" }, t("tick to pretend it holds"))));
+        for (const u of unknown) {
+          const tr = list[u.trigger];
+          if (!tr) continue;
+          const text = conditionWords(api, host, store, u.trigger, tr)[u.condition] || t("condition {n}", { n: u.condition + 1 });
+          const row = el("div", { className: "mg-sim-verdict unknown" }, assumeBox(u.key), el("span", { className: "grow" }, text), el("button", { type: "button", className: "mg-sim-link", onclick: () => store.select(u.trigger) }, titleOf(api, host, store, u.trigger)));
+          sec.append(row);
+        }
+        scroll.append(sec);
+      }
+      const st = el("div", { className: "mg-section" }, el("div", { className: "mg-section-head" }, t("State"), el("span", { className: "grow" }), el("span", { className: "hint" }, t("click a value to change it"))));
+      const sw = el("div", { className: "mg-sim-line" }, el("span", { className: "mg-sim-label" }, t("Switches set")));
+      const names = namer();
+      for (const i of [...state.switches].sort((a2, b) => a2 - b)) sw.append(el("button", { type: "button", className: "mg-chip", title: t("Click to clear"), onclick: () => {
+        state.switches.delete(i);
+        render();
+      } }, names.switch(i)));
+      const addSwitch = el("button", { type: "button", className: "mg-chip", title: t("Set a switch") }, "+");
+      addSwitch.addEventListener("click", () => pickSwitch(api, host, addSwitch, 0, (i) => {
+        state.switches.add(i);
+        render();
+      }, (i, name) => host.renameSwitch(i, name)));
+      sw.append(addSwitch);
+      st.append(sw);
+      const used = usage(list).cells;
+      const cells2 = [...state.deaths.entries()].filter(([k, v]) => v !== 0 || used.has(k)).sort((a2, b) => a2[0] - b[0]);
+      const ct = el("div", { className: "mg-sim-line" }, el("span", { className: "mg-sim-label" }, t("Counters")));
+      for (const [k, v] of cells2) {
+        const label = k < 228 * 12 ? `${cellLabel(cellOf(k), names)} = ${v}` : memoryCellText(k, v, names, host.extra());
+        const chip3 = el("button", { type: "button", className: "mg-chip counter", title: t("Click to change") }, label);
+        chip3.addEventListener("click", () => pickNumber(api, chip3, v, (n) => {
+          state.deaths.set(k, n >>> 0);
+          render();
+        }, { min: 0, integer: true }));
+        ct.append(chip3);
+      }
+      const addCell = el("button", { type: "button", className: "mg-chip", title: t("Set a counter") }, "+");
+      addCell.addEventListener("click", () => pickCell(api, host, store, addCell, [0, 0], (cell) => pickNumber(api, addCell, state.deaths.get(flat(cell[0], cell[1])) ?? 0, (n) => {
+        state.deaths.set(flat(cell[0], cell[1]), n >>> 0);
+        render();
+      }, { min: 0, integer: true })));
+      ct.append(addCell);
+      st.append(ct);
+      const timer = el("button", { type: "button", className: "mg-chip", title: t("Click to change") }, `${seconds(Math.floor(state.countdown))} s${state.countdownPaused ? ` (${t("paused")})` : ""}`);
+      timer.addEventListener("click", () => pickNumber(api, timer, Math.floor(state.countdown), (n) => {
+        state.countdown = n;
+        render();
+      }, { min: 0, integer: true, unit: "s" }));
+      st.append(el("div", { className: "mg-sim-line" }, el("span", { className: "mg-sim-label" }, t("Countdown timer")), timer, el("span", { className: "hint" }, world.everyFrame ? t("24 cycles a second") : t("a cycle is {s} s", { s: seconds(secondsPerCycle(world)) }))));
+      for (let p = 0; p < 8; p++) {
+        if (!world.active[p]) continue;
+        const pl = state.players[p];
+        const line = el("div", { className: "mg-sim-line" }, el("span", { className: "mg-sim-label" }, playerLabel(p)));
+        const res = (label, get, set) => {
+          const chip3 = el("button", { type: "button", className: "mg-chip", title: t("Click to change") }, `${label} ${get()}`);
+          chip3.addEventListener("click", () => pickNumber(api, chip3, get(), (n) => {
+            set(n);
+            render();
+          }, { min: 0, integer: true }));
+          return chip3;
+        };
+        line.append(res(t("minerals"), () => pl.minerals, (n) => {
+          pl.minerals = n;
+        }), res(t("gas"), () => pl.gas, (n) => {
+          pl.gas = n;
+        }));
+        const count = state.units.filter((u) => u.owner === p).length;
+        line.append(el("span", { className: "hint" }, t("{n} units", { n: count })));
+        if (pl.result) line.append(el("span", { className: `mg-badge ${pl.result === "victory" ? "eud" : "error"}` }, pl.result === "victory" ? t("won") : pl.result === "defeat" ? t("lost") : t("draw")));
+        else if (pl.wait) line.append(el("span", { className: "mg-badge" }, t("waiting until {s} s", { s: seconds(Math.round(pl.wait.until * 10) / 10) })));
+        st.append(line);
+      }
+      const put = { owner: 0, unit: 0, location: host.locations()[0]?.value ?? 64, count: 1 };
+      const putLine = el("div", { className: "mg-sim-line" }, el("span", { className: "mg-sim-label" }, t("Put units")));
+      const ownerChip = el("button", { type: "button", className: "mg-chip" }, playerLabel(put.owner));
+      ownerChip.addEventListener("click", () => {
+        const items = Array.from({ length: 12 }, (_, p) => ({ value: p, label: playerLabel(p) }));
+        const sel = w.select(items, { value: put.owner, onChange: (v) => {
+          put.owner = Number(v);
+          ownerChip.textContent = playerLabel(put.owner);
+        } });
+        ownerChip.replaceWith(sel);
+      });
+      const countChip = el("button", { type: "button", className: "mg-chip" }, String(put.count));
+      countChip.addEventListener("click", () => pickNumber(api, countChip, put.count, (n) => {
+        put.count = Math.max(1, n);
+        countChip.textContent = String(put.count);
+      }, { min: 1, integer: true }));
+      const unitChip = el("button", { type: "button", className: "mg-chip" }, names.unit(put.unit));
+      unitChip.addEventListener("click", () => pickUnitType(api, host, unitChip, put.unit, (v) => {
+        put.unit = v;
+        unitChip.textContent = names.unit(v);
+      }));
+      const locChip = el("button", { type: "button", className: "mg-chip" }, names.location(put.location));
+      locChip.addEventListener("click", () => pickLocation(api, host, locChip, put.location, (v) => {
+        put.location = v;
+        locChip.textContent = names.location(v);
+      }));
+      putLine.append(countChip, unitChip, el("span", { className: "hint" }, t("for")), ownerChip, el("span", { className: "hint" }, t("at")), locChip, w.button(t("Add"), { onClick: () => {
+        putUnits(state, world, put.owner, put.unit, put.count, put.location);
+        render();
+      } }));
+      st.append(putLine);
+      scroll.append(st);
+      const events = state.log.filter((e) => !hidden(e.trigger));
+      const log = el("div", { className: "mg-section" }, el("div", { className: "mg-section-head" }, t("Log"), el("span", { className: "grow" }), el("span", { className: "hint" }, events.length > LOG_LINES ? t("last {n} of {total}", { n: LOG_LINES, total: events.length }) : String(events.length))));
+      if (!events.length) log.append(el("div", { className: "mg-note" }, t("Nothing has happened yet. Step runs one cycle.")));
+      for (const e of events.slice(-LOG_LINES)) log.append(logLine(e, list));
+      scroll.append(log);
+      setTimeout(() => {
+        scroll.scrollTop = scroll.scrollHeight;
+      }, 0);
+    };
+    function assumeBox(key) {
+      return w.checkbox("", { value: state.assumptions.get(key) ?? false, onChange: (v) => {
+        state.assumptions.set(key, v);
+        render();
+      } });
+    }
+    function logLine(e, list) {
+      const who = playerLabel(e.player);
+      const link = list[e.trigger] ? el("button", { type: "button", className: "mg-sim-link", onclick: () => store.select(e.trigger) }, titleOf(api, host, store, e.trigger)) : el("span", {}, t("trigger {n}", { n: e.trigger + 1 }));
+      const line = el("div", { className: `mg-sim-log ${e.kind}` }, el("span", { className: "mg-sim-cycle" }, String(e.cycle)), el("span", { className: "mg-sim-who" }, who));
+      switch (e.kind) {
+        case "fired":
+          line.append(t("fires"), " ", link);
+          break;
+        case "text":
+          line.append(el("span", { className: "mg-sim-text" }, `\u201C${e.text}\u201D`));
+          break;
+        case "objectives":
+          line.append(t("objectives:"), " ", el("span", { className: "mg-sim-text" }, e.text));
+          break;
+        case "end":
+          line.append(el("b", {}, e.result === "victory" ? t("wins") : e.result === "defeat" ? t("loses") : t("draws")), " \xB7 ", link);
+          break;
+        case "wait":
+          line.append(t("waits {s} s", { s: seconds(e.seconds) }), " \xB7 ", link);
+          break;
+        case "note":
+          line.append(el("span", { className: "hint" }, e.text), " \xB7 ", link);
+          break;
+      }
+      return line;
+    }
+    const unsubscribe = store.subscribe(render);
+    render();
+    return () => {
+      unsubscribe();
+    };
+  }
+  return { open, close: () => handle?.close(), isOpen: () => handle?.isOpen() ?? false };
+}
+
 // src/ui/store.ts
 var Store = class {
   host;
@@ -7954,6 +9043,8 @@ var Store = class {
   /** Folder id by trigger index. */
   folders = /* @__PURE__ */ new Map();
   selected = null;
+  /** The "In plain words" fold under the open trigger is open (a session setting, not undone). */
+  showExplain = false;
   /** Where Magenta's own generated runs sit in the list, as the last sync placed them. */
   runs = [];
   undoStack = [];
@@ -8019,8 +9110,8 @@ var Store = class {
   }
   /** The trigger that asked for the run `index` is in, or `index` itself. */
   anchorOf(index) {
-    const run = this.runs.find((r) => index >= r.start && index < r.start + r.count);
-    return run && run.anchor >= 0 ? run.anchor : index;
+    const run2 = this.runs.find((r) => index >= r.start && index < r.start + r.count);
+    return run2 && run2.anchor >= 0 ? run2.anchor : index;
   }
   /** The runs as they sit in `list`, by their markers. */
   locateRuns(list) {
@@ -8125,102 +9216,9 @@ var Store = class {
   }
 };
 
-// src/ui/styles.ts
-var STYLE = `
-.mg { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 8px; font-size: var(--fs-sm, 11.5px); }
-.mg .mg-head { display: flex; align-items: center; gap: 6px; }
-.mg .mg-head .input { flex: 1; min-width: 80px; }
-.mg .mg-split { display: flex; flex: 1; min-height: 0; gap: 10px; }
-.mg .mg-list { width: 240px; flex: none; display: flex; flex-direction: column; min-height: 0; background: var(--bg-0); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--bevel-sunken); overflow: auto; outline: none; }
-.mg.narrow .mg-list { width: 150px; }
-.mg .mg-editor { flex: 1; min-width: 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 4px; }
-.mg .mg-empty { color: var(--text-faint); padding: 20px; text-align: center; }
-
-.mg .mg-folder { display: flex; align-items: center; gap: 6px; padding: 4px 6px; color: var(--text-dim); text-transform: uppercase; font-size: var(--fs-xs); letter-spacing: 0.04em; cursor: pointer; user-select: none; border-top: 1px solid var(--border); }
-.mg .mg-folder:first-child { border-top: 0; }
-.mg .mg-folder .mg-count { margin-left: auto; color: var(--text-faint); text-transform: none; letter-spacing: 0; }
-.mg .mg-folder.drop { background: var(--bg-3); }
-.mg .mg-item { display: grid; grid-template-columns: 1fr auto; gap: 2px 6px; padding: 4px 8px 4px 14px; cursor: default; border-left: 2px solid transparent; }
-.mg .mg-item.top { padding-left: 8px; }
-.mg .mg-item:hover { background: var(--bg-3); }
-.mg .mg-item.selected { background: var(--sel); color: #fff; border-left-color: #f28ccb; }
-.mg .mg-item.selected .mg-sub, .mg .mg-item.selected .mg-badge { color: rgba(255,255,255,0.75); }
-.mg .mg-item.drop-before { box-shadow: inset 0 2px 0 var(--teal); }
-.mg .mg-item .mg-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mg .mg-item.disabled .mg-title { text-decoration: line-through; color: var(--text-faint); }
-.mg .mg-item .mg-sub { grid-column: 1 / -1; color: var(--text-faint); font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mg .mg-badges { display: flex; gap: 4px; align-items: center; }
-.mg .mg-badge { font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; padding: 1px 4px; border-radius: 2px; background: var(--bg-3); color: var(--text-dim); }
-.mg .mg-badge.eud { background: rgba(79, 209, 197, 0.18); color: var(--teal); }
-.mg .mg-badge.warn { background: rgba(224, 165, 69, 0.18); color: var(--warn); }
-.mg .mg-badge.error { background: rgba(217, 83, 79, 0.2); color: var(--danger); }
-.mg .mg-badge.lock { background: rgba(230, 185, 92, 0.18); color: var(--gold); }
-
-.mg .mg-titlebar { display: flex; align-items: center; gap: 8px; }
-.mg .mg-titlebar .input { font-size: var(--fs-lg); font-weight: 600; height: 30px; }
-.mg .mg-section { display: flex; flex-direction: column; gap: 4px; }
-.mg .mg-section-head { display: flex; align-items: center; gap: 8px; color: var(--text-dim); text-transform: uppercase; font-size: var(--fs-xs); letter-spacing: 0.06em; padding-bottom: 2px; border-bottom: 1px solid var(--border); }
-.mg .mg-section-head .grow { flex: 1; }
-.mg .mg-players { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
-
-.mg .mg-row { display: flex; align-items: flex-start; gap: 6px; padding: 4px 6px; border-radius: var(--radius); outline: none; }
-.mg .mg-row:hover, .mg .mg-row:focus-within { background: var(--bg-2); }
-.mg .mg-row:focus-visible { box-shadow: var(--focus); }
-.mg .mg-row.disabled .mg-sentence { opacity: 0.45; text-decoration: line-through; }
-.mg .mg-row .mg-sentence { flex: 1; min-width: 0; line-height: 24px; word-break: break-word; }
-.mg .mg-row .mg-tools { display: none; gap: 2px; flex: none; }
-.mg .mg-row:hover .mg-tools, .mg .mg-row:focus-within .mg-tools { display: flex; }
-.mg .mg-row .mg-tools .btn { min-width: 20px; height: 20px; padding: 0 4px; font-size: 10px; }
-.mg .mg-problem { font-size: var(--fs-xs); padding: 2px 8px 2px 24px; color: var(--warn); }
-.mg .mg-problem.error { color: var(--danger); }
-.mg .mg-problem.info { color: var(--text-dim); }
-
-.mg .mg-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; height: 20px; padding: 0 6px; margin: 0 1px; vertical-align: middle; border-radius: 3px; border: 1px solid var(--border-strong); background: var(--bg-3); color: var(--text); font: inherit; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: var(--bevel-raised); }
-.mg .mg-chip:hover { background: var(--bg-4); border-color: var(--teal-dim); }
-.mg .mg-chip:focus-visible { outline: none; box-shadow: var(--bevel-raised), var(--focus); }
-.mg .mg-chip.eud { border-color: var(--teal-dim); }
-.mg .mg-chip.counter { border-color: var(--gold-dim); color: var(--gold-hi); }
-.mg .mg-chip.text { font-style: italic; }
-.mg .mg-chip .mg-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; border: 1px solid rgba(0,0,0,0.5); }
-.mg .mg-tag { display: inline-block; vertical-align: middle; margin-left: 6px; font-size: 9px; letter-spacing: 0.08em; padding: 1px 4px; border-radius: 2px; background: rgba(79, 209, 197, 0.18); color: var(--teal); cursor: help; }
-.mg .mg-tag.ro { background: rgba(224, 165, 69, 0.18); color: var(--warn); }
-.mg .mg-tag.unverified { background: transparent; outline: 1px dashed rgba(79, 209, 197, 0.6); outline-offset: -1px; }
-
-.mg .mg-add { display: flex; align-items: center; gap: 6px; padding: 2px 6px; }
-.mg .mg-add .input { flex: 1; height: 24px; }
-.mg .mg-note { color: var(--text-dim); font-size: var(--fs-xs); padding: 2px 6px; }
-.mg .mg-locked { padding: 10px; border: 1px dashed var(--gold-dim); border-radius: var(--radius); color: var(--text-dim); display: flex; flex-direction: column; gap: 8px; }
-
-.mg-pop { position: fixed; z-index: 60; min-width: 180px; max-width: 360px; max-height: 320px; display: flex; flex-direction: column; gap: 6px; padding: 6px; background: var(--bg-2); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); box-shadow: var(--shadow-pop); font-size: var(--fs-sm, 11.5px); color: var(--text); }
-.mg-pop .input, .mg-pop .textarea { width: 100%; }
-.mg-pop .mg-options { overflow: auto; min-height: 0; display: flex; flex-direction: column; }
-.mg-pop .mg-option { flex: none; display: flex; align-items: center; gap: 8px; height: 22px; padding: 0 8px; border: 0; background: none; color: var(--text); text-align: left; cursor: pointer; border-radius: 2px; font: inherit; white-space: nowrap; overflow: hidden; }
-.mg-pop .mg-option .grow { flex: 1; overflow: hidden; text-overflow: ellipsis; }
-.mg-pop .mg-option .hint { flex: none; }
-.mg-pop .mg-option:hover, .mg-pop .mg-option.active { background: var(--bg-4); }
-.mg-pop .mg-option.current { color: var(--gold-hi); }
-.mg-pop .mg-option.disabled { color: var(--text-faint); }
-.mg-pop .mg-option.group { color: var(--text-faint); text-transform: uppercase; font-size: 9.5px; letter-spacing: 0.06em; pointer-events: none; margin-top: 4px; height: 18px; }
-.mg-pop .mg-option .mg-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; border: 1px solid rgba(0,0,0,0.5); }
-.mg-pop .mg-pop-foot { display: flex; gap: 6px; align-items: center; border-top: 1px solid var(--border); padding-top: 6px; }
-.mg-pop .mg-pop-foot .grow { flex: 1; }
-.mg-pop .mg-codes { display: flex; flex-wrap: wrap; gap: 3px; }
-.mg-pop .mg-code { width: 18px; height: 18px; border-radius: 2px; border: 1px solid var(--border-strong); cursor: pointer; padding: 0; font-size: 9px; }
-.mg-pop.menu { gap: 0; max-height: calc(100vh - 16px); overflow-y: auto; }
-.mg-pop .mg-menu-item { flex: none; display: flex; align-items: center; gap: 8px; height: 24px; padding: 0 10px; border: 0; background: none; color: var(--text); text-align: left; cursor: pointer; border-radius: 2px; font: inherit; white-space: nowrap; overflow: hidden; }
-.mg-pop .mg-menu-item .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.mg-pop .mg-menu-item:hover { background: var(--sel); color: #fff; }
-.mg-pop .mg-menu-item .shortcut { flex: none; margin-left: auto; padding-left: 20px; color: var(--text-faint); font-size: var(--fs-xs); }
-.mg-pop .mg-menu-item:hover .shortcut { color: rgba(255,255,255,0.7); }
-.mg-pop .mg-menu-item[disabled] { color: var(--text-faint); pointer-events: none; }
-.mg-pop .mg-menu-sep { height: 1px; background: var(--border); margin: 3px 0; }
-.mg-pop .mg-hit-group { margin-left: auto; font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
-.mg-pop .mg-hit-group.eud { color: var(--teal); }
-`;
-
 // src/ui/panel.ts
-var PANEL_WIDTH = 820;
-var PANEL_HEIGHT = 560;
+var PANEL_WIDTH2 = 820;
+var PANEL_HEIGHT2 = 560;
 function createPanel(api, hooks = {}) {
   let handle = null;
   let store = null;
@@ -8238,8 +9236,8 @@ function createPanel(api, hooks = {}) {
     pendingIndex = options.index ?? null;
     handle = api.ui.panel({
       title: "Magenta",
-      width: PANEL_WIDTH,
-      height: PANEL_HEIGHT,
+      width: PANEL_WIDTH2,
+      height: PANEL_HEIGHT2,
       resizable: true,
       mount: (body, panel) => mount(body, () => panel.close()),
       onClose: () => {
@@ -8256,6 +9254,7 @@ function createPanel(api, hooks = {}) {
     host = new Host(api);
     store = new Store(host, hooks.afterCommit);
     const s = store, h = host;
+    const sim = createSimulator(api, h, s, () => everyFrame());
     if (pendingIndex !== null) s.selected = s.anchorOf(pendingIndex);
     else if (s.selected === null && s.list.length) s.selected = 0;
     const search2 = el("input", { className: "input", type: "text", placeholder: t("Search triggers\u2026") });
@@ -8413,12 +9412,6 @@ function createPanel(api, hooks = {}) {
       ], { width: 200, menu: true });
     }
     const timerEntry = entry("game.triggerTimer");
-    const isFrameTrigger = (tr) => {
-      const acts = liveActions(tr).filter((a2) => a2.type !== ActionType.Comment && a2.type !== ActionType.PreserveTrigger);
-      if (acts.length !== 1) return false;
-      const row = recognizeAction(acts[0]);
-      return !!row && row.entry.id === "game.triggerTimer" && row.op === SetModifier.SetTo && row.value === 0;
-    };
     function everyFrame() {
       return s.list.some(isFrameTrigger);
     }
@@ -8446,11 +9439,11 @@ function createPanel(api, hooks = {}) {
       }
     }
     function menu(anchor) {
-      const item = (label, run, options = {}) => {
+      const item = (label, run2, options = {}) => {
         const b = el("button", { type: "button", className: "mg-menu-item", disabled: options.disabled ?? false }, el("span", { className: "label" }, options.checked !== void 0 ? options.checked ? "\u2611 " : "\u2610 " : "", label), options.shortcut ? el("span", { className: "shortcut" }, options.shortcut) : null);
         b.addEventListener("click", () => {
           closePopover();
-          run();
+          run2();
         });
         return b;
       };
@@ -8472,6 +9465,7 @@ function createPanel(api, hooks = {}) {
         item(t("Run triggers every frame"), () => setEveryFrame(!everyFrame()), { checked: everyFrame() }),
         item(t("Counters\u2026"), () => countersDialog()),
         sep(),
+        item(t("Dry run\u2026"), () => sim.open()),
         item(t("Build EUD map\u2026"), () => openBuildDialog(api, h, s, everyFrame())),
         item(t("Settings\u2026"), () => openSettingsDialog(api)),
         sep(),
@@ -8587,6 +9581,7 @@ function createPanel(api, hooks = {}) {
       offLang.dispose();
       resize.disconnect();
       closePopover();
+      sim.close();
     };
   }
   return {

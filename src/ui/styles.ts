@@ -62,6 +62,31 @@ export const STYLE = `
 .mg .mg-add { display: flex; align-items: center; gap: 6px; padding: 2px 6px; }
 .mg .mg-add .input { flex: 1; height: 24px; }
 .mg .mg-note { color: var(--text-dim); font-size: var(--fs-xs); padding: 2px 6px; }
+.mg .mg-explain { display: flex; flex-direction: column; gap: 6px; padding: 4px 6px; }
+.mg .mg-explain p { margin: 0; line-height: 1.45; }
+.mg .mg-explain .mg-refs { display: flex; flex-direction: column; gap: 3px; border-top: 1px solid var(--border); padding-top: 6px; color: var(--text-dim); }
+.mg .mg-explain .mg-ref { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.mg .mg-explain .mg-ref b { color: var(--text); font-weight: 600; }
+.mg .mg-sim-link { border: 0; background: none; padding: 0 2px; color: var(--teal); cursor: pointer; font: inherit; text-decoration: underline dotted; }
+.mg .mg-sim-link:hover { color: var(--teal-hi, var(--teal)); }
+.mg.mg-sim .mg-head .grow { flex: 1; }
+.mg.mg-sim .mg-sim-clock { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.mg.mg-sim .mg-sim-body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 4px; }
+.mg.mg-sim .mg-sim-title { display: flex; align-items: center; gap: 6px; padding: 2px 6px; }
+.mg.mg-sim .mg-sim-verdict { display: flex; align-items: center; gap: 6px; padding: 2px 6px; line-height: 20px; }
+.mg.mg-sim .mg-sim-verdict .grow { flex: 1; min-width: 0; }
+.mg.mg-sim .mg-sim-mark { width: 14px; text-align: center; flex: none; font-weight: 700; }
+.mg.mg-sim .mg-sim-verdict.ok .mg-sim-mark { color: var(--teal); }
+.mg.mg-sim .mg-sim-verdict.no .mg-sim-mark { color: var(--danger); }
+.mg.mg-sim .mg-sim-verdict.unknown .mg-sim-mark { color: var(--warn); }
+.mg.mg-sim .mg-sim-verdict label { margin: 0; }
+.mg.mg-sim .mg-sim-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 2px 6px; }
+.mg.mg-sim .mg-sim-label { width: 110px; flex: none; color: var(--text-dim); }
+.mg.mg-sim .mg-sim-log { display: flex; align-items: baseline; gap: 6px; padding: 1px 6px; font-variant-numeric: tabular-nums; }
+.mg.mg-sim .mg-sim-log .mg-sim-cycle { width: 32px; flex: none; text-align: right; color: var(--text-faint); }
+.mg.mg-sim .mg-sim-log .mg-sim-who { width: 64px; flex: none; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mg.mg-sim .mg-sim-log.end { color: var(--gold-hi); }
+.mg.mg-sim .mg-sim-log .mg-sim-text { font-style: italic; }
 .mg .mg-locked { padding: 10px; border: 1px dashed var(--gold-dim); border-radius: var(--radius); color: var(--text-dim); display: flex; flex-direction: column; gap: 8px; }
 
 .mg-pop { position: fixed; z-index: 60; min-width: 180px; max-width: 360px; max-height: 320px; display: flex; flex-direction: column; gap: 6px; padding: 6px; background: var(--bg-2); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); box-shadow: var(--shadow-pop); font-size: var(--fs-sm, 11.5px); color: var(--text); }
