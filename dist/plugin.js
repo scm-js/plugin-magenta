@@ -3958,7 +3958,7 @@ function actionSpans(actions) {
 
 // src/model/records.ts
 var clone = (value) => structuredClone(value);
-function fingerprint(trigger3) {
+function fingerprint(trigger4) {
   let h = 2166136261;
   const mix = (n) => {
     for (let i = 0; i < 4; i++) {
@@ -3966,7 +3966,7 @@ function fingerprint(trigger3) {
       h = Math.imul(h, 16777619) >>> 0;
     }
   };
-  for (const c2 of trigger3.conditions) {
+  for (const c2 of trigger4.conditions) {
     mix(c2.type);
     mix(c2.location);
     mix(c2.player);
@@ -3978,7 +3978,7 @@ function fingerprint(trigger3) {
     mix(c2.mask);
   }
   mix(65535);
-  for (const a2 of trigger3.actions) {
+  for (const a2 of trigger4.actions) {
     mix(a2.type);
     mix(a2.location);
     mix(a2.text);
@@ -3992,8 +3992,8 @@ function fingerprint(trigger3) {
     mix(a2.mask);
   }
   mix(65534);
-  mix(trigger3.flags & ~1);
-  for (const p of trigger3.players) mix(p);
+  mix(trigger4.flags & ~1);
+  for (const p of trigger4.players) mix(p);
   return h.toString(16).padStart(8, "0");
 }
 var isConditionDisabled = (c2) => (c2.flags & ConditionFlag.Disabled) !== 0;
@@ -4004,47 +4004,47 @@ function setConditionDisabled(c2, disabled) {
 function setActionDisabled(a2, disabled) {
   return { ...a2, flags: disabled ? a2.flags | ActionFlag.Disabled : a2.flags & ~ActionFlag.Disabled };
 }
-function setTriggerDisabled(trigger3, disabled) {
+function setTriggerDisabled(trigger4, disabled) {
   return {
-    ...trigger3,
-    conditions: trigger3.conditions.map((c2) => c2.type === ConditionType.None ? c2 : setConditionDisabled(c2, disabled)),
-    actions: trigger3.actions.map((a2) => a2.type === ActionType.None ? a2 : setActionDisabled(a2, disabled))
+    ...trigger4,
+    conditions: trigger4.conditions.map((c2) => c2.type === ConditionType.None ? c2 : setConditionDisabled(c2, disabled)),
+    actions: trigger4.actions.map((a2) => a2.type === ActionType.None ? a2 : setActionDisabled(a2, disabled))
   };
 }
-function isTriggerDisabled(trigger3) {
-  const live = [...trigger3.conditions.filter((c2) => c2.type !== ConditionType.None).map(isConditionDisabled), ...trigger3.actions.filter((a2) => a2.type !== ActionType.None).map(isActionDisabled)];
+function isTriggerDisabled(trigger4) {
+  const live = [...trigger4.conditions.filter((c2) => c2.type !== ConditionType.None).map(isConditionDisabled), ...trigger4.actions.filter((a2) => a2.type !== ActionType.None).map(isActionDisabled)];
   return live.length > 0 && live.every(Boolean);
 }
-function commentIndex(trigger3) {
-  return trigger3.actions.findIndex((a2) => a2.type === ActionType.Comment);
+function commentIndex(trigger4) {
+  return trigger4.actions.findIndex((a2) => a2.type === ActionType.Comment);
 }
-function liveConditions(trigger3) {
+function liveConditions(trigger4) {
   const out = [];
-  for (const c2 of trigger3.conditions) {
+  for (const c2 of trigger4.conditions) {
     if (c2.type === ConditionType.None) break;
     out.push(c2);
   }
   return out;
 }
-function liveActions(trigger3) {
+function liveActions(trigger4) {
   const out = [];
-  for (const a2 of trigger3.actions) {
+  for (const a2 of trigger4.actions) {
     if (a2.type === ActionType.None) break;
     out.push(a2);
   }
   return out;
 }
-function owners(trigger3) {
+function owners(trigger4) {
   const out = [];
-  trigger3.players.forEach((on, i) => {
+  trigger4.players.forEach((on, i) => {
     if (on) out.push(i);
   });
   return out;
 }
-function setOwners(trigger3, groups) {
-  const players = trigger3.players.map(() => 0);
+function setOwners(trigger4, groups) {
+  const players = trigger4.players.map(() => 0);
   for (const g of groups) if (g >= 0 && g < players.length) players[g] = 1;
-  return { ...trigger3, players };
+  return { ...trigger4, players };
 }
 
 // vendor/triggerDefs.ts
@@ -4721,10 +4721,10 @@ function locateRun(list, id, text) {
   }
   return null;
 }
-function markerOf(trigger3, text) {
-  const ci = commentIndex(trigger3);
+function markerOf(trigger4, text) {
+  const ci = commentIndex(trigger4);
   if (ci < 0) return null;
-  const s = text(trigger3.actions[ci].text);
+  const s = text(trigger4.actions[ci].text);
   if (!s || !s.startsWith(MARKER_PREFIX)) return null;
   const rest = s.slice(MARKER_PREFIX.length);
   if (rest.startsWith("begin:")) return { id: rest.slice(6), edge: "begin" };
@@ -6021,11 +6021,11 @@ function pickPlacedUnit(api, host, anchor, current2, onPick) {
 
 // src/model/checks.ts
 var LOCATION_ANYWHERE = 64;
-function check(trigger3, ctx = {}) {
+function check(trigger4, ctx = {}) {
   const out = [];
-  const conditions = liveConditions(trigger3);
-  const actions = liveActions(trigger3);
-  const own = owners(trigger3);
+  const conditions = liveConditions(trigger4);
+  const actions = liveActions(trigger4);
+  const own = owners(trigger4);
   if (own.length === 0 && !ctx.template) out.push({ level: "error", text: "No player owns this trigger, so it never runs." });
   if (actions.length === 0) out.push({ level: "warn", text: "This trigger has no actions." });
   if (conditions.length >= MAX_CONDITIONS) out.push({ level: "info", text: "All 16 condition slots are used." });
@@ -6046,7 +6046,7 @@ function check(trigger3, ctx = {}) {
   const perPlayer = enabledConditions.some(({ c: c2 }) => c2.type === ConditionType.Deaths && c2.player === 13);
   const usesSwitch = enabledConditions.some(({ c: c2 }) => c2.type === ConditionType.Switch) && actions.some((a2) => a2.type === ActionType.SetSwitch && !isActionDisabled(a2));
   if (sharedOwner && perPlayer && usesSwitch) out.push({ level: "warn", text: "Every owner runs this trigger, and its switch is shared: when the Current Player condition is false for one of them, that run can flip the switch for the others. Guard with a death counter of the Current Player instead." });
-  const preserved = (trigger3.flags & TriggerFlag.Preserve) !== 0 || actions.some((a2) => a2.type === ActionType.PreserveTrigger && !isActionDisabled(a2));
+  const preserved = (trigger4.flags & TriggerFlag.Preserve) !== 0 || actions.some((a2) => a2.type === ActionType.PreserveTrigger && !isActionDisabled(a2));
   const groups = actionSpans(actions).filter((s) => s.group);
   const inGroup = new Set(groups.flatMap((s) => Array.from({ length: s.count }, (_, i) => s.at + i)));
   for (const s of groups) {
@@ -6822,13 +6822,13 @@ var RELATIONS = [
 ];
 var RELATION_WORDS = Object.fromEntries(RELATIONS.map((r) => [r.rel, r.label]));
 var counterExpansionOf = (store, a2) => store.sidecar.expansions.find((x) => (x.kind === "copy" || x.kind === "add" || x.kind === "subtract") && isFlagAction(a2, { cell: x.flag })) ?? null;
-function compareOf(store, index, trigger3) {
+function compareOf(store, index, trigger4) {
   const clean2 = store.cleanIndex(index);
   const x = store.sidecar.expansions.find((e) => e.kind === "compare" && e.anchor.i === clean2);
   if (!x) return null;
   const reads = (c2, cell) => c2.type === ConditionType.Deaths && c2.player === cell[0] && c2.unitId === cell[1];
-  const rows = trigger3.conditions.map((c2, i) => reads(c2, x.scratch[0]) || reads(c2, x.scratch[1]) ? i : -1).filter((i) => i >= 0);
-  const found = rows.map((i) => trigger3.conditions[i]);
+  const rows = trigger4.conditions.map((c2, i) => reads(c2, x.scratch[0]) || reads(c2, x.scratch[1]) ? i : -1).filter((i) => i >= 0);
+  const found = rows.map((i) => trigger4.conditions[i]);
   let relation = "==";
   for (const r of RELATIONS) {
     const want = compareConditions(x, r.rel);
@@ -6932,7 +6932,7 @@ function renderCounterExpansion(api, host, store, x, into) {
   else into.append(t("Subtract "), from, t(" from "), to, " ", bits);
   into.append(api.ui.el("span", { className: "mg-tag", title: t("Done by a run of {n} generated triggers after this one, in the same cycle; they are hidden here and locked in the other editors.", { n: (x.bits ?? 32) + (x.kind === "copy" ? 2 : 1) }) }, "A+"));
 }
-function renderCompare(api, host, store, index, trigger3, cmp, into) {
+function renderCompare(api, host, store, index, trigger4, cmp, into) {
   const t = api.i18n.t;
   const namer = host.namer(store.sidecar);
   const { x } = cmp;
@@ -6944,14 +6944,14 @@ function renderCompare(api, host, store, index, trigger3, cmp, into) {
   const rel = chip(api, RELATIONS.find((r) => r.rel === cmp.relation)?.label ?? "?", "");
   rel.addEventListener("click", () => pickChoice(api, rel, RELATIONS, (v) => {
     const next = compareConditions(x, RELATIONS[v].rel);
-    const conditions = trigger3.conditions.filter((_, i) => !cmp.rows.includes(i));
+    const conditions = trigger4.conditions.filter((_, i) => !cmp.rows.includes(i));
     conditions.splice(cmp.rows[0] ?? conditions.length, 0, ...next);
-    store.replace(index, { ...trigger3, conditions }, t("Edit comparison"));
+    store.replace(index, { ...trigger4, conditions }, t("Edit comparison"));
   }, { current: RELATIONS.findIndex((r) => r.rel === cmp.relation) }));
   into.append(a2, t(" is "), rel, " ", b);
   into.append(api.ui.el("span", { className: "mg-tag", title: t("Answered by a run of generated triggers before this one, every cycle; they are hidden here and locked in the other editors.") }, "A+"));
 }
-function newCompare(store, host, index, trigger3) {
+function newCompare(store, host, index, trigger4) {
   const named = store.sidecar.counters;
   const a2 = named[0] ? [named[0].player, named[0].unit] : freeCell(store, host) ?? [0, 181];
   const b = named[1] ? [named[1].player, named[1].unit] : freeCell(store, host, [a2]) ?? [1, 181];
@@ -6959,7 +6959,7 @@ function newCompare(store, host, index, trigger3) {
   const s1 = s0 ? freeCell(store, host, [a2, b, s0]) : null;
   if (!s0 || !s1) return null;
   const x = { id: `k${Date.now().toString(36)}`, kind: "compare", a: a2, b, scratch: [s0, s1], bits: 32, anchor: { i: store.cleanIndex(index), h: "" } };
-  void trigger3;
+  void trigger4;
   return { conditions: compareConditions(x, ">"), expansion: x };
 }
 function newCounterStep(store, host, what) {
@@ -7514,8 +7514,8 @@ function newHook(host, store, what, query = "", named_ = {}) {
   const record = what === "text" ? { id, kind: "text", flag, parts: [{ text: "Score: " }, { counter: a2 }], to: "all" } : what === "math" ? { id, kind: "math", flag, op: /random/i.test(query) ? "rand" : /divid/i.test(query) ? "div" : /modul|remainder/i.test(query) ? "mod" : "mul", a: a2, b: /random/i.test(query) ? 100 : 2, to: a2 } : what === "count" ? { id, kind: "count", flag, ...filter, to: a2 } : what === "read" ? { id, kind: "read", flag, ...filter, field: "hp", to: a2 } : what === "setloc" ? { id, kind: "setloc", flag, location: host.locations().find((l) => l.value !== 64)?.value ?? 1, x: 0, y: 0, width: null, height: null, .../\bby\b|shift|offset|slide|scroll/i.test(query) ? { relative: true, x: 32 } : {} } : what === "pick" ? { id, kind: "pick", flag, ...filter, by: /random|lottery|any one/i.test(query) ? "random" : /near|clos|mouse|under/i.test(query) ? "nearest" : /strong|most|great|high/i.test(query) ? "max" : "min", field: /kill/i.test(query) ? "kills" : "hp", near: /near|clos|mouse|under/i.test(query) ? host.locations().find((l) => l.value !== 64)?.value ?? 1 : null, locate: null, to: null, do: /kill/i.test(query) ? { kill: true } : null } : { id, kind: "foreach", flag, ...filter, do: /give to|owner/i.test(query) ? { give: 1 } : /kill/i.test(query) ? { kill: true } : /damage|hurt|take|drain/i.test(query) ? { adjust: /shield/i.test(query) ? "shields" : /energy|mana/i.test(query) ? "energy" : "hp", delta: -20 } : /heal|restore|regen/i.test(query) ? { adjust: /shield/i.test(query) ? "shields" : /energy|mana/i.test(query) ? "energy" : "hp", delta: 20 } : { set: "hp", value: 100 } };
   return { action: flagAction({ cell: flag }), builds: [...store.sidecar.builds, record] };
 }
-function needsBuild(store, trigger3) {
-  return trigger3.actions.some((a2) => a2.type === ActionType.SetDeaths && a2.modifier === SetModifier.SetTo && hookOf(store, a2) !== null) || trigger3.conditions.some((c2) => conditionRowOf(store, c2) !== null);
+function needsBuild(store, trigger4) {
+  return trigger4.actions.some((a2) => a2.type === ActionType.SetDeaths && a2.modifier === SetModifier.SetTo && hookOf(store, a2) !== null) || trigger4.conditions.some((c2) => conditionRowOf(store, c2) !== null);
 }
 
 // src/model/explain.ts
@@ -7525,9 +7525,9 @@ var lower = (s) => {
   const word = s.split(/\s/, 1)[0] ?? "";
   return VERBS.has(word.toLowerCase()) ? s[0].toLowerCase() + s.slice(1) : s;
 };
-function waitSeconds(trigger3) {
+function waitSeconds(trigger4) {
   let ms = 0;
-  for (const a2 of liveActions(trigger3)) {
+  for (const a2 of liveActions(trigger4)) {
     if (isActionDisabled(a2)) continue;
     if (a2.type === ActionType.Wait) ms += a2.time;
     if (a2.type === ActionType.Transmission) ms += a2.modifier === 8 ? a2.time + a2.target : a2.modifier === 9 ? Math.max(0, a2.time - a2.target) : a2.modifier === 7 ? a2.target : a2.time;
@@ -7538,20 +7538,20 @@ var isPreserved = (t) => (t.flags & TriggerFlag.Preserve) !== 0 || liveActions(t
 function usesCurrentPlayer(t) {
   return liveConditions(t).some((c2) => !isConditionDisabled(c2) && c2.player === PlayerGroup.CurrentPlayer) || liveActions(t).some((a2) => !isActionDisabled(a2) && (a2.player === PlayerGroup.CurrentPlayer || a2.type === ActionType.GiveUnits && a2.target === PlayerGroup.CurrentPlayer));
 }
-function explain(trigger3, index, list, input) {
+function explain(trigger4, index, list, input) {
   const lines = [];
-  const own = owners(trigger3);
+  const own = owners(trigger4);
   if (input.perPlayer) lines.push(`Runs once for each of ${join(input.perPlayer.players.map(input.player), "and")}, with ${input.player(input.perPlayer.placeholder)} standing for the player in every condition and action.`);
   else if (own.length === 0) lines.push("No player owns this trigger, so it never runs.");
   else if (own.length === 1 && own[0] === PlayerGroup.AllPlayers) lines.push("Every player runs this trigger, each on their own.");
   else if (own.length === 1) lines.push(`${input.player(own[0])} runs this trigger.`);
   else lines.push(`${join(own.map(input.player), "and")} each run this trigger on their own.`);
-  const conditions = liveConditions(trigger3);
+  const conditions = liveConditions(trigger4);
   const live = conditions.map((c2, i) => ({ c: c2, text: input.conditions[i] ?? "" })).filter(({ c: c2 }) => !isConditionDisabled(c2));
   const skipped = conditions.length - live.length;
   const never = live.some(({ c: c2 }) => c2.type === ConditionType.Never);
   const always2 = live.every(({ c: c2 }) => c2.type === ConditionType.Always);
-  const actions = liveActions(trigger3);
+  const actions = liveActions(trigger4);
   const does = actions.map((a2, i) => ({ a: a2, text: input.actions[i] ?? "" })).filter(({ a: a2, text }) => !isActionDisabled(a2) && a2.type !== ActionType.Comment && a2.type !== ActionType.PreserveTrigger && text);
   if (never) lines.push("A Never condition means it never fires.");
   else {
@@ -7565,12 +7565,12 @@ function explain(trigger3, index, list, input) {
   if (skipped) lines.push(skipped === 1 ? "One disabled condition is ignored." : `${skipped} disabled conditions are ignored.`);
   const clock = input.everyFrame ? "every frame" : "every two seconds";
   if (!never && own.length) {
-    if (isPreserved(trigger3)) lines.push(always2 ? `It is preserved, so it runs again every cycle (${clock}).` : `It is preserved, so it fires again on every cycle (${clock}) its conditions hold.`);
+    if (isPreserved(trigger4)) lines.push(always2 ? `It is preserved, so it runs again every cycle (${clock}).` : `It is preserved, so it fires again on every cycle (${clock}) its conditions hold.`);
     else lines.push(own.length > 1 || own[0] === PlayerGroup.AllPlayers || input.perPlayer ? "It fires once for each owner and then stops." : "It fires once and then stops.");
   }
-  const wait = waitSeconds(trigger3);
-  if (wait > 0) lines.push(`Its Waits hold the owner's other triggers for ${wait} second${wait === 1 ? "" : "s"} in all${isPreserved(trigger3) ? ", every time it fires" : ""}.`);
-  if (usesCurrentPlayer(trigger3) && (own.length > 1 || own[0] >= 12 || input.perPlayer)) lines.push("Current Player is whichever owner is running it.");
+  const wait = waitSeconds(trigger4);
+  if (wait > 0) lines.push(`Its Waits hold the owner's other triggers for ${wait} second${wait === 1 ? "" : "s"} in all${isPreserved(trigger4) ? ", every time it fires" : ""}.`);
+  if (usesCurrentPlayer(trigger4) && (own.length > 1 || own[0] >= 12 || input.perPlayer)) lines.push("Current Player is whichever owner is running it.");
   return { lines, refs: refsOf(list, index, input.anchorOf) };
 }
 var merge = (a2, b) => a2 === void 0 || a2 === b ? b : "both";
@@ -7665,11 +7665,11 @@ function rowWords(api, render) {
   });
   return (span.textContent ?? "").replace(/\s+/g, " ").trim();
 }
-function conditionWords(api, host, store, index, trigger3) {
+function conditionWords(api, host, store, index, trigger4) {
   const namer = host.namer(store.sidecar);
   const extra = host.extra();
-  const cmp = compareOf(store, index, trigger3);
-  return liveConditions(trigger3).map((c2, i) => {
+  const cmp = compareOf(store, index, trigger4);
+  return liveConditions(trigger4).map((c2, i) => {
     if (cmp && cmp.rows.includes(i)) return i === cmp.rows[0] ? `${cellLabel(cmp.x.a, namer)} is ${RELATION_WORDS[cmp.relation]} ${cellLabel(cmp.x.b, namer)}` : "";
     const brow = conditionRowOf(store, c2);
     if (brow) return rowWords(api, (into) => renderConditionRow(api, host, store, brow, into, () => {
@@ -7677,11 +7677,11 @@ function conditionWords(api, host, store, index, trigger3) {
     return conditionText(c2, namer, extra);
   });
 }
-function actionWords(api, host, store, trigger3) {
+function actionWords(api, host, store, trigger4) {
   const namer = host.namer(store.sidecar);
   const extra = host.extra();
-  const live = liveActions(trigger3);
-  const ci = commentIndex(trigger3);
+  const live = liveActions(trigger4);
+  const ci = commentIndex(trigger4);
   const out = live.map(() => "");
   for (const s of actionsText(live, namer, extra)) {
     const a2 = live[s.at];
@@ -7701,12 +7701,12 @@ function actionWords(api, host, store, trigger3) {
   return out;
 }
 function titleOf(api, host, store, index) {
-  const trigger3 = store.list[index];
-  if (!trigger3) return "";
-  const ci = commentIndex(trigger3);
-  const title = ci >= 0 ? host.namer(store.sidecar).string(trigger3.actions[ci].text) ?? "" : "";
+  const trigger4 = store.list[index];
+  if (!trigger4) return "";
+  const ci = commentIndex(trigger4);
+  const title = ci >= 0 ? host.namer(store.sidecar).string(trigger4.actions[ci].text) ?? "" : "";
   if (title) return title;
-  const first = conditionWords(api, host, store, index, trigger3).find(Boolean) ?? actionWords(api, host, store, trigger3).find(Boolean);
+  const first = conditionWords(api, host, store, index, trigger4).find(Boolean) ?? actionWords(api, host, store, trigger4).find(Boolean);
   return first ?? api.i18n.t("Trigger {n}", { n: store.cleanIndex(index) + 1 });
 }
 
@@ -7721,7 +7721,7 @@ function renderEditor(deps, root) {
     root.append(el("div", { className: "mg-empty" }, store.list.length ? t("Pick a trigger on the left, or add one.") : t("This map has no triggers yet. Add one with New.")));
     return;
   }
-  const trigger3 = store.list[index];
+  const trigger4 = store.list[index];
   const claim = host.claims(store.list).find((c2) => index >= c2.start && index < c2.start + c2.count);
   if (claim && claim.pluginId !== api.plugin.id) {
     root.append(el(
@@ -7747,12 +7747,12 @@ function renderEditor(deps, root) {
     }
   }
   const perPlayer = store.sidecar.expansions.find((x2) => x2.kind === "forEachPlayer" && x2.anchor.i === store.cleanIndex(index));
-  const problems = check(trigger3, { everyFrame: store.sidecar.settings.everyFrame, locationExists: (n) => host.locationExists(n), stringExists: (i) => host.stringExists(i), wavPresent: (i) => host.wavPresent(i), claimedCells, template: !!perPlayer });
+  const problems = check(trigger4, { everyFrame: store.sidecar.settings.everyFrame, locationExists: (n) => host.locationExists(n), stringExists: (i) => host.stringExists(i), wavPresent: (i) => host.wavPresent(i), claimedCells, template: !!perPlayer });
   const general = problems.filter((p) => !p.at);
   const at = (kind, i) => problems.filter((p) => p.at?.kind === kind && p.at.index === i);
   const replace = (label, next) => store.replace(index, next, label);
-  const ci = commentIndex(trigger3);
-  const titleText = ci >= 0 ? namer.string(trigger3.actions[ci].text) ?? "" : "";
+  const ci = commentIndex(trigger4);
+  const titleText = ci >= 0 ? namer.string(trigger4.actions[ci].text) ?? "" : "";
   const title = el("input", { className: "input", type: "text", placeholder: t("Untitled trigger \u2014 type a name"), value: titleText, title: t("The trigger's name, kept as its Comment action so every editor shows it") });
   const commitTitle = () => {
     const text = title.value.trim();
@@ -7774,27 +7774,27 @@ function renderEditor(deps, root) {
     }
   });
   root.append(el("div", { className: "mg-titlebar" }, title));
-  const own = owners(trigger3);
+  const own = owners(trigger4);
   const playersRow = el("div", { className: "mg-players" }, el("span", { className: "hint" }, t("Runs for")));
   const groups = host.playerGroups();
   const players = host.players();
   for (const g of own) {
     const chip3 = el("button", { type: "button", className: "mg-chip", title: t("Click to remove") }, g < 12 && players[g]?.color ? el("span", { className: "mg-dot", style: `background:${players[g].color}` }) : null, groups.find((x2) => x2.value === g)?.label ?? String(g));
-    chip3.addEventListener("click", () => replace(t("Change owners"), setOwners(trigger3, own.filter((x2) => x2 !== g))));
+    chip3.addEventListener("click", () => replace(t("Change owners"), setOwners(trigger4, own.filter((x2) => x2 !== g))));
     playersRow.append(chip3);
   }
   const addOwner = el("button", { type: "button", className: "mg-chip", title: t("Add a player or group") }, "+");
-  addOwner.addEventListener("click", () => pickChoice(api, addOwner, groups.filter((g) => !own.includes(g.value)).map((g) => ({ value: g.value, label: g.label, color: g.value < 12 ? players[g.value]?.color ?? null : void 0 })), (v) => replace(t("Change owners"), setOwners(trigger3, [...own, v])), { width: 220 }));
+  addOwner.addEventListener("click", () => pickChoice(api, addOwner, groups.filter((g) => !own.includes(g.value)).map((g) => ({ value: g.value, label: g.label, color: g.value < 12 ? players[g.value]?.color ?? null : void 0 })), (v) => replace(t("Change owners"), setOwners(trigger4, [...own, v])), { width: 220 }));
   playersRow.append(addOwner);
   if (perPlayer) {
     playersRow.replaceChildren(el("span", { className: "hint" }, t("Runs once for each of")), ...perPlayer.players.map((p) => el("span", { className: "mg-chip" }, players[p]?.color ? el("span", { className: "mg-dot", style: `background:${players[p].color}` }) : null, groups.find((x2) => x2.value === p)?.label ?? String(p))), el("span", { className: "hint" }, t("with {group} standing for the player", { group: groups.find((x2) => x2.value === perPlayer.placeholder)?.label ?? "" })));
   }
   root.append(playersRow);
   for (const p of general) root.append(el("div", { className: `mg-problem ${p.level}`, style: "padding-left:6px" }, p.text));
-  const conditions = liveConditions(trigger3);
+  const conditions = liveConditions(trigger4);
   const condSection = el("div", { className: "mg-section" }, el("div", { className: "mg-section-head" }, t("Conditions"), el("span", { className: "grow" }), el("span", { className: "hint" }, `${conditions.length}/${MAX_CONDITIONS}`)));
-  const writeConditions = (label, next) => replace(label, { ...trigger3, conditions: next });
-  const cmp = compareOf(store, index, trigger3);
+  const writeConditions = (label, next) => replace(label, { ...trigger4, conditions: next });
+  const cmp = compareOf(store, index, trigger4);
   conditions.forEach((c2, i) => {
     const brow = conditionRowOf(store, c2);
     if (brow) {
@@ -7808,7 +7808,7 @@ function renderEditor(deps, root) {
     if (cmp && cmp.rows.includes(i)) {
       if (i !== cmp.rows[0]) return;
       const sentence = el("span", { className: "mg-sentence" });
-      renderCompare(api, host, store, index, trigger3, cmp, sentence);
+      renderCompare(api, host, store, index, trigger4, cmp, sentence);
       const remove = api.ui.widgets.button("\u2715", { ghost: true, title: t("Remove"), onClick: () => store.commit(t("Remove comparison"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, conditions: conditions.filter((_, k) => !cmp.rows.includes(k)) }), { sidecar: { expansions: store.sidecar.expansions.filter((x2) => x2.id !== cmp.x.id) } }) });
       condSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove))));
       return;
@@ -7863,7 +7863,7 @@ function renderEditor(deps, root) {
         api.ui.toast({ kind: "info", title: t("One comparison per trigger"), detail: t("Put a second comparison in another trigger.") });
         return;
       }
-      const made = newCompare(store, host, index, trigger3);
+      const made = newCompare(store, host, index, trigger4);
       if (!made) {
         api.ui.toast({ kind: "error", title: t("No free counter cells for the comparison") });
         return;
@@ -7874,11 +7874,11 @@ function renderEditor(deps, root) {
     writeConditions(t("Add condition"), [...conditions, newCondition(api, pick, entities, query)]);
   }, { names: () => host.parseNames() }));
   root.append(condSection);
-  const actions = liveActions(trigger3);
+  const actions = liveActions(trigger4);
   const spans = actionSpans(actions).filter((s) => s.at !== ci);
   const shownActions = spans.map((s) => ({ a: actions[s.at], i: s.at, span: s }));
   const actSection = el("div", { className: "mg-section" }, el("div", { className: "mg-section-head" }, t("Actions"), el("span", { className: "grow" }), el("span", { className: "hint" }, `${actions.length}/${MAX_ACTIONS}`)));
-  const writeActions = (label, next) => replace(label, { ...trigger3, actions: next });
+  const writeActions = (label, next) => replace(label, { ...trigger4, actions: next });
   const moveSpan = (pos, d) => {
     const to = pos + d;
     if (to < 0 || to >= shownActions.length) return;
@@ -7965,9 +7965,9 @@ function renderEditor(deps, root) {
   fold.addEventListener("toggle", () => {
     store.showExplain = fold.open;
   });
-  const x = explain(trigger3, index, store.list, {
-    conditions: conditionWords(api, host, store, index, trigger3),
-    actions: actionWords(api, host, store, trigger3),
+  const x = explain(trigger4, index, store.list, {
+    conditions: conditionWords(api, host, store, index, trigger4),
+    actions: actionWords(api, host, store, trigger4),
     player: (g) => groups.find((g2) => g2.value === g)?.label ?? String(g),
     perPlayer: perPlayer ? { players: perPlayer.players, placeholder: perPlayer.placeholder } : null,
     everyFrame: !!store.sidecar.settings.everyFrame,
@@ -8015,24 +8015,24 @@ function newActions(api, pick, entities = [], query = "") {
 }
 
 // src/ui/list.ts
-function itemInfo(deps, index, trigger3) {
+function itemInfo(deps, index, trigger4) {
   const { api, host, store } = deps;
   const namer = host.namer(store.sidecar);
-  const ci = commentIndex(trigger3);
-  const conditions = conditionWords(api, host, store, index, trigger3).filter(Boolean);
-  const actions = actionWords(api, host, store, trigger3).filter(Boolean);
-  const title = ci >= 0 ? namer.string(trigger3.actions[ci].text) ?? "" : "";
+  const ci = commentIndex(trigger4);
+  const conditions = conditionWords(api, host, store, index, trigger4).filter(Boolean);
+  const actions = actionWords(api, host, store, trigger4).filter(Boolean);
+  const title = ci >= 0 ? namer.string(trigger4.actions[ci].text) ?? "" : "";
   const summary = [conditions.join(", "), actions.join(", ")].filter(Boolean).join(" \u2192 ");
-  const own = owners(trigger3);
+  const own = owners(trigger4);
   const ownersText = own.length > 4 ? deps.api.i18n.t("{n} groups", { n: own.length }) : own.map((g) => g < 12 ? `P${g + 1}` : namer.player(g)).join(", ");
-  const eud = trigger3.conditions.some((c2) => c2.type === ConditionType.Deaths && isEud(c2.player)) || trigger3.actions.some((a2) => a2.type === ActionType.SetDeaths && isEud(a2.player));
+  const eud = trigger4.conditions.some((c2) => c2.type === ConditionType.Deaths && isEud(c2.player)) || trigger4.actions.some((a2) => a2.type === ActionType.SetDeaths && isEud(a2.player));
   const claim = host.claims(store.list).find((c2) => index >= c2.start && index < c2.start + c2.count && c2.pluginId !== deps.api.plugin.id);
   const template = store.sidecar.expansions.some((x) => x.kind === "forEachPlayer" && x.anchor.i === store.cleanIndex(index));
-  const problems = check(trigger3, { everyFrame: store.sidecar.settings.everyFrame, locationExists: (n) => host.locationExists(n), stringExists: (i) => host.stringExists(i), template });
+  const problems = check(trigger4, { everyFrame: store.sidecar.settings.everyFrame, locationExists: (n) => host.locationExists(n), stringExists: (i) => host.stringExists(i), template });
   const generated = store.runs.filter((r) => r.anchor === index).reduce((n, r) => n + r.count, 0);
   return {
     generated,
-    build: needsBuild(store, trigger3),
+    build: needsBuild(store, trigger4),
     index,
     title: title || summary || deps.api.i18n.t("Empty trigger"),
     summary: title ? summary : "",
@@ -8040,7 +8040,7 @@ function itemInfo(deps, index, trigger3) {
     eud,
     locked: claim?.badge ?? null,
     problems: problems.some((p) => p.level === "error") ? "error" : problems.some((p) => p.level === "warn") ? "warn" : null,
-    disabled: isTriggerDisabled(trigger3)
+    disabled: isTriggerDisabled(trigger4)
   };
 }
 function renderList(deps, root, onMove) {
@@ -8380,7 +8380,7 @@ function evaluate(c2, current2, s, world, key) {
       return assume();
   }
 }
-var assumptionKey = (trigger3, condition) => `${trigger3}:${condition}`;
+var assumptionKey = (trigger4, condition) => `${trigger4}:${condition}`;
 function verdicts(list, index, player, s, world) {
   const t = list[index];
   if (!t) return [];
@@ -8553,10 +8553,10 @@ function runPlayer(list, player, s, world) {
   let start = 0;
   if (p.wait) {
     if (s.seconds < p.wait.until - 1e-9) return fired;
-    const { trigger: trigger3, action } = p.wait;
+    const { trigger: trigger4, action } = p.wait;
     p.wait = null;
-    if (runActions(list, trigger3, action, player, s, world)) return fired;
-    start = trigger3 + 1;
+    if (runActions(list, trigger4, action, player, s, world)) return fired;
+    start = trigger4 + 1;
   }
   for (let i = start; i < list.length; i++) {
     const t = list[i];
@@ -8842,10 +8842,10 @@ function createSimulator(api, host, store, everyFrame) {
       const scroll = el("div", { className: "mg-sim-body" });
       root.append(scroll);
       const index = store.selected;
-      const trigger3 = index !== null ? list[index] : null;
+      const trigger4 = index !== null ? list[index] : null;
       const watched = el("div", { className: "mg-section" }, el("div", { className: "mg-section-head" }, t("Selected trigger")));
-      if (trigger3 && index !== null) {
-        const owners2 = Array.from({ length: 8 }, (_, p) => p).filter((p) => world.active[p] && runsFor(trigger3, p, world));
+      if (trigger4 && index !== null) {
+        const owners2 = Array.from({ length: 8 }, (_, p) => p).filter((p) => world.active[p] && runsFor(trigger4, p, world));
         if (!owners2.includes(owner)) owner = owners2[0] ?? 0;
         const head = el("div", { className: "mg-sim-title" }, el("b", {}, titleOf(api, host, store, index)));
         if (owners2.length > 1) {
@@ -8862,12 +8862,12 @@ function createSimulator(api, host, store, everyFrame) {
           const p = state.players[owner];
           const status = p.wait && p.wait.trigger === index ? t("waiting inside its actions") : state.spent.has(index * 16 + owner) ? t("fired and done") : fired ? t("fired {n} times so far", { n: fired }) : t("has not fired yet");
           watched.append(el("div", { className: "mg-note" }, status));
-          const words2 = conditionWords(api, host, store, index, trigger3);
+          const words2 = conditionWords(api, host, store, index, trigger4);
           const rows = verdicts(list, index, owner, state, world);
           if (!rows.length) watched.append(el("div", { className: "mg-note" }, t("No conditions: it fires on the first cycle.")));
           for (const { condition, verdict } of rows) {
             if (!words2[condition]) continue;
-            const c2 = liveConditions(trigger3)[condition];
+            const c2 = liveConditions(trigger4)[condition];
             const disabled = (c2.flags & 2) !== 0;
             const mark = disabled ? "\u2013" : !verdict.known ? "?" : verdict.ok ? "\u2713" : "\u2717";
             const kind = disabled ? "" : !verdict.known ? "unknown" : verdict.ok ? "ok" : "no";
@@ -9186,8 +9186,8 @@ var Store = class {
     this.notify();
   }
   /** Replace one trigger. */
-  replace(index, trigger3, label = "Edit trigger") {
-    this.commit(label, () => this.list.map((t, i) => i === index ? trigger3 : t));
+  replace(index, trigger4, label = "Edit trigger") {
+    this.commit(label, () => this.list.map((t, i) => i === index ? trigger4 : t));
   }
   /** Change the sidecar only (a counter name, a folder rename, a setting). */
   updateSidecar(label, patch) {
@@ -9224,6 +9224,8 @@ function createPanel(api, hooks = {}) {
   let store = null;
   let host = null;
   let pendingIndex = null;
+  let pendingStart = null;
+  let offerStart = null;
   const open = (options = {}) => {
     if (!api.document.isOpen()) {
       api.ui.toast({ kind: "info", title: api.i18n.t("Open a map first") });
@@ -9274,6 +9276,15 @@ function createPanel(api, hooks = {}) {
     const unsubscribe = s.subscribe(render);
     search2.addEventListener("input", render);
     render();
+    offerStart = (starters2) => {
+      const items = starters2.map((st, i) => ({ value: i, label: st.label }));
+      pickChoice(api, newButton, items, (i) => insertTriggers(t("New trigger from the map"), (intern) => starters2[i].build(intern)), { width: 320, placeholder: t("Start from\u2026") });
+    };
+    if (pendingStart) {
+      const st = pendingStart;
+      pendingStart = null;
+      setTimeout(() => offerStart?.(st), 0);
+    }
     const offTriggers = api.events.on("triggers", () => {
       if (s.stale()) s.reload();
     });
@@ -9574,6 +9585,7 @@ function createPanel(api, hooks = {}) {
     };
     root.addEventListener("keydown", onKey);
     return () => {
+      offerStart = null;
       unsubscribe();
       offTriggers.dispose();
       offFile.dispose();
@@ -9586,9 +9598,83 @@ function createPanel(api, hooks = {}) {
   }
   return {
     open,
+    start: (starters2) => {
+      if (!starters2.length) return;
+      if (handle?.isOpen() && offerStart) {
+        offerStart(starters2);
+        return;
+      }
+      pendingStart = starters2;
+      open();
+    },
     close: () => handle?.close(),
     isOpen: () => handle?.isOpen() ?? false
   };
+}
+
+// src/model/starters.ts
+var C3 = ConditionType;
+var A3 = ActionType;
+var P2 = PlayerGroup;
+var MARINE2 = 0;
+var cond2 = (type, patch = {}) => ({ ...emptyCondition(), type, ...patch });
+var act2 = (type, patch = {}) => ({ ...emptyAction(), type, ...patch });
+var trigger3 = (intern, title, owners2, conditions, actions) => setOwners({ ...emptyTrigger(), conditions, actions: [act2(A3.Comment, { text: intern(title) }), ...actions] }, owners2);
+var display2 = (intern, text) => act2(A3.DisplayText, { text: intern(text), flags: ActionFlag.AlwaysDisplay });
+var ownerOf = (owner) => owner < 8 ? owner : P2.Player1;
+function starters(subject) {
+  const out = [];
+  const u = subject.unit;
+  const l = subject.location;
+  if (u) {
+    const owner = ownerOf(u.owner);
+    out.push({
+      id: "unit-dies",
+      label: `When this ${u.name} dies`,
+      hint: `${u.ownerName}'s deaths of ${u.name} reach 1 (any ${u.name} of theirs, not only this one)`,
+      build: (intern) => [trigger3(intern, `When the ${u.name} dies`, [owner], [cond2(C3.Deaths, { player: u.owner < 12 ? u.owner : P2.CurrentPlayer, unitId: u.unitId, comparison: Comparison.AtLeast, amount: 1 })], [display2(intern, `The ${u.name} is gone.`)])]
+    });
+    if (l) out.push({
+      id: "unit-brought",
+      label: `When this ${u.name} is at ${l.name}`,
+      hint: `${u.ownerName} brings at least 1 ${u.name} to ${l.name}`,
+      build: (intern) => [trigger3(intern, `${u.name} at ${l.name}`, [owner], [cond2(C3.Bring, { player: u.owner < 12 ? u.owner : P2.CurrentPlayer, unitId: u.unitId, location: l.number, comparison: Comparison.AtLeast, amount: 1 })], [display2(intern, `The ${u.name} is at ${l.name}.`), act2(A3.PreserveTrigger)])]
+    });
+    out.push({
+      id: "unit-give",
+      label: `Give this ${u.name} to the player who comes`,
+      hint: l ? `Whoever brings a unit to ${l.name} gets the ${u.name}` : "Needs a location under the unit",
+      build: (intern) => [trigger3(intern, `Give the ${u.name}`, [P2.AllPlayers], [cond2(C3.Bring, { player: P2.CurrentPlayer, unitId: UnitClass.Any, location: l?.number ?? 0, comparison: Comparison.AtLeast, amount: 1 })], [act2(A3.GiveUnits, { player: u.owner < 12 ? u.owner : P2.NeutralPlayers, target: P2.CurrentPlayer, unitId: u.unitId, modifier: 1, location: l?.number ?? 0 }), act2(A3.PreserveTrigger)])]
+    });
+    const hp = entry("cunit.hp");
+    if (hp) out.push({
+      id: "unit-hp",
+      label: `Set this ${u.name}'s hit points (EUD)`,
+      hint: `Placed unit slot ${u.slot}: the game fills the slots in map order, so the number stays right while no unit is added before it`,
+      build: (intern) => [trigger3(intern, `${u.name}'s hit points`, [P2.Player1], [cond2(C3.Always)], [lowerAction({ entry: hp, args: { index: u.slot }, value: 100, op: SetModifier.SetTo })])]
+    });
+  }
+  if (l) {
+    out.push({
+      id: "loc-comes",
+      label: `When a unit comes to ${l.name}`,
+      hint: "Any player, any unit; fires again each time",
+      build: (intern) => [trigger3(intern, `A unit at ${l.name}`, [P2.AllPlayers], [cond2(C3.Bring, { player: P2.CurrentPlayer, unitId: UnitClass.Any, location: l.number, comparison: Comparison.AtLeast, amount: 1 })], [display2(intern, `Something is at ${l.name}.`), act2(A3.PreserveTrigger)])]
+    });
+    out.push({
+      id: "loc-create",
+      label: `Create units at ${l.name}`,
+      hint: "One Marine for Player 1 at the start; change the unit, the count and the player",
+      build: (intern) => [trigger3(intern, `Units at ${l.name}`, [P2.Player1], [cond2(C3.Always)], [act2(A3.CreateUnit, { player: P2.Player1, unitId: MARINE2, modifier: 1, location: l.number })])]
+    });
+    out.push({
+      id: "loc-clear",
+      label: `Kill everything at ${l.name}`,
+      hint: "Every player's units in the location, on the first cycle",
+      build: (intern) => [trigger3(intern, `Clear ${l.name}`, [P2.Player1], [cond2(C3.Always)], [act2(A3.KillUnitAt, { player: P2.AllPlayers, unitId: UnitClass.Any, modifier: 0, location: l.number })])]
+    });
+  }
+  return out;
 }
 
 // plugin.ts
@@ -9606,8 +9692,8 @@ function activate(api) {
   api.commands.register({
     id: "describe",
     title: "Magenta: describe a trigger",
-    run: (trigger3) => {
-      const tr = trigger3;
+    run: (trigger4) => {
+      const tr = trigger4;
       const host = new Host(api);
       const namer = host.namer(host.sidecar());
       const extra = host.extra();
@@ -9622,10 +9708,61 @@ function activate(api) {
   api.menu.add("Plugins", { label: t("Magenta Settings\u2026"), icon: "plugin", command: "settings" });
   api.hotkeys.add("Ctrl+Shift+M", { command: "open" });
   claims = installClaims(api, (index) => panel.open({ index }));
+  const under = (ctx) => {
+    const point = ctx.point ?? (ctx.tile ? { px: ctx.tile.x * 32 + 16, py: ctx.tile.y * 32 + 16 } : null);
+    if (!point) return {};
+    const host = new Host(api);
+    const scn = api.document.scenario();
+    const names = api.triggers.names();
+    const dat = api.data.units();
+    let unit = null;
+    let best = Infinity;
+    for (const u of host.placedUnits()) {
+      const hw = dat && u.unitId < dat.placementWidth.length ? Math.max(16, dat.placementWidth[u.unitId] / 2) : 16;
+      const hh = dat && u.unitId < dat.placementHeight.length ? Math.max(16, dat.placementHeight[u.unitId] / 2) : 16;
+      if (Math.abs(u.x - point.px) > hw || Math.abs(u.y - point.py) > hh) continue;
+      const d = (u.x - point.px) ** 2 + (u.y - point.py) ** 2;
+      if (d < best) {
+        best = d;
+        unit = { unitId: u.unitId, owner: u.owner, slot: u.slot, name: names.unit(u.unitId), ownerName: api.names.playerGroup(u.owner) };
+      }
+    }
+    let location = null;
+    let area = Infinity;
+    scn?.locations.forEach((l, i) => {
+      if (i === 63) return;
+      const x0 = Math.min(l.left, l.right), x1 = Math.max(l.left, l.right), y0 = Math.min(l.top, l.bottom), y1 = Math.max(l.top, l.bottom);
+      if (x0 === x1 || y0 === y1 || point.px < x0 || point.px >= x1 || point.py < y0 || point.py >= y1) return;
+      const a2 = (x1 - x0) * (y1 - y0);
+      if (a2 < area) {
+        area = a2;
+        location = { number: i + 1, name: names.location(i + 1) };
+      }
+    });
+    return { unit, location };
+  };
+  const unitItem = api.contextMenu.add("viewport", {
+    label: (ctx) => t("New trigger about this {unit}\u2026", { unit: under(ctx).unit?.name ?? "" }),
+    visible: (ctx) => api.document.isOpen() && !!under(ctx).unit,
+    run: (ctx) => {
+      const s = under(ctx);
+      panel.start(starters({ unit: s.unit, location: s.location }));
+    }
+  });
+  const locationItem = api.contextMenu.add("viewport", {
+    label: (ctx) => t("New trigger at {location}\u2026", { location: under(ctx).location?.name ?? "" }),
+    visible: (ctx) => api.document.isOpen() && !!under(ctx).location,
+    run: (ctx) => {
+      const s = under(ctx);
+      panel.start(starters({ location: s.location }));
+    }
+  });
   return () => {
     claims?.dispose();
     panel.close();
     onData.dispose();
+    unitItem.dispose();
+    locationItem.dispose();
     setGameLookup(null);
   };
 }

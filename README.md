@@ -84,6 +84,13 @@ every minute, win by holding a location, defeat when nothing is left, a message 
 a key that gives minerals, a unit type's stats. Each comes titled, with its chips on sensible
 defaults (the map's first location, Current Player, a Marine) and a note saying what to change.
 
+**Start from the map.** Right-click a placed unit on the map and take **New trigger about this
+Marine…**, or right-click inside a location for **New trigger at Beacon…**. The panel opens
+with a short list to start from: when this unit dies, when it is at the location it stands in,
+give it to the player who comes, set its hit points (EUD, by its placed-unit slot); when a
+unit comes to the location, create units there, kill everything there. The one you pick is
+inserted after the selection with the unit, its owner and the location already in the chips.
+
 Rows have tools on hover: disable (⊘), move up and down, remove. With a row focused, `Delete`
 removes it, `Alt+↑` / `Alt+↓` move it, `Ctrl+/` disables it, Enter opens its first chip.
 

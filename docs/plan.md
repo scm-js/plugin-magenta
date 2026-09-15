@@ -292,6 +292,12 @@ Waits and results — with a verdict per condition of the selected trigger, a "c
 whose entries can be assumed true, a state that can be poked, and a log. What it cannot know
 it reports rather than guesses.
 
+**2026-09-15, 0.6.0:** start a trigger from the map. Two items in the map's right-click menu
+(`api.contextMenu`, viewport): about the placed unit under the pointer (the nearest whose
+units.dat placement box holds the point) and at the smallest location around it. Each opens the
+panel and offers `src/model/starters.ts`'s whole triggers with the objects already in the chips;
+the one picked goes in after the selection (`PanelController.start`).
+
 What comes after Tier A+ and the build rows — the candidate conditions and actions the build
 server makes possible, and the probe maps that decide which ship — is `candidates.md`
 (2026-09-14).

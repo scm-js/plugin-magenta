@@ -22,6 +22,7 @@ import { installClaims } from "./src/claims";
 import { Host } from "./src/ui/host";
 import { createPanel } from "./src/ui/panel";
 import { openSettingsDialog } from "./src/ui/settings";
+import { starters, type StarterSubject } from "./src/model/starters";
 
 export function activate(api: PluginApi): () => void {
   let claims: ReturnType<typeof installClaims> | null = null;
@@ -51,5 +52,46 @@ export function activate(api: PluginApi): () => void {
   api.menu.add("Plugins", { label: t("Magenta Settings…"), icon: "plugin", command: "settings" });
   api.hotkeys.add("Ctrl+Shift+M", { command: "open" });
   claims = installClaims(api, (index) => panel.open({ index }));
-  return () => { claims?.dispose(); panel.close(); onData.dispose(); setGameLookup(null); };
+
+  /* ── Start a trigger from the map ── */
+  /** The placed unit under a map pixel (the nearest whose placement box holds it), and the smallest location around it. */
+  const under = (ctx: { point: { px: number; py: number } | null; tile: { x: number; y: number } | null }): StarterSubject => {
+    // The viewport keeps a pixel only on some layers; the tile's centre stands in on the rest.
+    const point = ctx.point ?? (ctx.tile ? { px: ctx.tile.x * 32 + 16, py: ctx.tile.y * 32 + 16 } : null);
+    if (!point) return {};
+    const host = new Host(api);
+    const scn = api.document.scenario();
+    const names = api.triggers.names();
+    const dat = api.data.units();
+    let unit: StarterSubject["unit"] = null;
+    let best = Infinity;
+    for (const u of host.placedUnits()) {
+      const hw = dat && u.unitId < dat.placementWidth.length ? Math.max(16, dat.placementWidth[u.unitId] / 2) : 16;
+      const hh = dat && u.unitId < dat.placementHeight.length ? Math.max(16, dat.placementHeight[u.unitId] / 2) : 16;
+      if (Math.abs(u.x - point.px) > hw || Math.abs(u.y - point.py) > hh) continue;
+      const d = (u.x - point.px) ** 2 + (u.y - point.py) ** 2;
+      if (d < best) { best = d; unit = { unitId: u.unitId, owner: u.owner, slot: u.slot, name: names.unit(u.unitId), ownerName: api.names.playerGroup(u.owner) }; }
+    }
+    let location: StarterSubject["location"] = null;
+    let area = Infinity;
+    scn?.locations.forEach((l, i) => {
+      if (i === 63) return;
+      const x0 = Math.min(l.left, l.right), x1 = Math.max(l.left, l.right), y0 = Math.min(l.top, l.bottom), y1 = Math.max(l.top, l.bottom);
+      if (x0 === x1 || y0 === y1 || point.px < x0 || point.px >= x1 || point.py < y0 || point.py >= y1) return;
+      const a = (x1 - x0) * (y1 - y0);
+      if (a < area) { area = a; location = { number: i + 1, name: names.location(i + 1) }; }
+    });
+    return { unit, location };
+  };
+  const unitItem = api.contextMenu.add("viewport", {
+    label: (ctx) => t("New trigger about this {unit}…", { unit: under(ctx).unit?.name ?? "" }),
+    visible: (ctx) => api.document.isOpen() && !!under(ctx).unit,
+    run: (ctx) => { const s = under(ctx); panel.start(starters({ unit: s.unit, location: s.location })); },
+  });
+  const locationItem = api.contextMenu.add("viewport", {
+    label: (ctx) => t("New trigger at {location}…", { location: under(ctx).location?.name ?? "" }),
+    visible: (ctx) => api.document.isOpen() && !!under(ctx).location,
+    run: (ctx) => { const s = under(ctx); panel.start(starters({ location: s.location })); },
+  });
+  return () => { claims?.dispose(); panel.close(); onData.dispose(); unitItem.dispose(); locationItem.dispose(); setGameLookup(null); };
 }

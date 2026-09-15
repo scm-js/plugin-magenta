@@ -12,6 +12,7 @@ import type { Folder } from "../model/sidecar";
 import { setOwners } from "../model/records";
 import { DEFAULT_PLACEHOLDER, HUMAN_PLAYERS } from "../model/sync";
 import { RECIPES, recipeContext } from "../model/recipes";
+import type { Starter } from "../model/starters";
 import { openBuildDialog } from "./build";
 import { pickChoice } from "./chips";
 import { renderEditor } from "./editor";
@@ -28,6 +29,8 @@ const PANEL_HEIGHT = 560;
 
 export interface PanelController {
   open(options?: { index?: number }): void;
+  /** Open the panel and offer these whole triggers to start from; the one picked is inserted after the selection. */
+  start(starters: Starter[]): void;
   close(): void;
   isOpen(): boolean;
 }
@@ -37,6 +40,8 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
   let store: Store | null = null;
   let host: Host | null = null;
   let pendingIndex: number | null = null;
+  let pendingStart: Starter[] | null = null;
+  let offerStart: ((starters: Starter[]) => void) | null = null;
 
   const open = (options: { index?: number } = {}) => {
     if (!api.document.isOpen()) { api.ui.toast({ kind: "info", title: api.i18n.t("Open a map first") }); return; }
@@ -84,6 +89,12 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
     const unsubscribe = s.subscribe(render);
     search.addEventListener("input", render);
     render();
+    offerStart = (starters) => {
+      // The labels carry the objects' names; the hints would crowd them out of the row.
+      const items = starters.map((st, i) => ({ value: i, label: st.label }));
+      pickChoice(api, newButton, items, (i) => insertTriggers(t("New trigger from the map"), (intern) => starters[i].build(intern)), { width: 320, placeholder: t("Start from…") });
+    };
+    if (pendingStart) { const st = pendingStart; pendingStart = null; setTimeout(() => offerStart?.(st), 0); }
 
     /* ── Changes from elsewhere ── */
     const offTriggers = api.events.on("triggers", () => { if (s.stale()) s.reload(); });
@@ -323,6 +334,7 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
     root.addEventListener("keydown", onKey);
 
     return () => {
+      offerStart = null;
       unsubscribe();
       offTriggers.dispose();
       offFile.dispose();
@@ -336,6 +348,12 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
 
   return {
     open,
+    start: (starters) => {
+      if (!starters.length) return;
+      if (handle?.isOpen() && offerStart) { offerStart(starters); return; }
+      pendingStart = starters;
+      open();
+    },
     close: () => handle?.close(),
     isOpen: () => handle?.isOpen() ?? false,
   };
