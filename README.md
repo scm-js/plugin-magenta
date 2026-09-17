@@ -47,6 +47,10 @@ lock for a run another plugin owns, **!** for a problem.
   changes the other — `Delete` deletes, `Ctrl+/` disables or enables every row of it.
 - `Ctrl+C` copies the selected trigger as text in TrigEdit's syntax; `Ctrl+V` pastes text
   from SCMDraft or TrigEdit after the selection.
+- The panel floats over the map by default; **⋯ ▸ Dock on the right** (or Plugins ▸ Magenta
+  Settings…) puts it in the right dock instead, where the list stacks over the trigger. The
+  divider between the list and the trigger drags; double-click it, or the **☰** button, to
+  hide the list and give the trigger the whole width. Size, dock and list width are remembered.
 - `Ctrl+Z` / `Ctrl+Y` undo and redo inside the panel. Triggers sit outside the editor's own
   undo, so this history is Magenta's; it is dropped when the panel closes, and when another
   editor (Classic, TrigEdit, a plugin) changes the triggers — an undo step is the whole list,
@@ -300,7 +304,16 @@ from the file, otherwise type the seconds); **air units pass through one another
 In the map these are one private counter cell each: the trigger sets it (an action) or reads
 it (a condition), so it stays an ordinary trigger everywhere. **⋯ ▸ Build EUD map…** sends
 the map as it stands to the server, which adds the code behind the rows and hands back a
-built map to save beside the source, `name-eud.scx`. Nothing about the map is kept on the
+built map to save beside the source, `name-eud.scx`. A **Build** button in the panel's head
+says where the map stands — how many triggers need a build, and whether the last built map
+is *built* from the map as it is, *stale* because the map changed since, or *not built*;
+the record of the last build (its time, file and the map's revision) is kept with the map.
+The dialog checks the map before sending it and lists what would go wrong, each with a
+**Show** link to the trigger: the player slot, unit type and location slots synced input
+keeps for itself must still be free, a row's locations must still exist, a chat message
+must be one the chat plugin takes, the camera's location must have a name, the music must
+be in the archive. It also asks the server what it has — its eudplib and euddraft, and the
+newest Magenta spec its plugin reads — and refuses a build an older server would fail. Nothing about the map is kept on the
 server. Only StarCraft: Remastered plays a built map. Keep the source map: the built one is
 what players get, the way a compiled program is, and while the editor opens it, the rows
 behind its triggers are gone into eudplib's code. The server address is the **Build

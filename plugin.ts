@@ -47,7 +47,7 @@ export function activate(api: PluginApi): () => void {
       };
     },
   });
-  api.commands.register({ id: "settings", title: "Magenta Settings", run: () => openSettingsDialog(api) });
+  api.commands.register({ id: "settings", title: "Magenta Settings", run: () => openSettingsDialog(api, () => panel.relayout()) });
   api.menu.add("Triggers", { label: t("Magenta…"), shortcut: "Ctrl+Shift+M", icon: "plugin", after: "Text Trigger Editor…", enabled: () => api.document.isOpen(), command: "open" });
   api.menu.add("Plugins", { label: t("Magenta Settings…"), icon: "plugin", command: "settings" });
   api.hotkeys.add("Ctrl+Shift+M", { command: "open" });

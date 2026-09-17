@@ -5109,6 +5109,35 @@ var Host = class {
     });
     return free;
   }
+  /** `PlayerType` per 0-based slot (0 is Inactive). */
+  playerTypes() {
+    return this.api.settings.players().map((p) => p.type);
+  }
+  playerTypeName(slot) {
+    return this.api.settings.players()[slot]?.typeName ?? String(slot + 1);
+  }
+  /** The slots that own at least one placed unit. */
+  placedOwners() {
+    return new Set((this.api.document.scenario()?.units ?? []).map((u) => u.owner));
+  }
+  /** Every location slot, 0-based: empty (zero size) and whether it has a name of its own. */
+  locationSlots() {
+    return (this.api.document.scenario()?.locations ?? []).map((l) => ({ empty: l.left === l.right && l.top === l.bottom, named: l.nameIndex !== 0 }));
+  }
+  soundPresent(path) {
+    const want = path.replace(/\//g, "\\");
+    return this.api.settings.sounds().some((s) => s.path.replace(/\//g, "\\") === want && s.present);
+  }
+  /** What of the map a build reads besides the triggers — locations, placed units, the strings — as strings for the source revision. */
+  revisionExtra() {
+    const scn = this.api.document.scenario();
+    if (!scn) return [];
+    return [
+      JSON.stringify(scn.locations.map((l) => [l.left, l.top, l.right, l.bottom, l.nameIndex])),
+      JSON.stringify(scn.units.map((u) => [u.unitId, u.owner, u.x, u.y])),
+      (scn.strings.strings ?? []).map((s) => s ?? "").join("\0")
+    ];
+  }
   wavPresent(index) {
     const row = this.api.settings.sounds().find((s) => s.stringIndex === index);
     return !row || row.present;
@@ -6680,6 +6709,111 @@ function needsBuild(store, trigger4) {
   return trigger4.actions.some((a2) => a2.type === ActionType.SetDeaths && a2.modifier === SetModifier.SetTo && hookOf(store, a2) !== null) || trigger4.conditions.some((c2) => conditionRowOf(store, c2) !== null);
 }
 
+// src/model/preflight.ts
+var PLAYER_INACTIVE = 0;
+var hex = (h) => (h >>> 0).toString(16).padStart(8, "0");
+function fnv(s, h = 2166136261) {
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h >>> 0;
+}
+function sourceRevision(list, sidecar, extra = []) {
+  const settings = { ...sidecar.settings };
+  delete settings.lastBuild;
+  let h = 2166136261;
+  for (const t of list) h = fnv(fingerprint(t), h);
+  h = fnv(JSON.stringify({ builds: sidecar.builds, chat: sidecar.chat, msqc: sidecar.msqc, expansions: sidecar.expansions, settings }), h);
+  let g = 2166136261;
+  for (const s of extra) g = fnv(s, g);
+  return hex(h) + hex(g);
+}
+function buildFreshness(last, revision) {
+  if (!last) return "never";
+  return last.revision === revision ? "fresh" : "stale";
+}
+function preflight(input) {
+  const out = [];
+  const { list, sidecar, options } = input;
+  const locExists = (n) => n === 64 || n >= 1 && n <= 63 && input.locations[n - 1] !== void 0 && !input.locations[n - 1].empty;
+  const free = (slot) => {
+    const l = input.locations[slot];
+    return !!l && l.empty && !l.named;
+  };
+  const m = sidecar.msqc;
+  if (usesMsqc(m)) {
+    const p = m.qcPlayer;
+    if ((input.playerTypes[p] ?? PLAYER_INACTIVE) !== PLAYER_INACTIVE) out.push({ level: "error", text: `Synced input needs ${input.playerName(p)} for itself, and the slot is set to ${input.playerTypeName(p)}. Make it inactive in Scenario \u25B8 Players, or free another slot and remove the input rows to let Magenta pick again.` });
+    if (input.placedOwners.has(p)) out.push({ level: "error", text: `Synced input needs ${input.playerName(p)} for itself, and units on the map belong to it.` });
+    list.forEach((t, i) => {
+      if (owners(t).includes(p)) out.push({ level: "warn", text: `Synced input owns ${input.playerName(p)}; this trigger runs for it too.`, trigger: i });
+    });
+    if (input.placedUnitIds.has(m.qcUnit)) out.push({ level: "error", text: `Synced input uses the ${input.unitName(m.qcUnit)} type for its own command units, and the map has some placed. Remove them, or pick another unit type in the map's settings.` });
+    list.forEach((t, i) => {
+      if (liveActions(t).some((a2) => (a2.type === ActionType.CreateUnit || a2.type === ActionType.CreateUnitWithProperties) && a2.unitId === m.qcUnit)) out.push({ level: "error", text: `This trigger creates a ${input.unitName(m.qcUnit)}, the type synced input keeps for itself.`, trigger: i });
+    });
+    if (!free(m.qcLoc)) out.push({ level: "error", text: `Synced input's own location slot (${m.qcLoc + 1}) is no longer empty: a location was made there. Free it, or remove the input rows and add them again to pick another.` });
+    if (m.mouseBase !== null) {
+      const taken = [];
+      for (let k = 0; k < 8; k++) if (!free(m.mouseBase - 1 + k)) taken.push(m.mouseBase + k);
+      if (taken.length) out.push({ level: "error", text: `The eight location slots the players' mice use (${m.mouseBase}\u2013${m.mouseBase + 7}) must stay empty; ${taken.length === 1 ? "slot" : "slots"} ${taken.join(", ")} ${taken.length === 1 ? "is" : "are"} in use.` });
+    }
+  }
+  const seenChat = /* @__PURE__ */ new Map();
+  for (const b of sidecar.builds) {
+    const carriers = refs(list, b);
+    const at = carriers[0];
+    if (b.kind === "chat") {
+      const bad = checkChatMessage(b.message);
+      if (bad) out.push({ level: "error", text: `The chat command "${b.message}": ${bad}` });
+      const key = b.message.toLowerCase();
+      if (seenChat.has(key)) out.push({ level: "warn", text: `Two chat commands say "${b.message}"; the second never fires on its own.` });
+      seenChat.set(key, 1);
+      continue;
+    }
+    if (!carriers.length) {
+      out.push({ level: "info", text: `A ${b.kind === "scan" ? "unit check" : "build row"} no trigger uses is still in the map's Magenta data; it is sent, and never fires.` });
+      continue;
+    }
+    if ("location" in b && b.location !== null && !locExists(b.location)) out.push({ level: "error", text: `A build row names location ${b.location}, which the map no longer has.`, trigger: at });
+    if (b.kind === "foreach" || b.kind === "pick") {
+      const d = b.do;
+      if (d && "order" in d) {
+        if (!locExists(d.scratch)) out.push({ level: "error", text: `The order row's scratch location (${d.scratch}) is gone; pick the order again to make one.`, trigger: at });
+        if (!locExists(d.location)) out.push({ level: "error", text: `The order row's target location (${d.location}) is gone.`, trigger: at });
+      }
+      if (d && "locate" in d && !locExists(d.locate)) out.push({ level: "error", text: `The row centres location ${d.locate} on the unit, and the map no longer has it.`, trigger: at });
+    }
+    if (b.kind === "pick") {
+      if (b.locate !== null && !locExists(b.locate)) out.push({ level: "error", text: `The pick row centres location ${b.locate} on the unit, and the map no longer has it.`, trigger: at });
+      if (typeof b.near === "number" && !locExists(b.near)) out.push({ level: "error", text: `The pick row measures from location ${b.near}, which the map no longer has.`, trigger: at });
+    }
+  }
+  if (options.camera) {
+    const l = input.locations[options.camera.location - 1];
+    if (!l || l.empty) out.push({ level: "error", text: `The camera follows location ${options.camera.location}, which the map no longer has.` });
+    else if (!l.named) out.push({ level: "error", text: `The camera finds its location by name, and location ${options.camera.location} has none of its own.` });
+  }
+  if (options.bgm && !input.soundPresent(options.bgm.path)) out.push({ level: "error", text: `The background music ${options.bgm.path.split("\\").pop()} is not in the map archive.` });
+  const h = input.health;
+  if (h) {
+    const needed = Object.keys(input.plugins);
+    const missing = h.plugins ? needed.filter((n) => !h.plugins.includes(n)) : [];
+    if (missing.length) out.push({ level: "error", text: `The build server does not have the ${missing.join(", ")} plugin${missing.length > 1 ? "s" : ""} this map needs.` });
+    if (input.plugins.magenta) {
+      if (typeof h.magentaSpec === "number" && h.magentaSpec < MAGENTA_SPEC_VERSION) out.push({ level: "error", text: `The build server's Magenta plugin reads spec ${h.magentaSpec}; this map's rows are written as spec ${MAGENTA_SPEC_VERSION}. Update the server (scm-js/eud-server), or build on scmjs.dev.` });
+      else if (h.magentaSpec === void 0 || h.magentaSpec === null) out.push({ level: "info", text: "The build server does not say which Magenta spec it reads; an older one fails the build with a message rather than here." });
+    }
+    if (input.mapBytes !== void 0 && h.maxMapBytes && input.mapBytes > h.maxMapBytes) out.push({ level: "error", text: `The map is ${Math.round(input.mapBytes / 1024)} KB and the server takes up to ${Math.round(h.maxMapBytes / 1024)} KB.` });
+  }
+  const rank = { error: 0, warn: 1, info: 2 };
+  return out.sort((a2, b) => rank[a2.level] - rank[b.level]);
+}
+function lastBuildRecord(revision, file, server, health) {
+  return { revision, at: (/* @__PURE__ */ new Date()).toISOString(), file, spec: MAGENTA_SPEC_VERSION, server, ...health?.eudplib ? { eudplib: health.eudplib } : {}, ...health?.euddraft ? { euddraft: health.euddraft } : {} };
+}
+
 // src/ui/build.ts
 var CAMMOVE_LOC = "cammoveLoc";
 var CAMMOVE_SWITCH = "cammove";
@@ -6695,6 +6829,25 @@ var toBase64 = (bytes) => {
   return btoa(s);
 };
 var fromBase64 = (b64) => Uint8Array.from(atob(b64), (c2) => c2.charCodeAt(0));
+function buildStatus(host, store) {
+  const triggers = store.list.filter((t) => needsBuild(store, t)).length;
+  const revision = sourceRevision(store.list, store.sidecar, host.revisionExtra());
+  const last = store.sidecar.settings.lastBuild ?? null;
+  return { triggers, freshness: buildFreshness(last, revision), last, revision };
+}
+async function fetchHealth(url, ms = 6e3) {
+  try {
+    const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(ms) });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+var timeOf = (iso) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
+};
 function openBuildDialog(api, host, store, everyFrame) {
   const t = api.i18n.t;
   const el = api.ui.el;
@@ -6754,13 +6907,88 @@ function openBuildDialog(api, host, store, everyFrame) {
     el("li", {}, everyFrame ? t("Triggers run every frame (turbo)") : t("Triggers run every two seconds"))
   );
   const nothing = !Object.keys(plugins()).length;
-  api.ui.dialog({
+  const fresh = el("div", { className: "mg-build-fresh" });
+  const serverLine = el("div", { className: "hint" }, t("Asking the build server what it has\u2026"));
+  const problemsEl = el("ul", { className: "mg-preflight" });
+  let health;
+  let handle = null;
+  const renderFresh = () => {
+    const st = buildStatus(host, store);
+    fresh.replaceChildren();
+    if (st.freshness === "never") fresh.append(el("span", {}, t("This map has not been built yet.")));
+    else if (st.freshness === "fresh") fresh.append(el("span", {}, t("Built from the map as it is now, {when}{file}.", { when: timeOf(st.last.at), file: st.last.file ? ` (${st.last.file})` : "" })));
+    else fresh.append(el("span", { style: "color: var(--warn)" }, t("The map changed since its last build, {when}{file}: that output is stale.", { when: timeOf(st.last.at), file: st.last.file ? ` (${st.last.file})` : "" })));
+  };
+  const problems = () => {
+    readAll();
+    return preflight({
+      list: store.list,
+      sidecar: store.sidecar,
+      options,
+      plugins: plugins(),
+      health,
+      playerTypes: host.playerTypes(),
+      playerTypeName: (s) => host.playerTypeName(s),
+      playerName: (s) => api.names.playerGroup(s),
+      unitName: (id) => api.triggers.names().unit(id),
+      placedUnitIds: host.placedUnitIds(),
+      placedOwners: host.placedOwners(),
+      locations: host.locationSlots(),
+      soundPresent: (p) => host.soundPresent(p)
+    });
+  };
+  const renderProblems = () => {
+    const list = problems();
+    problemsEl.replaceChildren();
+    problemsEl.hidden = !list.length;
+    for (const p of list) {
+      const li = el("li", { className: p.level }, p.text);
+      if (p.trigger !== void 0) {
+        const i = p.trigger;
+        li.append(el("button", { type: "button", className: "mg-sim-link", onclick: () => {
+          store.select(i);
+          handle?.close();
+        } }, t("Show")));
+      }
+      problemsEl.append(li);
+    }
+    return list;
+  };
+  const renderServer = () => {
+    if (health === void 0) return;
+    if (!health) {
+      serverLine.textContent = t("The build server at {url} did not answer; the map stays as it is, build again when it is back.", { url: serverUrl(api) });
+      return;
+    }
+    const spec = typeof health.magentaSpec === "number" ? t("Magenta spec {n}", { n: health.magentaSpec }) : t("Magenta spec not reported");
+    serverLine.textContent = t("Server: eudplib {eudplib}, euddraft {euddraft}, {spec}; this map is written as spec {ours}.", { eudplib: health.eudplib ?? "?", euddraft: health.euddraft ?? "?", spec, ours: MAGENTA_SPEC_VERSION });
+  };
+  const askServer = async () => {
+    health = void 0;
+    serverLine.textContent = t("Asking the build server what it has\u2026");
+    health = await fetchHealth(serverUrl(api));
+    renderServer();
+    renderProblems();
+  };
+  server.addEventListener("change", () => {
+    setServerUrl(api, server.value);
+    void askServer();
+  });
+  for (const box of [cameraOn, bgmOn]) box.input.addEventListener("change", () => renderProblems());
+  cameraLoc.addEventListener("change", () => renderProblems());
+  bgmPath.addEventListener("change", () => renderProblems());
+  handle = api.ui.dialog({
     title: t("Build EUD map"),
     size: "md",
     mount(body) {
+      renderFresh();
+      renderProblems();
+      void askServer();
       body.append(
         w.hint(t("The map goes to the build server as it stands, euddraft adds the code for the rows below, and the built map comes back as a file to save. The server keeps nothing. Only StarCraft: Remastered plays the result. Keep this map as the source: the built one is the compiled output, the way a program is.")),
         summary,
+        fresh,
+        problemsEl,
         w.group(
           t("Map-wide"),
           w.column(cameraOn, w.form([{ label: t("Location"), field: cameraLoc }, { label: t("Inertia"), field: inertia }, { label: t("Max speed"), field: maxspeed }]), cameraStart),
@@ -6770,6 +6998,7 @@ function openBuildDialog(api, host, store, everyFrame) {
           w.hint(t("The camera follows a location by its name, so only named locations are offered. It follows while a switch named cammove is set, so a trigger can turn it on and off; the switch and a helper location named cammoveLoc are made in this map at build time. A looped sound needs its length; a plain WAV's is read from the file."))
         ),
         w.form([{ label: t("Build server"), field: server }]),
+        serverLine,
         status,
         log
       );
@@ -6779,6 +7008,11 @@ function openBuildDialog(api, host, store, everyFrame) {
       { label: t("Build\u2026"), primary: true, closes: false, run: async () => {
         setServerUrl(api, server.value);
         readAll();
+        const errors = renderProblems().filter((p) => p.level === "error").length;
+        if (errors) {
+          status.set(t("{n, plural, one {Fix the problem above first.} other {Fix the # problems above first.}}", { n: errors }), "error");
+          return;
+        }
         saveOptions();
         let cammove = null;
         if (options.camera) {
@@ -6804,6 +7038,7 @@ function openBuildDialog(api, host, store, everyFrame) {
           }
         }
         const plugins2 = composePlugins(builds, store.sidecar.chat, everyFrame, store.sidecar.msqc, options, cammove);
+        const revision = buildStatus(host, store).revision;
         const file = await api.document.export();
         if (!file) {
           status.set(t("No map is open."), "error");
@@ -6813,6 +7048,10 @@ function openBuildDialog(api, host, store, everyFrame) {
         log.style.display = "none";
         try {
           const bytes = new Uint8Array(await file.arrayBuffer());
+          if (health?.maxMapBytes && bytes.length > health.maxMapBytes) {
+            status.set(t("The map is {kb} KB and the server takes up to {max} KB.", { kb: Math.round(bytes.length / 1024), max: Math.round(health.maxMapBytes / 1024) }), "error");
+            return;
+          }
           const res = await fetch(`${serverUrl(api)}/build`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ map: toBase64(bytes), plugins: plugins2 }) });
           const answer = await res.json().catch(() => null);
           if (!res.ok || !answer?.map) {
@@ -6831,14 +7070,24 @@ function openBuildDialog(api, host, store, everyFrame) {
             log.value = answer.log;
             log.style.display = "";
           }
+          store.updateSidecar(t("Build"), { settings: { ...store.sidecar.settings, lastBuild: lastBuildRecord(revision, saved?.fileName ?? null, serverUrl(api), health) } });
+          renderFresh();
         } catch (err) {
-          status.set(t("Could not reach the build server: {why}", { why: String(err.message ?? err) }), "error");
+          status.set(t("Could not reach the build server: {why}. The map is unchanged; build again when it is back.", { why: String(err.message ?? err) }), "error");
         }
       } },
       { label: t("Close") }
     ]
   });
 }
+
+// src/ui/layout.ts
+var KEY = "layout";
+var DEFAULT_LAYOUT = { dock: "float", width: 820, height: 560, list: 240, listStacked: 160, listHidden: false };
+var layout = (api) => ({ ...DEFAULT_LAYOUT, ...api.storage.get(KEY, {}) });
+var setLayout = (api, patch) => {
+  api.storage.set(KEY, { ...layout(api), ...patch });
+};
 
 // src/model/checks.ts
 var LOCAL_ACTIONS = /* @__PURE__ */ new Set([ActionType.Comment, ActionType.PreserveTrigger, ActionType.Wait, ActionType.DisplayText, ActionType.PlayWav, ActionType.CenterView, ActionType.MinimapPing, ActionType.TalkingPortrait, ActionType.Transmission, ActionType.MuteUnitSpeech, ActionType.UnmuteUnitSpeech, ActionType.SetMissionObjectives, ActionType.LeaderboardControl, ActionType.LeaderboardControlAt, ActionType.LeaderboardResources, ActionType.LeaderboardKills, ActionType.LeaderboardPoints, ActionType.LeaderboardGoalControl, ActionType.LeaderboardGoalControlAt, ActionType.LeaderboardGoalResources, ActionType.LeaderboardGoalKills, ActionType.LeaderboardGoalPoints, ActionType.LeaderboardComputerPlayers, ActionType.LeaderboardGreed]);
@@ -8295,21 +8544,31 @@ function renderList(deps, root, onMove) {
 }
 
 // src/ui/settings.ts
-function openSettingsDialog(api) {
+function openSettingsDialog(api, onLayoutChange) {
   const t = api.i18n.t;
   const w = api.ui.widgets;
   const server = w.text({ value: serverUrl(api), placeholder: DEFAULT_SERVER });
+  const dock = w.select([{ value: "float", label: t("Floating over the map") }, { value: "right", label: t("Docked on the right") }], { value: layout(api).dock });
   api.ui.dialog({
     title: t("Magenta Settings"),
     size: "sm",
     mount(body) {
       body.append(
+        w.form([{ label: t("Panel"), field: dock }]),
+        w.hint(t("A floating panel is dragged about and resized from its corner; a docked one sits in the right dock with the Layers and Properties panels and stacks the list over the trigger.")),
         w.form([{ label: t("Build server"), field: server }]),
         w.hint(t("The server that builds EUD maps (\u22EF \u25B8 Build EUD map\u2026). Leave it empty for the scmjs.dev one; a server of your own is the eud-server container."))
       );
     },
     buttons: [
-      { label: t("OK"), primary: true, run: () => setServerUrl(api, server.value) },
+      { label: t("OK"), primary: true, run: () => {
+        setServerUrl(api, server.value);
+        const next = dock.value === "right" ? "right" : "float";
+        if (next !== layout(api).dock) {
+          setLayout(api, { dock: next });
+          onLayoutChange?.();
+        }
+      } },
       { label: t("Cancel") }
     ]
   });
@@ -8761,10 +9020,29 @@ var STYLE = `
 .mg .mg-notice { display: flex; gap: 10px; align-items: center; padding: 8px 10px; margin: 0 8px 6px; border: 1px solid var(--warn, #c9a227); border-radius: 6px; font-size: var(--fs-sm); line-height: 1.35; }
 .mg-notice > span { flex: 1; }
 .mg-head { display: flex; align-items: center; gap: 6px; }
+.mg .mg-head .btn.warn { color: var(--warn); }
+.mg .mg-head .btn.active { color: var(--text); }
 .mg .mg-head .input { flex: 1; min-width: 80px; }
-.mg .mg-split { display: flex; flex: 1; min-height: 0; gap: 10px; }
-.mg .mg-list { width: 240px; flex: none; display: flex; flex-direction: column; min-height: 0; background: var(--bg-0); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--bevel-sunken); overflow: auto; outline: none; }
-.mg.narrow .mg-list { width: 150px; }
+.mg .mg-split { display: flex; flex: 1; min-height: 0; }
+.mg .mg-divider { flex: none; width: 6px; margin: 0 2px; border-radius: 3px; cursor: col-resize; }
+.mg .mg-divider:hover, .mg .mg-divider.dragging { background: var(--border); }
+.mg.list-hidden .mg-list, .mg.list-hidden .mg-divider { display: none; }
+.mg .mg-preflight { margin: 0; padding: 0 0 0 18px; }
+.mg .mg-preflight li { margin: 2px 0; }
+.mg .mg-preflight li.error { color: var(--danger); }
+.mg .mg-preflight li.warn { color: var(--warn); }
+.mg .mg-preflight li.info { color: var(--text-dim); }
+.mg .mg-preflight .mg-sim-link { margin-left: 6px; }
+.mg .mg-list { width: var(--mg-list, 240px); flex: none; display: flex; flex-direction: column; min-height: 0; background: var(--bg-0); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--bevel-sunken); overflow: auto; outline: none; }
+.mg.narrow .mg-list { width: var(--mg-list, 150px); }
+/* Stacked (a docked panel): the list over the trigger, the divider horizontal, the head wrapping; these come after the row rules on purpose. */
+.mg.stacked .mg-split { flex-direction: column; }
+.mg.stacked .mg-list { width: auto; height: var(--mg-list-h, 160px); }
+.mg.stacked .mg-divider { width: auto; height: 6px; margin: 2px 0; cursor: row-resize; }
+.mg.stacked .mg-head { flex-wrap: wrap; }
+.mg.stacked .mg-head .input { flex-basis: 100%; order: -1; }
+/* Docked: the dock's body is a scrolling block, so the root takes its full height and the list and the trigger scroll inside it. */
+.mg.docked { height: 100%; }
 .mg .mg-editor { flex: 1; min-width: 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 4px; }
 .mg .mg-empty { color: var(--text-faint); padding: 20px; text-align: center; }
 
@@ -9383,8 +9661,8 @@ var Store = class {
 };
 
 // src/ui/panel.ts
-var PANEL_WIDTH2 = 820;
-var PANEL_HEIGHT2 = 560;
+var STACKED = 440;
+var NARROW = 560;
 function createPanel(api, hooks = {}) {
   let handle = null;
   let store = null;
@@ -9402,11 +9680,10 @@ function createPanel(api, hooks = {}) {
       return;
     }
     pendingIndex = options.index ?? null;
+    const lay = layout(api);
     handle = api.ui.panel({
       title: "Magenta",
-      width: PANEL_WIDTH2,
-      height: PANEL_HEIGHT2,
-      resizable: true,
+      ...lay.dock === "right" ? { dock: "right", grow: true } : { width: lay.width, height: lay.height, resizable: true },
       mount: (body, panel) => mount(body, () => panel.close()),
       onClose: () => {
         closePopover();
@@ -9414,6 +9691,12 @@ function createPanel(api, hooks = {}) {
         host = null;
       }
     });
+  };
+  const relayout = () => {
+    if (!handle?.isOpen()) return;
+    const index = store?.selected ?? null;
+    handle.close();
+    open(index === null ? {} : { index });
   };
   function mount(body, close) {
     const el = api.ui.el;
@@ -9430,11 +9713,59 @@ function createPanel(api, hooks = {}) {
     const newButton = w.button(t("New"), { primary: true, title: t("A new trigger after the selected one (Ctrl+N)"), onClick: () => newTrigger() });
     const recipeButton = w.button(t("Recipes\u2026"), { title: t("Start from a whole trigger: a beacon shop, a countdown, a respawn\u2026"), onClick: () => recipes(recipeButton) });
     const menuButton = w.button("\u22EF", { ghost: true, title: t("More"), onClick: () => menu(menuButton) });
+    const buildButton = w.button("", { ghost: true, title: t("Where the map stands against its last build; click for Build EUD map\u2026"), onClick: () => openBuildDialog(api, h, s, everyFrame()) });
+    const listButton = w.button("\u2630", { ghost: true, title: t("Show or hide the trigger list"), onClick: () => {
+      setLayout(api, { listHidden: !layout(api).listHidden });
+      applyLayout();
+    } });
     const listEl = el("div", { className: "mg-list", tabIndex: 0 });
+    const divider = el("div", { className: "mg-divider", title: t("Drag to resize the list; double-click to hide it") });
     const editorEl = el("div", { className: "mg-editor" });
     const notice = el("div", { className: "mg-notice", hidden: true });
-    const root = el("div", { className: "mg" }, el("style", {}, STYLE), el("div", { className: "mg-head" }, search2, newButton, recipeButton, menuButton), notice, el("div", { className: "mg-split" }, listEl, editorEl));
+    const root = el("div", { className: `mg${layout(api).dock === "right" ? " docked" : ""}` }, el("style", {}, STYLE), el("div", { className: "mg-head" }, listButton, search2, newButton, recipeButton, buildButton, menuButton), notice, el("div", { className: "mg-split" }, listEl, divider, editorEl));
     body.append(root);
+    const applyLayout = () => {
+      const lay = layout(api);
+      root.classList.toggle("list-hidden", lay.listHidden);
+      root.style.setProperty("--mg-list", `${lay.list}px`);
+      root.style.setProperty("--mg-list-h", `${lay.listStacked}px`);
+      listButton.classList.toggle("active", !lay.listHidden);
+    };
+    applyLayout();
+    divider.addEventListener("dblclick", () => {
+      setLayout(api, { listHidden: true });
+      applyLayout();
+    });
+    divider.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      const stacked = root.classList.contains("stacked");
+      const start = stacked ? e.clientY : e.clientX;
+      const from = stacked ? listEl.getBoundingClientRect().height : listEl.getBoundingClientRect().width;
+      const max = stacked ? root.clientHeight * 0.7 : root.clientWidth * 0.6;
+      divider.classList.add("dragging");
+      divider.setPointerCapture(e.pointerId);
+      const move2 = (ev) => {
+        const size = Math.max(100, Math.min(max, from + ((stacked ? ev.clientY : ev.clientX) - start)));
+        root.style.setProperty(stacked ? "--mg-list-h" : "--mg-list", `${Math.round(size)}px`);
+      };
+      const up = (ev) => {
+        divider.classList.remove("dragging");
+        divider.removeEventListener("pointermove", move2);
+        divider.removeEventListener("pointerup", up);
+        const size = Math.max(100, Math.min(max, from + ((stacked ? ev.clientY : ev.clientX) - start)));
+        setLayout(api, stacked ? { listStacked: Math.round(size) } : { list: Math.round(size) });
+      };
+      divider.addEventListener("pointermove", move2);
+      divider.addEventListener("pointerup", up);
+    });
+    const renderBuild = () => {
+      const st = buildStatus(h, s);
+      buildButton.hidden = st.triggers === 0 && st.freshness === "never";
+      if (buildButton.hidden) return;
+      const state = st.freshness === "fresh" ? t("built") : st.freshness === "stale" ? t("stale") : t("not built");
+      buildButton.textContent = t("Build \xB7 {n} \xB7 {state}", { n: st.triggers, state });
+      buildButton.classList.toggle("warn", st.freshness !== "fresh");
+    };
     const renderNotice = () => {
       const problem = h.sidecarProblem();
       notice.hidden = !problem;
@@ -9451,8 +9782,10 @@ function createPanel(api, hooks = {}) {
       } }));
     };
     const render = () => {
-      root.classList.toggle("narrow", root.clientWidth < 560);
+      root.classList.toggle("narrow", root.clientWidth < NARROW);
+      root.classList.toggle("stacked", root.clientWidth < STACKED);
       renderNotice();
+      renderBuild();
       renderList({ api, host: h, store: s, query: () => search2.value, filter: () => filter, onOpenFolderMenu: folderMenu }, listEl, moveTrigger);
       renderEditor({ api, host: h, store: s }, editorEl);
     };
@@ -9482,7 +9815,15 @@ function createPanel(api, hooks = {}) {
       }
     });
     const offLang = api.events.on("language", render);
-    const resize = new ResizeObserver(() => root.classList.toggle("narrow", root.clientWidth < 560));
+    const resize = new ResizeObserver(() => {
+      root.classList.toggle("narrow", root.clientWidth < NARROW);
+      root.classList.toggle("stacked", root.clientWidth < STACKED);
+      if (layout(api).dock === "float") {
+        const frame = root.closest(".plugin-panel") ?? root;
+        const r = frame.getBoundingClientRect();
+        if (r.width > 200 && r.height > 150) setLayout(api, { width: Math.round(r.width), height: Math.round(r.height) });
+      }
+    });
     resize.observe(root);
     function newTrigger() {
       const at = s.selected === null ? s.list.length : s.selected + 1;
@@ -9695,7 +10036,11 @@ function createPanel(api, hooks = {}) {
         sep(),
         item(t("Dry run\u2026"), () => sim.open()),
         item(t("Build EUD map\u2026"), () => openBuildDialog(api, h, s, everyFrame())),
-        item(t("Settings\u2026"), () => openSettingsDialog(api)),
+        item(t("Dock on the right"), () => {
+          setLayout(api, { dock: layout(api).dock === "right" ? "float" : "right" });
+          relayout();
+        }, { checked: layout(api).dock === "right" }),
+        item(t("Settings\u2026"), () => openSettingsDialog(api, relayout)),
         sep(),
         item(t("Show every trigger"), () => {
           filter = "all";
@@ -9825,7 +10170,8 @@ function createPanel(api, hooks = {}) {
       open();
     },
     close: () => handle?.close(),
-    isOpen: () => handle?.isOpen() ?? false
+    isOpen: () => handle?.isOpen() ?? false,
+    relayout
   };
 }
 
@@ -9920,7 +10266,7 @@ function activate(api) {
       };
     }
   });
-  api.commands.register({ id: "settings", title: "Magenta Settings", run: () => openSettingsDialog(api) });
+  api.commands.register({ id: "settings", title: "Magenta Settings", run: () => openSettingsDialog(api, () => panel.relayout()) });
   api.menu.add("Triggers", { label: t("Magenta\u2026"), shortcut: "Ctrl+Shift+M", icon: "plugin", after: "Text Trigger Editor\u2026", enabled: () => api.document.isOpen(), command: "open" });
   api.menu.add("Plugins", { label: t("Magenta Settings\u2026"), icon: "plugin", command: "settings" });
   api.hotkeys.add("Ctrl+Shift+M", { command: "open" });

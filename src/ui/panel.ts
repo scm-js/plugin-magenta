@@ -17,7 +17,8 @@ import type { Sidecar } from "../model/sidecar";
 import { newInput } from "./buildRows";
 import { freeCell } from "./expansionRows";
 import type { Starter } from "../model/starters";
-import { openBuildDialog } from "./build";
+import { buildStatus, openBuildDialog } from "./build";
+import { layout, setLayout } from "./layout";
 import { pickChoice } from "./chips";
 import { renderEditor } from "./editor";
 import { Host } from "./host";
@@ -28,8 +29,9 @@ import { closePopover, openPopover } from "./popover";
 import { Store } from "./store";
 import { STYLE } from "./styles";
 
-const PANEL_WIDTH = 820;
-const PANEL_HEIGHT = 560;
+/** Under this width the list stacks over the trigger (a docked panel); under `NARROW` the rows tighten. */
+const STACKED = 440;
+const NARROW = 560;
 
 export interface PanelController {
   open(options?: { index?: number }): void;
@@ -37,6 +39,8 @@ export interface PanelController {
   start(starters: Starter[]): void;
   close(): void;
   isOpen(): boolean;
+  /** The layout preference changed (floating / docked): reopen the panel where it now belongs, keeping the selection. */
+  relayout(): void;
 }
 
 export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } = {}): PanelController {
@@ -54,14 +58,19 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
       return;
     }
     pendingIndex = options.index ?? null;
+    const lay = layout(api);
     handle = api.ui.panel({
       title: "Magenta",
-      width: PANEL_WIDTH,
-      height: PANEL_HEIGHT,
-      resizable: true,
+      ...(lay.dock === "right" ? { dock: "right" as const, grow: true } : { width: lay.width, height: lay.height, resizable: true }),
       mount: (body, panel) => mount(body, () => panel.close()),
       onClose: () => { closePopover(); store = null; host = null; },
     });
+  };
+  const relayout = () => {
+    if (!handle?.isOpen()) return;
+    const index = store?.selected ?? null;
+    handle.close();
+    open(index === null ? {} : { index });
   };
 
   function mount(body: HTMLElement, close: () => void): () => void {
@@ -80,11 +89,55 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
     const newButton = w.button(t("New"), { primary: true, title: t("A new trigger after the selected one (Ctrl+N)"), onClick: () => newTrigger() });
     const recipeButton = w.button(t("Recipes…"), { title: t("Start from a whole trigger: a beacon shop, a countdown, a respawn…"), onClick: () => recipes(recipeButton) });
     const menuButton = w.button("⋯", { ghost: true, title: t("More"), onClick: () => menu(menuButton) });
+    const buildButton = w.button("", { ghost: true, title: t("Where the map stands against its last build; click for Build EUD map…"), onClick: () => openBuildDialog(api, h, s, everyFrame()) });
+    const listButton = w.button("☰", { ghost: true, title: t("Show or hide the trigger list"), onClick: () => { setLayout(api, { listHidden: !layout(api).listHidden }); applyLayout(); } });
     const listEl = el("div", { className: "mg-list", tabIndex: 0 });
+    const divider = el("div", { className: "mg-divider", title: t("Drag to resize the list; double-click to hide it") });
     const editorEl = el("div", { className: "mg-editor" });
     const notice = el("div", { className: "mg-notice", hidden: true });
-    const root = el("div", { className: "mg" }, el("style", {}, STYLE), el("div", { className: "mg-head" }, search, newButton, recipeButton, menuButton), notice, el("div", { className: "mg-split" }, listEl, editorEl));
+    const root = el("div", { className: `mg${layout(api).dock === "right" ? " docked" : ""}` }, el("style", {}, STYLE), el("div", { className: "mg-head" }, listButton, search, newButton, recipeButton, buildButton, menuButton), notice, el("div", { className: "mg-split" }, listEl, divider, editorEl));
     body.append(root);
+
+    /* ── The split: the list's size and whether it shows, from the layout preference ── */
+    const applyLayout = () => {
+      const lay = layout(api);
+      root.classList.toggle("list-hidden", lay.listHidden);
+      root.style.setProperty("--mg-list", `${lay.list}px`);
+      root.style.setProperty("--mg-list-h", `${lay.listStacked}px`);
+      listButton.classList.toggle("active", !lay.listHidden);
+    };
+    applyLayout();
+    divider.addEventListener("dblclick", () => { setLayout(api, { listHidden: true }); applyLayout(); });
+    divider.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      const stacked = root.classList.contains("stacked");
+      const start = stacked ? e.clientY : e.clientX;
+      const from = stacked ? listEl.getBoundingClientRect().height : listEl.getBoundingClientRect().width;
+      const max = stacked ? root.clientHeight * 0.7 : root.clientWidth * 0.6;
+      divider.classList.add("dragging");
+      divider.setPointerCapture(e.pointerId);
+      const move = (ev: PointerEvent) => {
+        const size = Math.max(100, Math.min(max, from + ((stacked ? ev.clientY : ev.clientX) - start)));
+        root.style.setProperty(stacked ? "--mg-list-h" : "--mg-list", `${Math.round(size)}px`);
+      };
+      const up = (ev: PointerEvent) => {
+        divider.classList.remove("dragging");
+        divider.removeEventListener("pointermove", move);
+        divider.removeEventListener("pointerup", up);
+        const size = Math.max(100, Math.min(max, from + ((stacked ? ev.clientY : ev.clientX) - start)));
+        setLayout(api, stacked ? { listStacked: Math.round(size) } : { list: Math.round(size) });
+      };
+      divider.addEventListener("pointermove", move);
+      divider.addEventListener("pointerup", up);
+    });
+    const renderBuild = () => {
+      const st = buildStatus(h, s);
+      buildButton.hidden = st.triggers === 0 && st.freshness === "never";
+      if (buildButton.hidden) return;
+      const state = st.freshness === "fresh" ? t("built") : st.freshness === "stale" ? t("stale") : t("not built");
+      buildButton.textContent = t("Build · {n} · {state}", { n: st.triggers, state });
+      buildButton.classList.toggle("warn", st.freshness !== "fresh");
+    };
 
     /** The member could not be read: say so, and offer to write over it — nothing is written until then. */
     const renderNotice = () => {
@@ -106,8 +159,10 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
     };
 
     const render = () => {
-      root.classList.toggle("narrow", root.clientWidth < 560);
+      root.classList.toggle("narrow", root.clientWidth < NARROW);
+      root.classList.toggle("stacked", root.clientWidth < STACKED);
       renderNotice();
+      renderBuild();
       renderList({ api, host: h, store: s, query: () => search.value, filter: () => filter, onOpenFolderMenu: folderMenu }, listEl, moveTrigger);
       renderEditor({ api, host: h, store: s }, editorEl);
     };
@@ -126,7 +181,16 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
     const offFile = api.events.on("file", () => { if (s.sidecar !== h.sidecar()) s.reload(); });
     const offDoc = api.events.on("document", () => { if (!api.document.isOpen()) close(); else { s.forget(); s.reload(); } });
     const offLang = api.events.on("language", render);
-    const resize = new ResizeObserver(() => root.classList.toggle("narrow", root.clientWidth < 560));
+    const resize = new ResizeObserver(() => {
+      root.classList.toggle("narrow", root.clientWidth < NARROW);
+      root.classList.toggle("stacked", root.clientWidth < STACKED);
+      // A floating panel's size is remembered across sessions; the host keeps it only for this one.
+      if (layout(api).dock === "float") {
+        const frame = (root.closest(".plugin-panel") as HTMLElement | null) ?? root;
+        const r = frame.getBoundingClientRect();
+        if (r.width > 200 && r.height > 150) setLayout(api, { width: Math.round(r.width), height: Math.round(r.height) });
+      }
+    });
     resize.observe(root);
 
     /* ── The list's verbs ── */
@@ -311,7 +375,8 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
         sep(),
         item(t("Dry run…"), () => sim.open()),
         item(t("Build EUD map…"), () => openBuildDialog(api, h, s, everyFrame())),
-        item(t("Settings…"), () => openSettingsDialog(api)),
+        item(t("Dock on the right"), () => { setLayout(api, { dock: layout(api).dock === "right" ? "float" : "right" }); relayout(); }, { checked: layout(api).dock === "right" }),
+        item(t("Settings…"), () => openSettingsDialog(api, relayout)),
         sep(),
         item(t("Show every trigger"), () => { filter = "all"; render(); }, { checked: filter === "all" }),
         item(t("Show only triggers with a problem"), () => { filter = "problems"; render(); }, { checked: filter === "problems" }),
@@ -411,5 +476,6 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
     },
     close: () => handle?.close(),
     isOpen: () => handle?.isOpen() ?? false,
+    relayout,
   };
 }

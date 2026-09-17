@@ -6,8 +6,10 @@
  * setting, the Build server field of the dialog.
  */
 import type { PluginApi } from "@scm-js/plugin-api";
-import { composePlugins, DEFAULT_OPTIONS, type BuildOptions } from "../model/builds";
+import { composePlugins, DEFAULT_OPTIONS, MAGENTA_SPEC_VERSION, type BuildOptions } from "../model/builds";
 import { orderBuilds } from "../model/ownership";
+import { buildFreshness, lastBuildRecord, preflight, sourceRevision, type LastBuild, type PreflightProblem, type ServerHealth } from "../model/preflight";
+import { needsBuild } from "./buildRows";
 import type { Host } from "./host";
 import type { Store } from "./store";
 
@@ -29,6 +31,27 @@ const toBase64 = (bytes: Uint8Array): string => {
   return btoa(s);
 };
 const fromBase64 = (b64: string): Uint8Array => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+
+/** Where the map stands against its last build: how many triggers need one, and whether the output is current. */
+export function buildStatus(host: Host, store: Store): { triggers: number; freshness: "never" | "fresh" | "stale"; last: LastBuild | null; revision: string } {
+  const triggers = store.list.filter((t) => needsBuild(store, t)).length;
+  const revision = sourceRevision(store.list, store.sidecar, host.revisionExtra());
+  const last = store.sidecar.settings.lastBuild ?? null;
+  return { triggers, freshness: buildFreshness(last, revision), last, revision };
+}
+
+/** GET /health, or null when the server does not answer in time. */
+export async function fetchHealth(url: string, ms = 6000): Promise<ServerHealth | null> {
+  try {
+    const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(ms) });
+    if (!res.ok) return null;
+    return (await res.json()) as ServerHealth;
+  } catch {
+    return null;
+  }
+}
+
+const timeOf = (iso: string): string => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? iso : d.toLocaleString(); };
 
 export function openBuildDialog(api: PluginApi, host: Host, store: Store, everyFrame: boolean): void {
   const t = api.i18n.t;
@@ -78,13 +101,60 @@ export function openBuildDialog(api: PluginApi, host: Host, store: Store, everyF
   );
   const nothing = !Object.keys(plugins()).length;
 
-  api.ui.dialog({
+  /* ── Freshness, the server, and the preflight ── */
+  const fresh = el("div", { className: "mg-build-fresh" });
+  const serverLine = el("div", { className: "hint" }, t("Asking the build server what it has…"));
+  const problemsEl = el("ul", { className: "mg-preflight" });
+  let health: ServerHealth | null | undefined;
+  let handle: { close(): void } | null = null;
+  const renderFresh = () => {
+    const st = buildStatus(host, store);
+    fresh.replaceChildren();
+    if (st.freshness === "never") fresh.append(el("span", {}, t("This map has not been built yet.")));
+    else if (st.freshness === "fresh") fresh.append(el("span", {}, t("Built from the map as it is now, {when}{file}.", { when: timeOf(st.last!.at), file: st.last!.file ? ` (${st.last!.file})` : "" })));
+    else fresh.append(el("span", { style: "color: var(--warn)" }, t("The map changed since its last build, {when}{file}: that output is stale.", { when: timeOf(st.last!.at), file: st.last!.file ? ` (${st.last!.file})` : "" })));
+  };
+  const problems = (): PreflightProblem[] => {
+    readAll();
+    return preflight({
+      list: store.list, sidecar: store.sidecar, options, plugins: plugins(), health,
+      playerTypes: host.playerTypes(), playerTypeName: (s) => host.playerTypeName(s), playerName: (s) => api.names.playerGroup(s), unitName: (id) => api.triggers.names().unit(id),
+      placedUnitIds: host.placedUnitIds(), placedOwners: host.placedOwners(), locations: host.locationSlots(), soundPresent: (p) => host.soundPresent(p),
+    });
+  };
+  const renderProblems = () => {
+    const list = problems();
+    problemsEl.replaceChildren();
+    problemsEl.hidden = !list.length;
+    for (const p of list) {
+      const li = el("li", { className: p.level }, p.text);
+      if (p.trigger !== undefined) { const i = p.trigger; li.append(el("button", { type: "button", className: "mg-sim-link", onclick: () => { store.select(i); handle?.close(); } }, t("Show"))); }
+      problemsEl.append(li);
+    }
+    return list;
+  };
+  const renderServer = () => {
+    if (health === undefined) return;
+    if (!health) { serverLine.textContent = t("The build server at {url} did not answer; the map stays as it is, build again when it is back.", { url: serverUrl(api) }); return; }
+    const spec = typeof health.magentaSpec === "number" ? t("Magenta spec {n}", { n: health.magentaSpec }) : t("Magenta spec not reported");
+    serverLine.textContent = t("Server: eudplib {eudplib}, euddraft {euddraft}, {spec}; this map is written as spec {ours}.", { eudplib: health.eudplib ?? "?", euddraft: health.euddraft ?? "?", spec, ours: MAGENTA_SPEC_VERSION });
+  };
+  const askServer = async () => { health = undefined; serverLine.textContent = t("Asking the build server what it has…"); health = await fetchHealth(serverUrl(api)); renderServer(); renderProblems(); };
+  server.addEventListener("change", () => { setServerUrl(api, server.value); void askServer(); });
+  for (const box of [cameraOn, bgmOn]) box.input.addEventListener("change", () => renderProblems());
+  cameraLoc.addEventListener("change", () => renderProblems());
+  bgmPath.addEventListener("change", () => renderProblems());
+
+  handle = api.ui.dialog({
     title: t("Build EUD map"),
     size: "md",
     mount(body) {
+      renderFresh();
+      renderProblems();
+      void askServer();
       body.append(
         w.hint(t("The map goes to the build server as it stands, euddraft adds the code for the rows below, and the built map comes back as a file to save. The server keeps nothing. Only StarCraft: Remastered plays the result. Keep this map as the source: the built one is the compiled output, the way a program is.")),
-        summary,
+        summary, fresh, problemsEl,
         w.group(t("Map-wide"),
           w.column(cameraOn, w.form([{ label: t("Location"), field: cameraLoc }, { label: t("Inertia"), field: inertia }, { label: t("Max speed"), field: maxspeed }]), cameraStart),
           w.column(bgmOn, w.form([{ label: t("Sound"), field: bgmPath }, { label: t("Seconds"), field: bgmLen }])),
@@ -92,7 +162,7 @@ export function openBuildDialog(api: PluginApi, host: Host, store: Store, everyF
           w.hint(t("The camera follows a location by its name, so only named locations are offered. It follows while a switch named cammove is set, so a trigger can turn it on and off; the switch and a helper location named cammoveLoc are made in this map at build time. A looped sound needs its length; a plain WAV's is read from the file.")),
         ),
         w.form([{ label: t("Build server"), field: server }]),
-        status, log,
+        serverLine, status, log,
       );
       if (nothing && !locations.length) status.set(t("Nothing in this map needs a build; a plain save is all it takes."), "warn");
     },
@@ -100,6 +170,8 @@ export function openBuildDialog(api: PluginApi, host: Host, store: Store, everyF
       { label: t("Build…"), primary: true, closes: false, run: async () => {
         setServerUrl(api, server.value);
         readAll();
+        const errors = renderProblems().filter((p) => p.level === "error").length;
+        if (errors) { status.set(t("{n, plural, one {Fix the problem above first.} other {Fix the # problems above first.}}", { n: errors }), "error"); return; }
         saveOptions();
         let cammove: number | null = null;
         if (options.camera) {
@@ -119,12 +191,15 @@ export function openBuildDialog(api: PluginApi, host: Host, store: Store, everyF
           }
         }
         const plugins = composePlugins(builds, store.sidecar.chat, everyFrame, store.sidecar.msqc, options, cammove);
+        // The revision the output is of: taken now, before anything else moves.
+        const revision = buildStatus(host, store).revision;
         const file = await api.document.export();
         if (!file) { status.set(t("No map is open."), "error"); return; }
         status.busy(t("Building…"));
         log.style.display = "none";
         try {
           const bytes = new Uint8Array(await file.arrayBuffer());
+          if (health?.maxMapBytes && bytes.length > health.maxMapBytes) { status.set(t("The map is {kb} KB and the server takes up to {max} KB.", { kb: Math.round(bytes.length / 1024), max: Math.round(health.maxMapBytes / 1024) }), "error"); return; }
           const res = await fetch(`${serverUrl(api)}/build`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ map: toBase64(bytes), plugins }) });
           const answer = (await res.json().catch(() => null)) as ({ map?: string; bytes?: number; log?: string } & BuildError) | null;
           if (!res.ok || !answer?.map) {
@@ -137,8 +212,11 @@ export function openBuildDialog(api: PluginApi, host: Host, store: Store, everyF
           const saved = await api.ui.saveFile(out, `${stem}-eud.scx`);
           status.set(saved ? t("Built: {name}, {kb} KB.", { name: saved.fileName, kb: Math.round(out.length / 1024) }) : t("Built, but not saved."), saved ? "ok" : "warn");
           if (answer.log) { log.value = answer.log; log.style.display = ""; }
+          // What the output is of, kept with the map, so the panel can say when it has gone stale.
+          store.updateSidecar(t("Build"), { settings: { ...store.sidecar.settings, lastBuild: lastBuildRecord(revision, saved?.fileName ?? null, serverUrl(api), health) } });
+          renderFresh();
         } catch (err) {
-          status.set(t("Could not reach the build server: {why}", { why: String((err as Error).message ?? err) }), "error");
+          status.set(t("Could not reach the build server: {why}. The map is unchanged; build again when it is back.", { why: String((err as Error).message ?? err) }), "error");
         }
       } },
       { label: t("Close") },

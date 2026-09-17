@@ -4,10 +4,29 @@ export const STYLE = `
 .mg .mg-notice { display: flex; gap: 10px; align-items: center; padding: 8px 10px; margin: 0 8px 6px; border: 1px solid var(--warn, #c9a227); border-radius: 6px; font-size: var(--fs-sm); line-height: 1.35; }
 .mg-notice > span { flex: 1; }
 .mg-head { display: flex; align-items: center; gap: 6px; }
+.mg .mg-head .btn.warn { color: var(--warn); }
+.mg .mg-head .btn.active { color: var(--text); }
 .mg .mg-head .input { flex: 1; min-width: 80px; }
-.mg .mg-split { display: flex; flex: 1; min-height: 0; gap: 10px; }
-.mg .mg-list { width: 240px; flex: none; display: flex; flex-direction: column; min-height: 0; background: var(--bg-0); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--bevel-sunken); overflow: auto; outline: none; }
-.mg.narrow .mg-list { width: 150px; }
+.mg .mg-split { display: flex; flex: 1; min-height: 0; }
+.mg .mg-divider { flex: none; width: 6px; margin: 0 2px; border-radius: 3px; cursor: col-resize; }
+.mg .mg-divider:hover, .mg .mg-divider.dragging { background: var(--border); }
+.mg.list-hidden .mg-list, .mg.list-hidden .mg-divider { display: none; }
+.mg .mg-preflight { margin: 0; padding: 0 0 0 18px; }
+.mg .mg-preflight li { margin: 2px 0; }
+.mg .mg-preflight li.error { color: var(--danger); }
+.mg .mg-preflight li.warn { color: var(--warn); }
+.mg .mg-preflight li.info { color: var(--text-dim); }
+.mg .mg-preflight .mg-sim-link { margin-left: 6px; }
+.mg .mg-list { width: var(--mg-list, 240px); flex: none; display: flex; flex-direction: column; min-height: 0; background: var(--bg-0); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--bevel-sunken); overflow: auto; outline: none; }
+.mg.narrow .mg-list { width: var(--mg-list, 150px); }
+/* Stacked (a docked panel): the list over the trigger, the divider horizontal, the head wrapping; these come after the row rules on purpose. */
+.mg.stacked .mg-split { flex-direction: column; }
+.mg.stacked .mg-list { width: auto; height: var(--mg-list-h, 160px); }
+.mg.stacked .mg-divider { width: auto; height: 6px; margin: 2px 0; cursor: row-resize; }
+.mg.stacked .mg-head { flex-wrap: wrap; }
+.mg.stacked .mg-head .input { flex-basis: 100%; order: -1; }
+/* Docked: the dock's body is a scrolling block, so the root takes its full height and the list and the trigger scroll inside it. */
+.mg.docked { height: 100%; }
 .mg .mg-editor { flex: 1; min-width: 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 4px; }
 .mg .mg-empty { color: var(--text-faint); padding: 20px; text-align: center; }
 

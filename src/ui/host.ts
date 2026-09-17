@@ -180,6 +180,41 @@ export class Host {
     return free;
   }
 
+  /** `PlayerType` per 0-based slot (0 is Inactive). */
+  playerTypes(): number[] {
+    return this.api.settings.players().map((p) => p.type);
+  }
+
+  playerTypeName(slot: number): string {
+    return this.api.settings.players()[slot]?.typeName ?? String(slot + 1);
+  }
+
+  /** The slots that own at least one placed unit. */
+  placedOwners(): Set<number> {
+    return new Set((this.api.document.scenario()?.units ?? []).map((u) => u.owner));
+  }
+
+  /** Every location slot, 0-based: empty (zero size) and whether it has a name of its own. */
+  locationSlots(): { empty: boolean; named: boolean }[] {
+    return (this.api.document.scenario()?.locations ?? []).map((l) => ({ empty: l.left === l.right && l.top === l.bottom, named: l.nameIndex !== 0 }));
+  }
+
+  soundPresent(path: string): boolean {
+    const want = path.replace(/\//g, "\\");
+    return this.api.settings.sounds().some((s) => s.path.replace(/\//g, "\\") === want && s.present);
+  }
+
+  /** What of the map a build reads besides the triggers — locations, placed units, the strings — as strings for the source revision. */
+  revisionExtra(): string[] {
+    const scn = this.api.document.scenario();
+    if (!scn) return [];
+    return [
+      JSON.stringify(scn.locations.map((l) => [l.left, l.top, l.right, l.bottom, l.nameIndex])),
+      JSON.stringify(scn.units.map((u) => [u.unitId, u.owner, u.x, u.y])),
+      (scn.strings.strings ?? []).map((s) => s ?? "").join("\0"),
+    ];
+  }
+
   wavPresent(index: number): boolean {
     const row = this.api.settings.sounds().find((s) => s.stringIndex === index);
     return !row || row.present;
