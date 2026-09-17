@@ -181,6 +181,8 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
     const offFile = api.events.on("file", () => { if (s.sidecar !== h.sidecar()) s.reload(); });
     const offDoc = api.events.on("document", () => { if (!api.document.isOpen()) close(); else { s.forget(); s.reload(); } });
     const offLang = api.events.on("language", render);
+    // Scenario ▸ Map Revision changes which rows the revision lines are under.
+    const offSettings = api.events.on("settings", render);
     const resize = new ResizeObserver(() => {
       root.classList.toggle("narrow", root.clientWidth < NARROW);
       root.classList.toggle("stacked", root.clientWidth < STACKED);
@@ -459,6 +461,7 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
       offTriggers.dispose();
       offFile.dispose();
       offDoc.dispose();
+      offSettings.dispose();
       offLang.dispose();
       resize.disconnect();
       closePopover();

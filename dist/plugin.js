@@ -4961,6 +4961,16 @@ var Host = class {
     return this.api.document.isOpen();
   }
   /* ── Reading ── */
+  /** The map's revision (Scenario ▸ Map Revision), null with no map open. */
+  version() {
+    return this.api.settings.version();
+  }
+  /** Scenario ▸ Map Revision ▸ Remastered 1.21+, with the string table moved to STRx as the dialog does by default. */
+  setRemastered() {
+    this.api.document.update("Map revision", (tx) => {
+      tx.setVersion("remastered");
+    });
+  }
   triggers() {
     return this.api.triggers.list();
   }
@@ -7092,6 +7102,7 @@ var setLayout = (api, patch) => {
 // src/model/checks.ts
 var LOCAL_ACTIONS = /* @__PURE__ */ new Set([ActionType.Comment, ActionType.PreserveTrigger, ActionType.Wait, ActionType.DisplayText, ActionType.PlayWav, ActionType.CenterView, ActionType.MinimapPing, ActionType.TalkingPortrait, ActionType.Transmission, ActionType.MuteUnitSpeech, ActionType.UnmuteUnitSpeech, ActionType.SetMissionObjectives, ActionType.LeaderboardControl, ActionType.LeaderboardControlAt, ActionType.LeaderboardResources, ActionType.LeaderboardKills, ActionType.LeaderboardPoints, ActionType.LeaderboardGoalControl, ActionType.LeaderboardGoalControlAt, ActionType.LeaderboardGoalResources, ActionType.LeaderboardGoalKills, ActionType.LeaderboardGoalPoints, ActionType.LeaderboardComputerPlayers, ActionType.LeaderboardGreed]);
 var LOCATION_ANYWHERE = 64;
+var REMASTERED_VER = 206;
 function check(trigger4, ctx = {}) {
   const out = [];
   const conditions = liveConditions(trigger4);
@@ -7200,6 +7211,17 @@ function check(trigger4, ctx = {}) {
       }
     }
   });
+  if (ctx.fileVersion !== void 0 && ctx.fileVersion < REMASTERED_VER) {
+    const text = `Only StarCraft: Remastered runs this row; the map is marked ${ctx.versionLabel ?? `VER ${ctx.fileVersion}`}, a revision 1.16.1 also plays.`;
+    conditions.forEach((c2, index) => {
+      if (isConditionDisabled(c2)) return;
+      if (c2.type === ConditionType.Deaths && isEud(c2.player) || ctx.magentaRow?.("condition", index)) out.push({ level: "info", code: "revision", text, at: { kind: "condition", index } });
+    });
+    actions.forEach((a2, index) => {
+      if (isActionDisabled(a2) || inGroup.has(index) && !groups.some((s) => s.at === index)) return;
+      if (a2.type === ActionType.SetDeaths && isEud(a2.player) || ctx.magentaRow?.("action", index)) out.push({ level: "info", code: "revision", text, at: { kind: "action", index } });
+    });
+  }
   return out;
 }
 
@@ -8131,6 +8153,8 @@ function renderEditor(deps, root) {
     }
   }
   const perPlayer = store.sidecar.expansions.find((x2) => x2.kind === "forEachPlayer" && x2.anchor.i === store.cleanIndex(index));
+  const cmp = compareOf(store, index, trigger4);
+  const version = host.version();
   const problems = check(trigger4, {
     everyFrame: store.sidecar.settings.everyFrame,
     locationExists: (n) => host.locationExists(n),
@@ -8139,6 +8163,9 @@ function renderEditor(deps, root) {
     claimedCells,
     template: !!perPlayer,
     locationName: (n) => namer.location(n),
+    fileVersion: version?.fileVersion,
+    versionLabel: version?.label,
+    magentaRow: (kind, i) => kind === "condition" ? !!conditionRowOf(store, liveConditions(trigger4)[i]) || !!cmp && cmp.rows[0] === i : !!hookOf(store, liveActions(trigger4)[i]) || !!counterExpansionOf(store, liveActions(trigger4)[i]),
     deferredLocation: (a2) => {
       const hook = hookOf(store, a2);
       if (!hook) return null;
@@ -8150,6 +8177,7 @@ function renderEditor(deps, root) {
   });
   const general = problems.filter((p) => !p.at);
   const at = (kind, i) => problems.filter((p) => p.at?.kind === kind && p.at.index === i);
+  const problemLines = (ps) => ps.map((p) => el("div", { className: `mg-problem ${p.level}` }, p.text));
   const replace = (label, next) => store.replace(index, next, label);
   const ci = commentIndex(trigger4);
   const titleText = ci >= 0 ? namer.string(trigger4.actions[ci].text) ?? "" : "";
@@ -8191,10 +8219,17 @@ function renderEditor(deps, root) {
   }
   root.append(playersRow);
   for (const p of general) root.append(el("div", { className: `mg-problem ${p.level}`, style: "padding-left:6px" }, p.text));
+  if (problems.some((p) => p.code === "revision")) {
+    root.append(el(
+      "div",
+      { className: "mg-problem info mg-offer" },
+      el("span", {}, t("Set the revision to Remastered 1.21+ and older clients refuse the map instead of playing it without these rows.")),
+      api.ui.widgets.button(t("Set revision to Remastered"), { ghost: true, onClick: () => host.setRemastered() })
+    ));
+  }
   const conditions = liveConditions(trigger4);
   const condSection = el("div", { className: "mg-section" }, el("div", { className: "mg-section-head" }, t("Conditions"), el("span", { className: "grow" }), el("span", { className: "hint" }, `${conditions.length}/${MAX_CONDITIONS}`)));
   const writeConditions = (label, next) => replace(label, { ...trigger4, conditions: next });
-  const cmp = compareOf(store, index, trigger4);
   conditions.forEach((c2, i) => {
     const brow = conditionRowOf(store, c2);
     if (brow) {
@@ -8202,7 +8237,7 @@ function renderEditor(deps, root) {
       renderConditionRow(api, host, store, brow, sentence, (next) => writeConditions(t("Edit condition"), conditions.map((x2, j) => j === i ? next : x2)));
       const ownRecord = brow.kind === "scan" && !sharedElsewhere(store.list, brow.record, index) ? brow.record.id : null;
       const remove = api.ui.widgets.button("\u2715", { ghost: true, title: t("Remove"), onClick: () => store.commit(t("Remove condition"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, conditions: conditions.filter((_, k) => k !== i) }), ownRecord ? { sidecar: { builds: store.sidecar.builds.filter((b) => b.id !== ownRecord) } } : {}) });
-      condSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove))));
+      condSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove)), ...problemLines(at("condition", i))));
       return;
     }
     if (cmp && cmp.rows.includes(i)) {
@@ -8210,7 +8245,7 @@ function renderEditor(deps, root) {
       const sentence = el("span", { className: "mg-sentence" });
       renderCompare(api, host, store, index, trigger4, cmp, sentence);
       const remove = api.ui.widgets.button("\u2715", { ghost: true, title: t("Remove"), onClick: () => store.commit(t("Remove comparison"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, conditions: conditions.filter((_, k) => !cmp.rows.includes(k)) }), { sidecar: { expansions: store.sidecar.expansions.filter((x2) => x2.id !== cmp.x.id) } }) });
-      condSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove))));
+      condSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove)), ...problemLines(at("condition", i))));
       return;
     }
     condSection.append(renderRow(ctx, "condition", i, c2, at("condition", i), {
@@ -8305,7 +8340,7 @@ function renderEditor(deps, root) {
       const sentence = el("span", { className: "mg-sentence" });
       renderHook(api, host, store, hook, sentence);
       const remove = api.ui.widgets.button("\u2715", { ghost: true, title: t("Remove"), onClick: () => store.commit(t("Remove build row"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, actions: actions.filter((_, j2) => j2 !== i) }), sharedElsewhere(store.list, hook, index) ? {} : { sidecar: { builds: store.sidecar.builds.filter((b) => b.id !== hook.id) } }) });
-      actSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove))));
+      actSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove)), ...problemLines(at("action", i))));
       continue;
     }
     const cx = counterExpansionOf(store, a2);
@@ -8313,7 +8348,7 @@ function renderEditor(deps, root) {
       const sentence = el("span", { className: "mg-sentence" });
       renderCounterExpansion(api, host, store, cx, sentence);
       const remove = api.ui.widgets.button("\u2715", { ghost: true, title: t("Remove"), onClick: () => writeActions(t("Remove counter step"), actions.filter((_, j) => j !== i)) });
-      actSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove))));
+      actSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove)), ...problemLines(at("action", i))));
       continue;
     }
     actSection.append(renderRow(ctx, "action", i, a2, at("action", i), {
@@ -9084,6 +9119,8 @@ var STYLE = `
 .mg .mg-problem { font-size: var(--fs-xs); padding: 2px 8px 2px 24px; color: var(--warn); }
 .mg .mg-problem.error { color: var(--danger); }
 .mg .mg-problem.info { color: var(--text-dim); }
+.mg .mg-problem.mg-offer { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding-left: 6px; }
+.mg .mg-problem.mg-offer > span { flex: 1 1 200px; }
 
 .mg .mg-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; height: 20px; padding: 0 6px; margin: 0 1px; vertical-align: middle; border-radius: 3px; border: 1px solid var(--border-strong); background: var(--bg-3); color: var(--text); font: inherit; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: var(--bevel-raised); }
 .mg .mg-chip:hover { background: var(--bg-4); border-color: var(--teal-dim); }
@@ -9815,6 +9852,7 @@ function createPanel(api, hooks = {}) {
       }
     });
     const offLang = api.events.on("language", render);
+    const offSettings = api.events.on("settings", render);
     const resize = new ResizeObserver(() => {
       root.classList.toggle("narrow", root.clientWidth < NARROW);
       root.classList.toggle("stacked", root.clientWidth < STACKED);
@@ -10152,6 +10190,7 @@ function createPanel(api, hooks = {}) {
       offTriggers.dispose();
       offFile.dispose();
       offDoc.dispose();
+      offSettings.dispose();
       offLang.dispose();
       resize.disconnect();
       closePopover();

@@ -57,6 +57,18 @@ describe("checks", () => {
     expect(problems.find((p) => p.text.includes("catalogue does not know"))).toBeTruthy();
     expect(check(trig([0], [], [{ type: ActionType.Victory }]), {})).toEqual([]);
   });
+  it("marks the rows only Remastered runs on a map of an older revision", () => {
+    const t = trig([0], [{ type: ConditionType.Deaths, player: 0x30000, comparison: Comparison.AtLeast, amount: 1 }, { type: ConditionType.Bring, player: 0, comparison: Comparison.AtLeast, amount: 1, location: 1 }], [{ type: ActionType.SetDeaths, player: 0x30000, target: 1 }, { type: ActionType.SetDeaths, player: 0, unitId: 5, target: 1 }, { type: ActionType.Victory }]);
+    const on205 = check(t, { fileVersion: 205, versionLabel: "Brood War 1.04", magentaRow: (kind, i) => kind === "action" && i === 1 });
+    const revision = on205.filter((p) => p.code === "revision");
+    expect(revision.map((p) => p.at)).toEqual([{ kind: "condition", index: 0 }, { kind: "action", index: 0 }, { kind: "action", index: 1 }]);
+    expect(revision.every((p) => p.level === "info" && p.text.includes("Brood War 1.04"))).toBe(true);
+    expect(check(t, { fileVersion: 206, magentaRow: () => true }).some((p) => p.code === "revision")).toBe(false);
+    expect(check(t, { magentaRow: () => true }).some((p) => p.code === "revision")).toBe(false);
+    // A disabled row is not played by anyone, so it gets no line.
+    const off = { ...t, actions: t.actions.map((a, i) => (i === 0 ? { ...a, flags: 2 } : a)) };
+    expect(check(off, { fileVersion: 63 }).filter((p) => p.code === "revision").map((p) => p.at)).toEqual([{ kind: "condition", index: 0 }]);
+  });
   it("flags a preserved-by-flag trigger too", () => {
     const t = { ...trig([0], [], [{ type: ActionType.Wait, time: 1 }]), flags: TriggerFlag.Preserve };
     expect(check(t).some((p) => p.text.includes("preserved"))).toBe(true);

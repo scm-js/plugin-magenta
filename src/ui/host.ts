@@ -36,6 +36,16 @@ export class Host {
 
   /* ── Reading ── */
 
+  /** The map's revision (Scenario ▸ Map Revision), null with no map open. */
+  version() {
+    return this.api.settings.version();
+  }
+
+  /** Scenario ▸ Map Revision ▸ Remastered 1.21+, with the string table moved to STRx as the dialog does by default. */
+  setRemastered(): void {
+    this.api.document.update("Map revision", (tx) => { tx.setVersion("remastered"); });
+  }
+
   triggers(): TriggerRecord[] {
     return this.api.triggers.list();
   }

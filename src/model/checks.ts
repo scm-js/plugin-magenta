@@ -13,6 +13,8 @@ export interface Problem {
   text: string;
   /** The row the problem is on, when it is one row's. */
   at?: { kind: "condition" | "action"; index: number };
+  /** A problem the editor can offer to fix: `revision` is a Remastered-only row on a map marked for an older client. */
+  code?: "revision";
 }
 
 export interface CheckContext {
@@ -29,12 +31,19 @@ export interface CheckContext {
   /** The location a build row moves once this cycle's triggers have all run (a Move location, a pick's box, a pass's centre), or null for any other action. */
   deferredLocation?(action: ActionRecord): number | null;
   locationName?(number: number): string;
+  /** The map's VER word (59 original, 63 hybrid, 205 Brood War, 206 Remastered) and the editor's label for it. */
+  fileVersion?: number;
+  versionLabel?: string;
+  /** Whether the row at `index` (of the live conditions or actions) is one of Magenta's own — a counter step, a comparison, a build row — which only Remastered runs. */
+  magentaRow?(kind: "condition" | "action", index: number): boolean;
 }
 
 /** Actions that change nothing shared: what a player sees or hears on their own screen, and the trigger's own bookkeeping. */
 const LOCAL_ACTIONS = new Set<number>([ActionType.Comment, ActionType.PreserveTrigger, ActionType.Wait, ActionType.DisplayText, ActionType.PlayWav, ActionType.CenterView, ActionType.MinimapPing, ActionType.TalkingPortrait, ActionType.Transmission, ActionType.MuteUnitSpeech, ActionType.UnmuteUnitSpeech, ActionType.SetMissionObjectives, ActionType.LeaderboardControl, ActionType.LeaderboardControlAt, ActionType.LeaderboardResources, ActionType.LeaderboardKills, ActionType.LeaderboardPoints, ActionType.LeaderboardGoalControl, ActionType.LeaderboardGoalControlAt, ActionType.LeaderboardGoalResources, ActionType.LeaderboardGoalKills, ActionType.LeaderboardGoalPoints, ActionType.LeaderboardComputerPlayers, ActionType.LeaderboardGreed]);
 
 const LOCATION_ANYWHERE = 64;
+/** The VER word of a Remastered map; every lower one 1.16.1 opens too. */
+export const REMASTERED_VER = 206;
 
 export function check(trigger: TriggerRecord, ctx: CheckContext = {}): Problem[] {
   const out: Problem[] = [];
@@ -148,6 +157,22 @@ export function check(trigger: TriggerRecord, ctx: CheckContext = {}): Problem[]
       for (const p of playerSlots(c.player, own)) if (ctx.claimedCells.has(cellKey(p, c.unitId))) { out.push({ level: "warn", text: "This death counter is used by another plugin's generated triggers.", at }); break; }
     }
   });
+
+  // The revision says which clients open the map. A row only Remastered runs, on a map marked for an older
+  // client, does nothing there: the EUD records (masked ones 1.16.1 skips, writes it blocks), the counter runs
+  // (masked reads) and the build rows (euddraft's output is Remastered-only). One line per row, dim, so a
+  // Remastered map maker who keeps VER 205 is told once per row and not shouted at.
+  if (ctx.fileVersion !== undefined && ctx.fileVersion < REMASTERED_VER) {
+    const text = `Only StarCraft: Remastered runs this row; the map is marked ${ctx.versionLabel ?? `VER ${ctx.fileVersion}`}, a revision 1.16.1 also plays.`;
+    conditions.forEach((c, index) => {
+      if (isConditionDisabled(c)) return;
+      if ((c.type === ConditionType.Deaths && isEud(c.player)) || ctx.magentaRow?.("condition", index)) out.push({ level: "info", code: "revision", text, at: { kind: "condition", index } });
+    });
+    actions.forEach((a, index) => {
+      if (isActionDisabled(a) || (inGroup.has(index) && !groups.some((s) => s.at === index))) return;
+      if ((a.type === ActionType.SetDeaths && isEud(a.player)) || ctx.magentaRow?.("action", index)) out.push({ level: "info", code: "revision", text, at: { kind: "action", index } });
+    });
+  }
 
   return out;
 }

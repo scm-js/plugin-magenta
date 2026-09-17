@@ -103,7 +103,11 @@ removes it, `Alt+↑` / `Alt+↓` move it, `Ctrl+/` disables it, Enter opens its
 
 Problems appear under the row they belong to: a trigger that never fires, two conditions that
 contradict each other, a Wait inside a preserved trigger, a location or string the map no
-longer has, a sound that is not in the archive, a memory write Remastered does not allow.
+longer has, a sound that is not in the archive, a memory write Remastered does not allow. On a
+map whose revision is below Remastered (Scenario ▸ Map Revision), every row only Remastered
+runs — an EUD row, a counter step, a build row — gets a dim line saying so, and a **Set revision
+to Remastered** button above the rows marks the map so older clients refuse it instead of
+playing it with those rows doing nothing.
 
 ### In plain words
 
@@ -166,7 +170,9 @@ A few things to know:
 
 - Any of these makes the map an **EUD map**: only StarCraft: Remastered plays it, and the lobby
   marks it. The narrow fields (a byte, a word, one bit) use Remastered's masked records, which
-  1.16.1 ignores.
+  1.16.1 ignores. Magenta does not change the map's revision for you: a Brood War 1.04 map with
+  EUD rows still opens in 1.16.1, where the rows do nothing. The line under each such row and
+  its **Set revision to Remastered** button are the reminder.
 - Remastered allows a trigger to write only some of the game's memory. An entry it will not
   let you write is offered as a condition only, and a hand-made write to such an address
   shows as a problem.

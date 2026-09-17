@@ -68,9 +68,15 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
     }
   }
   const perPlayer = store.sidecar.expansions.find((x): x is Extract<typeof x, { kind: "forEachPlayer" }> => x.kind === "forEachPlayer" && x.anchor.i === store.cleanIndex(index));
+  const cmp = compareOf(store, index, trigger);
+  const version = host.version();
   const problems = check(trigger, {
     everyFrame: store.sidecar.settings.everyFrame, locationExists: (n) => host.locationExists(n), stringExists: (i) => host.stringExists(i), wavPresent: (i) => host.wavPresent(i), claimedCells, template: !!perPlayer,
     locationName: (n) => namer.location(n),
+    fileVersion: version?.fileVersion, versionLabel: version?.label,
+    magentaRow: (kind, i) => kind === "condition"
+      ? !!conditionRowOf(store, liveConditions(trigger)[i]) || (!!cmp && cmp.rows[0] === i)
+      : !!hookOf(store, liveActions(trigger)[i]) || !!counterExpansionOf(store, liveActions(trigger)[i]),
     deferredLocation: (a) => {
       const hook = hookOf(store, a);
       if (!hook) return null;
@@ -82,6 +88,7 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
   });
   const general = problems.filter((p) => !p.at);
   const at = (kind: "condition" | "action", i: number): Problem[] => problems.filter((p) => p.at?.kind === kind && p.at.index === i);
+  const problemLines = (ps: Problem[]) => ps.map((p) => el("div", { className: `mg-problem ${p.level}` }, p.text));
 
   const replace = (label: string, next: TriggerRecord) => store.replace(index, next, label);
 
@@ -123,12 +130,17 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
   }
   root.append(playersRow);
   for (const p of general) root.append(el("div", { className: `mg-problem ${p.level}`, style: "padding-left:6px" }, p.text));
+  if (problems.some((p) => p.code === "revision")) {
+    root.append(el("div", { className: "mg-problem info mg-offer" },
+      el("span", {}, t("Set the revision to Remastered 1.21+ and older clients refuse the map instead of playing it without these rows.")),
+      api.ui.widgets.button(t("Set revision to Remastered"), { ghost: true, onClick: () => host.setRemastered() }),
+    ));
+  }
 
   /* ── Conditions ── */
   const conditions = liveConditions(trigger);
   const condSection = el("div", { className: "mg-section" }, el("div", { className: "mg-section-head" }, t("Conditions"), el("span", { className: "grow" }), el("span", { className: "hint" }, `${conditions.length}/${MAX_CONDITIONS}`)));
   const writeConditions = (label: string, next: ConditionRecord[]) => replace(label, { ...trigger, conditions: next });
-  const cmp = compareOf(store, index, trigger);
   conditions.forEach((c, i) => {
     const brow = conditionRowOf(store, c);
     if (brow) {
@@ -137,7 +149,7 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
       // A scan is this trigger's own unless another reads its cell; a chat command is shared by every trigger on its message.
       const ownRecord = brow.kind === "scan" && !sharedElsewhere(store.list, brow.record, index) ? brow.record.id : null;
       const remove = api.ui.widgets.button("✕", { ghost: true, title: t("Remove"), onClick: () => store.commit(t("Remove condition"), () => store.list.map((tr, j) => (j !== index ? tr : { ...tr, conditions: conditions.filter((_, k) => k !== i) })), ownRecord ? { sidecar: { builds: store.sidecar.builds.filter((b) => b.id !== ownRecord) } } : {}) });
-      condSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove))));
+      condSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove)), ...problemLines(at("condition", i))));
       return;
     }
     if (cmp && cmp.rows.includes(i)) {
@@ -145,7 +157,7 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
       const sentence = el("span", { className: "mg-sentence" });
       renderCompare(api, host, store, index, trigger, cmp, sentence);
       const remove = api.ui.widgets.button("✕", { ghost: true, title: t("Remove"), onClick: () => store.commit(t("Remove comparison"), () => store.list.map((tr, j) => (j !== index ? tr : { ...tr, conditions: conditions.filter((_, k) => !cmp.rows.includes(k)) })), { sidecar: { expansions: store.sidecar.expansions.filter((x) => x.id !== cmp.x.id) } }) });
-      condSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove))));
+      condSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove)), ...problemLines(at("condition", i))));
       return;
     }
     condSection.append(renderRow(ctx, "condition", i, c, at("condition", i), {
@@ -224,7 +236,7 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
       renderHook(api, host, store, hook, sentence);
       // The definition goes only when no other trigger sets the same flag (a shared row left over from before duplicates got their own).
       const remove = api.ui.widgets.button("✕", { ghost: true, title: t("Remove"), onClick: () => store.commit(t("Remove build row"), () => store.list.map((tr, j) => (j !== index ? tr : { ...tr, actions: actions.filter((_, j2) => j2 !== i) })), sharedElsewhere(store.list, hook, index) ? {} : { sidecar: { builds: store.sidecar.builds.filter((b) => b.id !== hook.id) } }) });
-      actSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove))));
+      actSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove)), ...problemLines(at("action", i))));
       continue;
     }
     const cx = counterExpansionOf(store, a);
@@ -232,7 +244,7 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
       const sentence = el("span", { className: "mg-sentence" });
       renderCounterExpansion(api, host, store, cx, sentence);
       const remove = api.ui.widgets.button("✕", { ghost: true, title: t("Remove"), onClick: () => writeActions(t("Remove counter step"), actions.filter((_, j) => j !== i)) });
-      actSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove))));
+      actSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove)), ...problemLines(at("action", i))));
       continue;
     }
     actSection.append(renderRow(ctx, "action", i, a, at("action", i), {

@@ -68,6 +68,8 @@ export const STYLE = `
 .mg .mg-problem { font-size: var(--fs-xs); padding: 2px 8px 2px 24px; color: var(--warn); }
 .mg .mg-problem.error { color: var(--danger); }
 .mg .mg-problem.info { color: var(--text-dim); }
+.mg .mg-problem.mg-offer { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding-left: 6px; }
+.mg .mg-problem.mg-offer > span { flex: 1 1 200px; }
 
 .mg .mg-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; height: 20px; padding: 0 6px; margin: 0 1px; vertical-align: middle; border-radius: 3px; border: 1px solid var(--border-strong); background: var(--bg-3); color: var(--text); font: inherit; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: var(--bevel-raised); }
 .mg .mg-chip:hover { background: var(--bg-4); border-color: var(--teal-dim); }
