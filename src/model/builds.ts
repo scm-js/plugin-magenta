@@ -49,7 +49,7 @@ export type ForEachDo =
   | { speed: boolean }
   /** Give with the colour, selection and control groups following. */
   | { give: number }
-  /** Center a location on the unit, so the trigger's other actions can act on it. */
+  /** Center a location on the unit — after this cycle's triggers, so a later cycle's rows can act on it through the location. */
   | { locate: number }
   /** The game's own Order, one unit at a time through a scratch location Magenta keeps for it. */
   | { order: "move" | "patrol" | "attack"; location: number; scratch: number }

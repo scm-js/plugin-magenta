@@ -3012,6 +3012,7 @@ var eud_default = {
     {
       id: "game.localPlayer",
       kind: "condition",
+      local: true,
       group: "Game",
       name: "Local player",
       aliases: [
@@ -3042,6 +3043,7 @@ var eud_default = {
     {
       id: "game.mouseX",
       kind: "condition",
+      local: true,
       group: "Game",
       name: "Mouse X on screen",
       aliases: [
@@ -3072,6 +3074,7 @@ var eud_default = {
     {
       id: "game.mouseY",
       kind: "condition",
+      local: true,
       group: "Game",
       name: "Mouse Y on screen",
       sentence: {
@@ -3098,6 +3101,7 @@ var eud_default = {
     {
       id: "game.screenX",
       kind: "condition",
+      local: true,
       group: "Game",
       name: "Screen X on the map",
       aliases: [
@@ -3127,6 +3131,7 @@ var eud_default = {
     {
       id: "game.screenY",
       kind: "condition",
+      local: true,
       group: "Game",
       name: "Screen Y on the map",
       sentence: {
@@ -3152,6 +3157,7 @@ var eud_default = {
     {
       id: "game.key",
       kind: "condition",
+      local: true,
       group: "Game",
       name: "Keyboard key state",
       aliases: [
@@ -4735,12 +4741,17 @@ function markerOf(trigger4, text) {
 // src/model/sidecar.ts
 var MEMBER = "magenta\\magenta.json";
 var emptySidecar = () => ({ version: 1, folders: [], counters: [], settings: {}, expansions: [], builds: [], chat: null, msqc: null });
+var SIDECAR_VERSION = 1;
 function decodeSidecar(bytes) {
-  if (!bytes) return emptySidecar();
+  return readSidecar(bytes).sidecar;
+}
+function readSidecar(bytes) {
+  if (!bytes) return { sidecar: emptySidecar(), problem: null };
   try {
     const parsed = JSON.parse(new TextDecoder().decode(bytes));
-    if (parsed.version !== 1) return emptySidecar();
-    return {
+    if (!parsed || typeof parsed !== "object" || !Number.isInteger(parsed.version)) return { sidecar: emptySidecar(), problem: { kind: "malformed", detail: "no version" } };
+    if (parsed.version > SIDECAR_VERSION) return { sidecar: emptySidecar(), problem: { kind: "newer", version: parsed.version } };
+    return { problem: null, sidecar: {
       version: 1,
       folders: Array.isArray(parsed.folders) ? parsed.folders.filter((f) => f && typeof f.id === "string" && typeof f.name === "string").map((f) => ({ ...f, triggers: Array.isArray(f.triggers) ? f.triggers : [] })) : [],
       counters: Array.isArray(parsed.counters) ? parsed.counters.filter((c2) => c2 && typeof c2.name === "string" && Number.isInteger(c2.player) && Number.isInteger(c2.unit)) : [],
@@ -4749,9 +4760,9 @@ function decodeSidecar(bytes) {
       builds: Array.isArray(parsed.builds) ? parsed.builds.filter((x) => x && typeof x.id === "string" && typeof x.kind === "string") : [],
       chat: parsed.chat && Array.isArray(parsed.chat.cell) ? { cell: [Number(parsed.chat.cell[0]), Number(parsed.chat.cell[1])], args: decodeArgs(parsed.chat.args) } : null,
       msqc: parsed.msqc && typeof parsed.msqc === "object" ? { keys: {}, clicks: {}, mouseIn: {}, select: null, mouseBase: null, qcUnit: 58, qcLoc: 62, qcPlayer: 10, ...parsed.msqc } : null
-    };
-  } catch {
-    return emptySidecar();
+    } };
+  } catch (e) {
+    return { sidecar: emptySidecar(), problem: { kind: "malformed", detail: String(e.message ?? e) } };
   }
 }
 function decodeArgs(args) {
@@ -4941,6 +4952,8 @@ function allocate(used, placedUnitIds = /* @__PURE__ */ new Set()) {
 var Host = class {
   api;
   sidecarCache = null;
+  /** The member bytes the user chose to write over, after the panel said they could not be read. */
+  discarded = null;
   constructor(api) {
     this.api = api;
   }
@@ -5165,11 +5178,23 @@ var Host = class {
   }
   /* ── The sidecar ── */
   sidecar() {
+    return this.readSidecar().value;
+  }
+  /** Why the map's member could not be read, or null; a problem the user discarded is null too. */
+  sidecarProblem() {
+    const r = this.readSidecar();
+    return r.bytes !== null && r.bytes === this.discarded ? null : r.problem;
+  }
+  /** Write over the unreadable member from now on: the next change replaces it. */
+  discardSidecar() {
+    this.discarded = this.api.document.extras.get(MEMBER);
+  }
+  readSidecar() {
     const bytes = this.api.document.extras.get(MEMBER);
-    if (this.sidecarCache && this.sidecarCache.bytes === bytes) return this.sidecarCache.value;
-    const value = decodeSidecar(bytes);
-    this.sidecarCache = { bytes, value };
-    return value;
+    if (this.sidecarCache && this.sidecarCache.bytes === bytes) return this.sidecarCache;
+    const { sidecar, problem } = readSidecar(bytes);
+    this.sidecarCache = { bytes, value: sidecar, problem };
+    return this.sidecarCache;
   }
   saveSidecar(sidecar) {
     const empty = sidecar.folders.length === 0 && sidecar.counters.length === 0 && sidecar.expansions.length === 0 && sidecar.builds.length === 0 && !sidecar.chat && !sidecar.msqc && Object.keys(sidecar.settings).length === 0;
@@ -5180,7 +5205,7 @@ var Host = class {
     }
     const bytes = encodeSidecar(sidecar);
     this.api.document.extras.set(MEMBER, bytes);
-    this.sidecarCache = { bytes: this.api.document.extras.get(MEMBER), value: sidecar };
+    this.sidecarCache = { bytes: this.api.document.extras.get(MEMBER), value: sidecar, problem: null };
   }
 };
 
@@ -5409,15 +5434,13 @@ var RECIPES = [
     id: "key-minerals",
     label: "A key gives minerals",
     aliases: ["keyboard", "hotkey", "cheat key", "press"],
-    everyFrame: true,
-    description: "Pressing M gives the player at that computer 100 minerals. An EUD read; needs triggers every frame, and runs only on the computer where the key was pressed. Change the key.",
-    build: (ctx) => [trigger2(
-      ctx,
-      "M for minerals",
-      [P.AllPlayers],
-      [lowerCondition({ entry: entry("game.key"), args: { key: 77 }, value: 1, op: Comparison.Exactly })],
-      [act(A2.SetResources, { player: P.CurrentPlayer, modifier: SetModifier.Add, target: 100, unitId: 0 }), preserve2()]
-    )]
+    needsBuild: true,
+    description: "Pressing M gives the player who pressed it 100 minerals. A synced key press: every computer sees it, so the game stays in step. Needs a Build. Change the key.",
+    build: (ctx) => {
+      const pressed = ctx.input("key", { code: 77 });
+      if (!pressed) return [];
+      return [trigger2(ctx, "M for minerals", [P.AllPlayers], [pressed], [act(A2.SetResources, { player: P.CurrentPlayer, modifier: SetModifier.Add, target: 100, unitId: 0 }), preserve2()])];
+    }
   },
   {
     id: "buff-unit",
@@ -5433,8 +5456,100 @@ var RECIPES = [
     )]
   }
 ];
-function recipeContext(intern, locations) {
-  return { intern, location: locations[0] ?? ANYWHERE, location2: locations[1] ?? locations[0] ?? ANYWHERE };
+function recipeContext(intern, locations, input = () => null) {
+  return { intern, location: locations[0] ?? ANYWHERE, location2: locations[1] ?? locations[0] ?? ANYWHERE, input };
+}
+
+// src/model/ownership.ts
+var readsCell = (c2, cell) => c2.type === ConditionType.Deaths && c2.player === cell[0] && c2.unitId === cell[1];
+function privateCell(record) {
+  if ("flag" in record) return record.flag;
+  if (record.kind === "scan") return record.cell;
+  return null;
+}
+function carries(trigger4, record) {
+  const cell = privateCell(record);
+  if (!cell) return false;
+  if (record.kind === "scan") return liveConditions(trigger4).some((c2) => readsCell(c2, cell));
+  return liveActions(trigger4).some((a2) => isFlagAction(a2, { cell }));
+}
+function refs(list, record) {
+  const out = [];
+  list.forEach((t, i) => {
+    if (carries(t, record)) out.push(i);
+  });
+  return out;
+}
+var sharedElsewhere = (list, record, except) => refs(list, record).some((i) => i !== except);
+var serial = 0;
+var freshId = (prefix) => `${prefix}${Date.now().toString(36)}${(serial++ % 1296).toString(36).padStart(2, "0")}`;
+function detach(trigger4, builds, expansions, alloc) {
+  const taken = [];
+  let moved = 0, stuck = 0;
+  const actions = [...trigger4.actions];
+  const conditions = [...trigger4.conditions];
+  const nextBuilds = [...builds];
+  const nextExpansions = [...expansions];
+  const fresh = () => {
+    const c2 = alloc(taken);
+    if (c2) taken.push(c2);
+    return c2;
+  };
+  for (const b of builds) {
+    const cell = privateCell(b);
+    if (!cell || !carries(trigger4, b)) continue;
+    const to = fresh();
+    if (!to) {
+      stuck++;
+      continue;
+    }
+    if (b.kind === "scan") {
+      nextBuilds.push({ ...b, id: freshId("s"), cell: to });
+      conditions.forEach((c2, i) => {
+        if (readsCell(c2, cell)) conditions[i] = { ...c2, player: to[0], unitId: to[1] };
+      });
+    } else {
+      nextBuilds.push({ ...b, id: freshId("b"), flag: to });
+      actions.forEach((a2, i) => {
+        if (isFlagAction(a2, { cell })) actions[i] = { ...a2, player: to[0], unitId: to[1] };
+      });
+    }
+    moved++;
+  }
+  for (const x of expansions) {
+    if (!("flag" in x) || !carries(trigger4, x)) continue;
+    const to = fresh();
+    if (!to) {
+      stuck++;
+      continue;
+    }
+    nextExpansions.push({ ...x, id: freshId("c"), flag: to });
+    actions.forEach((a2, i) => {
+      if (isFlagAction(a2, { cell: x.flag })) actions[i] = { ...a2, player: to[0], unitId: to[1] };
+    });
+    moved++;
+  }
+  return { trigger: { ...trigger4, actions, conditions }, builds: nextBuilds, expansions: nextExpansions, moved, stuck };
+}
+function prune(builds, list, removed) {
+  const gone = new Set(removed);
+  return builds.filter((b) => {
+    if (!privateCell(b)) return true;
+    const r = refs(list, b);
+    return r.length === 0 || r.some((i) => !gone.has(i));
+  });
+}
+function orderBuilds(builds, list) {
+  const at = (b) => {
+    const cell = privateCell(b);
+    if (!cell) return -1;
+    for (let i = 0; i < list.length; i++) {
+      const rows = b.kind === "scan" ? liveConditions(list[i]).findIndex((c2) => readsCell(c2, cell)) : liveActions(list[i]).findIndex((a2) => isFlagAction(a2, { cell }));
+      if (rows >= 0) return i * 1024 + rows;
+    }
+    return Number.MAX_SAFE_INTEGER;
+  };
+  return builds.map((b, i) => ({ b, i, at: at(b) })).sort((x, y) => x.at - y.at || x.i - y.i).map((x) => x.b);
 }
 
 // src/model/builds.ts
@@ -5554,164 +5669,56 @@ function checkChatMessage(text) {
   return null;
 }
 
-// src/ui/build.ts
-var CAMMOVE_LOC = "cammoveLoc";
-var CAMMOVE_SWITCH = "cammove";
-var DEFAULT_SERVER = "https://eud.scmjs.dev";
-var SERVER_KEY = "server";
-var serverUrl = (api) => api.storage.get(SERVER_KEY, DEFAULT_SERVER).replace(/\/+$/, "");
-var setServerUrl = (api, url) => {
-  api.storage.set(SERVER_KEY, url.trim().replace(/\/+$/, "") || DEFAULT_SERVER);
-};
-var toBase64 = (bytes) => {
-  let s = "";
-  for (let i = 0; i < bytes.length; i += 32768) s += String.fromCharCode(...bytes.subarray(i, i + 32768));
-  return btoa(s);
-};
-var fromBase64 = (b64) => Uint8Array.from(atob(b64), (c2) => c2.charCodeAt(0));
-function openBuildDialog(api, host, store, everyFrame) {
-  const t = api.i18n.t;
-  const el = api.ui.el;
-  const w = api.ui.widgets;
-  const builds = store.sidecar.builds;
-  const chats = builds.filter((b) => b.kind === "chat").length;
-  const hooks = builds.length - chats;
-  const options = { ...DEFAULT_OPTIONS, ...store.sidecar.settings.build };
-  const saveOptions = () => store.updateSidecar(t("Build options"), { settings: { ...store.sidecar.settings, build: options } });
-  const plugins = () => composePlugins(builds, store.sidecar.chat, everyFrame, store.sidecar.msqc, options, options.camera ? 0 : null);
-  const locations = host.locations().filter((l) => l.value !== 64 && l.named);
-  const cameraOn = w.checkbox(t("The camera follows a location, for everyone"), { value: !!options.camera });
-  const cameraLoc = w.select(locations.map((l) => ({ value: l.value, label: l.label })), { value: options.camera?.location ?? locations[0]?.value ?? 0 });
-  const inertia = w.number({ value: options.camera?.inertia ?? 5, min: 1, max: 60 });
-  const maxspeed = w.number({ value: options.camera?.maxspeed ?? 48, min: 1, max: 999 });
-  const cameraStart = w.checkbox(t("Start following at once (a trigger sets the cammove switch)"), { value: true });
-  const readCamera = () => {
-    const loc = locations.find((l) => l.value === Number(cameraLoc.value));
-    options.camera = cameraOn.input.checked && loc ? { location: loc.value, name: loc.label, inertia: Number(inertia.value) || 5, maxspeed: Number(maxspeed.value) || 48 } : null;
-  };
-  const sounds = host.sounds().filter((s) => s.value !== 0);
-  const bgmOn = w.checkbox(t("Loop a sound as background music"), { value: !!options.bgm });
-  const bgmPath = w.select(sounds.map((s) => ({ value: s.value, label: s.label })), { value: sounds.find((s) => api.names.string(s.value) === options.bgm?.path)?.value ?? sounds[0]?.value ?? 0 });
-  const bgmLen = w.number({ value: options.bgm?.length ?? 60, min: 1, max: 3600, step: 0.5 });
-  const readBgm = () => {
-    if (!bgmOn.input.checked || !sounds.length) {
-      options.bgm = null;
-      return;
+// src/model/textParts.ts
+function partsToText(parts, names) {
+  return parts.map((p) => {
+    if ("text" in p) return p.text.replace(/[{}]/g, (c2) => `\\${c2}`);
+    if ("player" in p) return `{Player ${p.player + 1}}`;
+    if ("color" in p) return `{Player ${p.color + 1}'s colour}`;
+    return `{${names.name(p.counter) ?? `${p.counter[0]}:${p.counter[1]}`}}`;
+  }).join("");
+}
+function textToParts(text, names) {
+  const out = [];
+  let buf = "";
+  const flush = () => {
+    if (buf) {
+      out.push({ text: buf });
+      buf = "";
     }
-    const path = api.names.string(Number(bgmPath.value)) ?? "";
-    options.bgm = { path, length: Number(bgmLen.value) || 60 };
   };
-  bgmPath.addEventListener("change", () => {
-    const path = api.names.string(Number(bgmPath.value)) ?? "";
-    const secs = host.wavSeconds(path);
-    if (secs) bgmLen.value = String(Math.round(secs * 2) / 2);
-  });
-  const noAir = w.checkbox(t("Air units pass through one another"), { value: options.noAirCollision });
-  const unlimiter = w.checkbox(t("Lift the sprite and image limits"), { value: options.unlimiter });
-  const readAll = () => {
-    readCamera();
-    readBgm();
-    options.noAirCollision = noAir.input.checked;
-    options.unlimiter = unlimiter.input.checked;
-  };
-  const info = api.document.info();
-  const stem2 = (info?.fileName ?? "map").replace(/\.(scx|scm|chk)$/i, "");
-  const server = w.text({ value: serverUrl(api), placeholder: DEFAULT_SERVER });
-  const status = w.statusLine();
-  const log = el("textarea", { className: "textarea", rows: 10, readOnly: true, spellcheck: false, style: "font-family: var(--font-mono); font-size: var(--fs-xs); display: none" });
-  const summary = el(
-    "ul",
-    {},
-    el("li", {}, chats ? t("{n, plural, one {# chat command} other {# chat commands}}", { n: chats }) : t("No chat commands")),
-    el("li", {}, hooks ? t("{n, plural, one {# build row} other {# build rows}} (text, maths, unit passes, checks)", { n: hooks }) : t("No build rows")),
-    el("li", {}, plugins().MSQC ? t("Synced input (keys, clicks, mouse) through MSQC") : t("No synced input")),
-    el("li", {}, everyFrame ? t("Triggers run every frame (turbo)") : t("Triggers run every two seconds"))
-  );
-  const nothing = !Object.keys(plugins()).length;
-  api.ui.dialog({
-    title: t("Build EUD map"),
-    size: "md",
-    mount(body) {
-      body.append(
-        w.hint(t("The map goes to the build server as it stands, euddraft adds the code for the rows below, and the built map comes back as a file to save. The server keeps nothing. Only StarCraft: Remastered plays the result. Keep this map as the source: the built one is the compiled output, the way a program is.")),
-        summary,
-        w.group(
-          t("Map-wide"),
-          w.column(cameraOn, w.form([{ label: t("Location"), field: cameraLoc }, { label: t("Inertia"), field: inertia }, { label: t("Max speed"), field: maxspeed }]), cameraStart),
-          w.column(bgmOn, w.form([{ label: t("Sound"), field: bgmPath }, { label: t("Seconds"), field: bgmLen }])),
-          noAir,
-          unlimiter,
-          w.hint(t("The camera follows a location by its name, so only named locations are offered. It follows while a switch named cammove is set, so a trigger can turn it on and off; the switch and a helper location named cammoveLoc are made in this map at build time. A looped sound needs its length; a plain WAV's is read from the file."))
-        ),
-        w.form([{ label: t("Build server"), field: server }]),
-        status,
-        log
-      );
-      if (nothing && !locations.length) status.set(t("Nothing in this map needs a build; a plain save is all it takes."), "warn");
-    },
-    buttons: [
-      { label: t("Build\u2026"), primary: true, closes: false, run: async () => {
-        setServerUrl(api, server.value);
-        readAll();
-        saveOptions();
-        let cammove = null;
-        if (options.camera) {
-          cammove = host.ensureLocation(CAMMOVE_LOC);
-          if (cammove === null) {
-            status.set(t("The camera needs one free location slot for its helper location."), "error");
-            return;
-          }
-          const sw = host.ensureSwitch(CAMMOVE_SWITCH);
-          if (sw === null) {
-            status.set(t("The camera needs one free switch to turn it on and off."), "error");
-            return;
-          }
-          store.reload();
-          const sets = store.list.some((tr) => tr.actions.some((a2) => a2.type === 13 && a2.target === sw));
-          if (cameraStart.input.checked && !sets) {
-            store.commit(t("Start the camera"), (intern) => {
-              const tr = api.triggers.newTrigger([17]);
-              tr.conditions = [api.triggers.newCondition(22)];
-              tr.actions = [{ ...api.triggers.newAction(47), text: intern("Camera: start following") }, { ...api.triggers.newAction(13), target: sw, modifier: 4 }];
-              return [...store.list, tr];
-            });
-          }
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "\\" && (text[i + 1] === "{" || text[i + 1] === "}")) {
+      buf += text[i + 1];
+      i++;
+      continue;
+    }
+    if (ch === "{") {
+      const end = text.indexOf("}", i + 1);
+      if (end > i) {
+        const inner = text.slice(i + 1, end).trim();
+        const player = /^player\s*(\d{1,2})('s)?\s*(colou?r)?$/i.exec(inner);
+        if (player && Number(player[1]) >= 1 && Number(player[1]) <= 12) {
+          flush();
+          out.push(player[3] ? { color: Number(player[1]) - 1 } : { player: Number(player[1]) - 1 });
+          i = end;
+          continue;
         }
-        const plugins2 = composePlugins(builds, store.sidecar.chat, everyFrame, store.sidecar.msqc, options, cammove);
-        const file = await api.document.export();
-        if (!file) {
-          status.set(t("No map is open."), "error");
-          return;
+        const raw = /^(\d{1,2}):(\d{1,3})$/.exec(inner);
+        const cell = raw ? [Number(raw[1]), Number(raw[2])] : names.cell(inner);
+        if (cell) {
+          flush();
+          out.push({ counter: cell });
+          i = end;
+          continue;
         }
-        status.busy(t("Building\u2026"));
-        log.style.display = "none";
-        try {
-          const bytes = new Uint8Array(await file.arrayBuffer());
-          const res = await fetch(`${serverUrl(api)}/build`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ map: toBase64(bytes), plugins: plugins2 }) });
-          const answer = await res.json().catch(() => null);
-          if (!res.ok || !answer?.map) {
-            const e = answer?.error;
-            status.set(e?.message ?? t("The server answered {status}.", { status: res.status }), "error");
-            if (e?.log) {
-              log.value = e.log;
-              log.style.display = "";
-            }
-            return;
-          }
-          const out = fromBase64(answer.map);
-          const saved = await api.ui.saveFile(out, `${stem2}-eud.scx`);
-          status.set(saved ? t("Built: {name}, {kb} KB.", { name: saved.fileName, kb: Math.round(out.length / 1024) }) : t("Built, but not saved."), saved ? "ok" : "warn");
-          if (answer.log) {
-            log.value = answer.log;
-            log.style.display = "";
-          }
-        } catch (err) {
-          status.set(t("Could not reach the build server: {why}", { why: String(err.message ?? err) }), "error");
-        }
-      } },
-      { label: t("Close") }
-    ]
-  });
+      }
+    }
+    buf += ch;
+  }
+  flush();
+  return out;
 }
 
 // src/ui/popover.ts
@@ -6019,7 +6026,822 @@ function pickPlacedUnit(api, host, anchor, current2, onPick) {
   });
 }
 
+// src/ui/expansionRows.ts
+var RELATIONS = [
+  { value: 0, label: "greater than", rel: ">" },
+  { value: 1, label: "at least", rel: ">=" },
+  { value: 2, label: "equal to", rel: "==" },
+  { value: 3, label: "less than", rel: "<" },
+  { value: 4, label: "at most", rel: "<=" }
+];
+var RELATION_WORDS = Object.fromEntries(RELATIONS.map((r) => [r.rel, r.label]));
+var counterExpansionOf = (store, a2) => store.sidecar.expansions.find((x) => (x.kind === "copy" || x.kind === "add" || x.kind === "subtract") && isFlagAction(a2, { cell: x.flag })) ?? null;
+function compareOf(store, index, trigger4) {
+  const clean2 = store.cleanIndex(index);
+  const x = store.sidecar.expansions.find((e) => e.kind === "compare" && e.anchor.i === clean2);
+  if (!x) return null;
+  const reads = (c2, cell) => c2.type === ConditionType.Deaths && c2.player === cell[0] && c2.unitId === cell[1];
+  const rows = trigger4.conditions.map((c2, i) => reads(c2, x.scratch[0]) || reads(c2, x.scratch[1]) ? i : -1).filter((i) => i >= 0);
+  const found = rows.map((i) => trigger4.conditions[i]);
+  let relation = "==";
+  for (const r of RELATIONS) {
+    const want = compareConditions(x, r.rel);
+    if (want.length === found.length && want.every((w, i) => w.player === found[i].player && w.unitId === found[i].unitId && w.comparison === found[i].comparison && w.amount === found[i].amount)) relation = r.rel;
+  }
+  return { x, rows, relation };
+}
+function cellLabel(cell, namer) {
+  return namer.counter?.(cell[0], cell[1]) ?? `${namer.player(cell[0])}'s ${namer.unit(cell[1]).replace(/ \(Unused\)$/, "")} deaths`;
+}
+function freeCell(store, host, taken = []) {
+  const used = usage(store.list).cells;
+  for (const c2 of store.sidecar.counters) used.add(cellKey(c2.player, c2.unit));
+  for (const x of store.sidecar.expansions) {
+    if (x.kind === "compare") {
+      used.add(cellKey(...x.scratch[0]));
+      used.add(cellKey(...x.scratch[1]));
+      used.add(cellKey(...x.a));
+      used.add(cellKey(...x.b));
+    } else if (x.kind !== "forEachPlayer") {
+      used.add(cellKey(...x.flag));
+      used.add(cellKey(...x.from));
+      used.add(cellKey(...x.to));
+    }
+  }
+  for (const b of store.sidecar.builds) if ("flag" in b) used.add(cellKey(...b.flag));
+  if (store.sidecar.chat) used.add(cellKey(...store.sidecar.chat.cell));
+  for (const b of store.sidecar.builds) if (b.kind === "scan") used.add(cellKey(...b.cell));
+  const m = store.sidecar.msqc;
+  if (m) for (const unit of [...Object.values(m.keys), ...Object.values(m.clicks), ...Object.values(m.mouseIn), ...m.select ? [m.select.ptr, m.select.type] : []]) for (let p = 0; p < 12; p++) used.add(cellKey(p, unit));
+  for (const c2 of taken) used.add(cellKey(...c2));
+  return allocate(used, host.placedUnitIds());
+}
+function freeUnit(store, host) {
+  const used = usage(store.list).cells;
+  const taken = /* @__PURE__ */ new Set();
+  for (const k of used) taken.add(Math.floor(k / 12));
+  for (const c2 of store.sidecar.counters) taken.add(c2.unit);
+  for (const x of store.sidecar.expansions) {
+    if (x.kind === "compare") {
+      taken.add(x.scratch[0][1]);
+      taken.add(x.scratch[1][1]);
+      taken.add(x.a[1]);
+      taken.add(x.b[1]);
+    } else if (x.kind !== "forEachPlayer") {
+      taken.add(x.flag[1]);
+      taken.add(x.from[1]);
+      taken.add(x.to[1]);
+    }
+  }
+  for (const b of store.sidecar.builds) {
+    if ("flag" in b) taken.add(b.flag[1]);
+    if (b.kind === "scan") taken.add(b.cell[1]);
+  }
+  if (store.sidecar.chat) taken.add(store.sidecar.chat.cell[1]);
+  const m = store.sidecar.msqc;
+  if (m) for (const unit of [...Object.values(m.keys), ...Object.values(m.clicks), ...Object.values(m.mouseIn), ...m.select ? [m.select.ptr, m.select.type] : []]) taken.add(unit);
+  const placed = host.placedUnitIds();
+  for (const unit of COUNTER_UNITS) if (!taken.has(unit) && !placed.has(unit)) return unit;
+  return null;
+}
+function pickCell(api, host, store, anchor, current2, onPick) {
+  const t = api.i18n.t;
+  const namer = host.namer(store.sidecar);
+  const items = store.sidecar.counters.map((c2) => ({ value: cellKey(c2.player, c2.unit), label: c2.name, hint: `${namer.player(c2.player)} \xB7 ${namer.unit(c2.unit)}` }));
+  pickChoice(api, anchor, items, (key) => onPick([key % 12, Math.floor(key / 12)]), {
+    current: cellKey(...current2),
+    width: 280,
+    searchable: true,
+    actions: [{ label: t("New counter\u2026"), run: (p) => {
+      p.close();
+      const cell = freeCell(store, host);
+      if (!cell) {
+        api.ui.toast({ kind: "error", title: t("No free counter cell") });
+        return;
+      }
+      void api.ui.prompt(t("Name for the new counter"), { title: t("New counter") }).then((name) => {
+        if (typeof name !== "string" || !name.trim()) return;
+        store.sidecar.counters.push({ player: cell[0], unit: cell[1], name: name.trim() });
+        onPick(cell);
+      });
+    } }]
+  });
+}
+function chip(api, label, className = "counter") {
+  return api.ui.el("button", { type: "button", className: `mg-chip ${className}` }, label);
+}
+function renderCounterExpansion(api, host, store, x, into) {
+  const t = api.i18n.t;
+  const namer = host.namer(store.sidecar);
+  const update = (patch) => store.updateSidecar(t("Edit counter step"), { expansions: store.sidecar.expansions.map((e) => e.id === x.id ? { ...e, ...patch } : e) });
+  const from = chip(api, cellLabel(x.from, namer));
+  from.addEventListener("click", () => pickCell(api, host, store, from, x.from, (cell) => update({ from: cell })));
+  const to = chip(api, cellLabel(x.to, namer));
+  to.addEventListener("click", () => pickCell(api, host, store, to, x.to, (cell) => update({ to: cell })));
+  const bits = chip(api, `${x.bits ?? 32}-bit`, "");
+  bits.title = t("How many bits of the counter to carry: 16 is half the triggers for a counter that stays under 65536");
+  bits.addEventListener("click", () => pickChoice(api, bits, [{ value: 16, label: t("16-bit (up to 65,535)") }, { value: 32, label: t("32-bit (any count)") }], (v) => update({ bits: v }), { current: x.bits ?? 32 }));
+  if (x.kind === "copy") into.append(t("Copy "), from, t(" into "), to, " ", bits);
+  else if (x.kind === "add") into.append(t("Add "), from, t(" to "), to, " ", bits);
+  else into.append(t("Subtract "), from, t(" from "), to, " ", bits);
+  into.append(api.ui.el("span", { className: "mg-tag", title: t("Done by a run of {n} generated triggers right after this one, in the same cycle: this trigger's own rows run first, the triggers after the run see the result. The run is hidden here and locked in the other editors.", { n: (x.bits ?? 32) + (x.kind === "copy" ? 2 : 1) }) }, "A+"));
+}
+function renderCompare(api, host, store, index, trigger4, cmp, into) {
+  const t = api.i18n.t;
+  const namer = host.namer(store.sidecar);
+  const { x } = cmp;
+  const update = (patch) => store.updateSidecar(t("Edit comparison"), { expansions: store.sidecar.expansions.map((e) => e.id === x.id ? { ...e, ...patch } : e) });
+  const a2 = chip(api, cellLabel(x.a, namer));
+  a2.addEventListener("click", () => pickCell(api, host, store, a2, x.a, (cell) => update({ a: cell })));
+  const b = chip(api, cellLabel(x.b, namer));
+  b.addEventListener("click", () => pickCell(api, host, store, b, x.b, (cell) => update({ b: cell })));
+  const rel = chip(api, RELATIONS.find((r) => r.rel === cmp.relation)?.label ?? "?", "");
+  rel.addEventListener("click", () => pickChoice(api, rel, RELATIONS, (v) => {
+    const next = compareConditions(x, RELATIONS[v].rel);
+    const conditions = trigger4.conditions.filter((_, i) => !cmp.rows.includes(i));
+    conditions.splice(cmp.rows[0] ?? conditions.length, 0, ...next);
+    store.replace(index, { ...trigger4, conditions }, t("Edit comparison"));
+  }, { current: RELATIONS.findIndex((r) => r.rel === cmp.relation) }));
+  into.append(a2, t(" is "), rel, " ", b);
+  into.append(api.ui.el("span", { className: "mg-tag", title: t("Answered by a run of generated triggers before this one, every cycle; they are hidden here and locked in the other editors.") }, "A+"));
+}
+function newCompare(store, host, index, trigger4) {
+  const named = store.sidecar.counters;
+  const a2 = named[0] ? [named[0].player, named[0].unit] : freeCell(store, host) ?? [0, 181];
+  const b = named[1] ? [named[1].player, named[1].unit] : freeCell(store, host, [a2]) ?? [1, 181];
+  const s0 = freeCell(store, host, [a2, b]);
+  const s1 = s0 ? freeCell(store, host, [a2, b, s0]) : null;
+  if (!s0 || !s1) return null;
+  const x = { id: `k${Date.now().toString(36)}`, kind: "compare", a: a2, b, scratch: [s0, s1], bits: 32, anchor: { i: store.cleanIndex(index), h: "" } };
+  void trigger4;
+  return { conditions: compareConditions(x, ">"), expansion: x };
+}
+function newCounterStep(store, host, what) {
+  const named = store.sidecar.counters;
+  const from = named[0] ? [named[0].player, named[0].unit] : freeCell(store, host) ?? [0, 181];
+  const to = named[1] ? [named[1].player, named[1].unit] : freeCell(store, host, [from]) ?? [1, 181];
+  const flag = freeCell(store, host, [from, to]);
+  if (!flag) return null;
+  return { expansion: { id: `c${Date.now().toString(36)}`, kind: what, from, to, bits: 32, flag }, flag };
+}
+
+// src/ui/buildRows.ts
+var hookOf = (store, a2) => store.sidecar.builds.find((b) => "flag" in b && isFlagAction(a2, { cell: b.flag })) ?? null;
+function conditionRowOf(store, c2) {
+  if (c2.type !== ConditionType.Deaths) return null;
+  const chat = store.sidecar.chat;
+  if (chat && c2.comparison === Comparison.Exactly) {
+    const onCell = c2.player === chat.cell[0] && c2.unitId === chat.cell[1];
+    const onPattern = !!chat.args && c2.player === chat.args.pattern[0] && c2.unitId === chat.args.pattern[1];
+    if (onCell || onPattern) {
+      const record = store.sidecar.builds.find((b) => b.kind === "chat" && b.value === c2.amount && isChatPattern(b) === onPattern);
+      return record ? { kind: "chat", record } : null;
+    }
+  }
+  const scan = store.sidecar.builds.find((b) => b.kind === "scan" && b.cell[0] === c2.player && b.cell[1] === c2.unitId);
+  if (scan) return { kind: "scan", record: scan };
+  const m = store.sidecar.msqc;
+  if (m) {
+    for (const [code, unit] of Object.entries(m.keys)) if (unit === c2.unitId) return { kind: "key", player: c2.player, code: Number(code) };
+    for (const [button, unit] of Object.entries(m.clicks)) if (unit === c2.unitId) return { kind: "click", player: c2.player, button };
+    for (const [location, unit] of Object.entries(m.mouseIn)) if (unit === c2.unitId) return { kind: "mouseIn", player: c2.player, location: Number(location) };
+  }
+  return null;
+}
+var deathsIs2 = (cell, comparison, amount) => ({ location: 0, player: cell[0], amount, unitId: cell[1], comparison, type: ConditionType.Deaths, resource: 0, flags: 0, mask: 0 });
+var chatCondition = (chat, record) => deathsIs2(isChatPattern(record) && chat.args ? chat.args.pattern : chat.cell, Comparison.Exactly, record.value);
+function counterNames(store, host) {
+  const namer = host.namer(store.sidecar);
+  return {
+    name: (cell) => store.sidecar.counters.find((c2) => c2.player === cell[0] && c2.unit === cell[1])?.name ?? cellLabel(cell, namer),
+    cell: (name) => {
+      const c2 = store.sidecar.counters.find((x) => x.name.toLowerCase() === name.toLowerCase());
+      if (c2) return [c2.player, c2.unit];
+      const byLabel = store.sidecar.counters.map((x) => [x.player, x.unit]).find((cell) => cellLabel(cell, namer).toLowerCase() === name.toLowerCase());
+      return byLabel ?? null;
+    }
+  };
+}
+function chip2(api, label, className = "counter") {
+  return api.ui.el("button", { type: "button", className: `mg-chip ${className}` }, label);
+}
+var BUILD_NOTE = "Needs a Build (\u22EF menu): the game's own triggers cannot do this, so the built map carries the code that does. It runs once every trigger has had its turn this cycle \u2014 a row below it in this trigger still sees the map as it was; a trigger in the next cycle sees the result. The source map stays as it is.";
+var INPUT_NOTE = "Needs a Build (\u22EF menu). The MSQC plugin in the built map turns each player's input into a game command, so every computer sees the same press in the same cycle, before its triggers run; the cell is cleared once they have.";
+var tag = (api, title = BUILD_NOTE) => api.ui.el("span", { className: "mg-tag", title }, "BUILD");
+var FIELDS = UNIT_FIELDS.map((f, value) => ({ value, label: f.label, field: f.field, yesNo: f.yesNo === true }));
+var fieldIndex = (field) => Math.max(0, FIELDS.findIndex((f) => f.field === field));
+var CHAT_NUMBER_NAME = "Chat number";
+function ensureChatArgs(host, store) {
+  const have = store.sidecar.chat?.args;
+  if (have) return { args: have, counters: store.sidecar.counters };
+  const taken = [];
+  const next = () => {
+    const c2 = freeCell(store, host, taken);
+    if (c2) taken.push(c2);
+    return c2;
+  };
+  const ptr = next(), len = next(), pattern = next(), number = next();
+  if (!ptr || !len || !pattern || !number) return null;
+  const counters = store.sidecar.counters.some((c2) => c2.name === CHAT_NUMBER_NAME) ? store.sidecar.counters : [...store.sidecar.counters, { player: number[0], unit: number[1], name: CHAT_NUMBER_NAME }];
+  return { args: { ptr, len, pattern, number }, counters };
+}
+function filterChips(api, host, store, f, update) {
+  const t = api.i18n.t;
+  const namer = host.namer(store.sidecar);
+  const unit = chip2(api, f.unit === null ? t("any unit") : namer.unit(f.unit));
+  unit.addEventListener("click", () => pickUnitType(api, host, unit, f.unit ?? 228, (v) => update({ unit: v >= 228 ? null : v }), { classes: true }));
+  const owner = chip2(api, f.owner === null ? t("anyone") : namer.player(f.owner), "");
+  owner.addEventListener("click", () => pickChoice(api, owner, [{ value: -1, label: t("anyone") }, ...Array.from({ length: 12 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null }))], (v) => update({ owner: v < 0 ? null : v }), { current: f.owner ?? -1 }));
+  const loc = chip2(api, f.location === null ? t("anywhere") : namer.location(f.location), "");
+  loc.addEventListener("click", () => pickLocation(api, host, loc, f.location ?? 64, (v) => update({ location: v === 0 || v === 64 ? null : v })));
+  return [unit, api.ui.el("span", {}, t(" owned by ")), owner, api.ui.el("span", {}, t(" at ")), loc];
+}
+function renderHook(api, host, store, hook, into) {
+  const t = api.i18n.t;
+  const namer = host.namer(store.sidecar);
+  const update = (patch) => store.updateSidecar(t("Edit build row"), { builds: store.sidecar.builds.map((b) => b.id === hook.id ? { ...b, ...patch } : b) });
+  if (hook.kind === "text") {
+    const names = counterNames(store, host);
+    const text = chip2(api, partsToText(hook.parts, names), "text");
+    text.addEventListener("click", () => pickText(api, text, partsToText(hook.parts, names), (value) => update({ parts: textToParts(value, names) }), { title: t("{Counter name} for a counter's value, {Player 1} for a name, {Player 1's colour} to switch colour; the buttons insert the game's own codes") }));
+    const to = chip2(api, hook.to === "all" ? t("everyone") : namer.player(hook.to), "");
+    to.addEventListener("click", () => pickChoice(api, to, [{ value: -1, label: t("everyone") }, ...Array.from({ length: 8 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null }))], (v) => update({ to: v < 0 ? "all" : v }), { current: hook.to === "all" ? -1 : hook.to }));
+    into.append(t("Show "), text, t(" to "), to, tag(api));
+    return;
+  }
+  if (hook.kind === "math") {
+    const OPS = [{ value: 0, label: t("times"), op: "mul" }, { value: 1, label: t("divided by"), op: "div" }, { value: 2, label: t("modulo"), op: "mod" }, { value: 3, label: t("a random number below"), op: "rand" }];
+    const to = chip2(api, cellLabel(hook.to, namer));
+    to.addEventListener("click", () => pickCell(api, host, store, to, hook.to, (cell) => update({ to: cell })));
+    const a2 = chip2(api, cellLabel(hook.a, namer));
+    a2.addEventListener("click", () => pickCell(api, host, store, a2, hook.a, (cell) => update({ a: cell })));
+    const op = chip2(api, OPS.find((o) => o.op === hook.op)?.label ?? hook.op, "");
+    op.addEventListener("click", () => pickChoice(api, op, OPS, (v) => update({ op: OPS[v].op }), { current: OPS.findIndex((o) => o.op === hook.op) }));
+    const b = chip2(api, typeof hook.b === "number" ? String(hook.b) : cellLabel(hook.b, namer));
+    b.addEventListener("click", () => pickCell(api, host, store, b, typeof hook.b === "number" ? hook.a : hook.b, (cell) => update({ b: cell })));
+    const num = chip2(api, "#", "");
+    num.title = t("A number instead of a counter");
+    num.addEventListener("click", () => pickNumber(api, num, typeof hook.b === "number" ? hook.b : 2, (v) => update({ b: v }), { min: hook.op === "mul" ? 0 : 1 }));
+    if (hook.op === "rand") into.append(t("Set "), to, t(" to "), op, " ", b, num, tag(api));
+    else into.append(t("Set "), to, t(" to "), a2, " ", op, " ", b, num, tag(api));
+    return;
+  }
+  if (hook.kind === "count") {
+    const to = chip2(api, cellLabel(hook.to, namer));
+    to.addEventListener("click", () => pickCell(api, host, store, to, hook.to, (cell) => update({ to: cell })));
+    into.append(t("Set "), to, t(" to the number of "), ...filterChips(api, host, store, hook, update), tag(api));
+    return;
+  }
+  if (hook.kind === "read") {
+    const to = chip2(api, cellLabel(hook.to, namer));
+    to.addEventListener("click", () => pickCell(api, host, store, to, hook.to, (cell) => update({ to: cell })));
+    const field = chip2(api, FIELDS[fieldIndex(hook.field)].label, "");
+    field.addEventListener("click", () => pickChoice(api, field, FIELDS, (v) => update({ field: FIELDS[v].field }), { current: fieldIndex(hook.field) }));
+    into.append(t("Set "), to, t(" to the "), field, t(" of the first "), ...filterChips(api, host, store, hook, update), tag(api));
+    return;
+  }
+  if (hook.kind === "pick") {
+    renderPick(api, host, store, hook, into, update);
+    return;
+  }
+  if (hook.kind === "setloc") {
+    const loc = chip2(api, namer.location(hook.location), "");
+    loc.addEventListener("click", () => pickLocation(api, host, loc, hook.location, (v) => {
+      if (v > 0 && v < 64) update({ location: v });
+    }));
+    const x = chip2(api, String(hook.x), "");
+    x.addEventListener("click", () => pickNumber(api, x, hook.x, (v) => update({ x: v }), { min: 0, max: 65535, unit: "px" }));
+    const y = chip2(api, String(hook.y), "");
+    y.addEventListener("click", () => pickNumber(api, y, hook.y, (v) => update({ y: v }), { min: 0, max: 65535, unit: "px" }));
+    const MODE = [{ value: 0, label: t("to") }, { value: 1, label: t("by") }];
+    const mode = chip2(api, hook.relative ? MODE[1].label : MODE[0].label, "");
+    mode.title = t("To: the top-left corner lands on x, y. By: the whole location shifts by x, y from where it is (negative goes left or up).");
+    mode.addEventListener("click", () => pickChoice(api, mode, MODE, (v) => update({ relative: v === 1 }), { current: hook.relative ? 1 : 0 }));
+    if (hook.relative) {
+      const dx = chip2(api, String(hook.x), "");
+      dx.addEventListener("click", () => pickNumber(api, dx, hook.x, (v) => update({ x: v }), { min: -65535, max: 65535, unit: "px" }));
+      const dy = chip2(api, String(hook.y), "");
+      dy.addEventListener("click", () => pickNumber(api, dy, hook.y, (v) => update({ y: v }), { min: -65535, max: 65535, unit: "px" }));
+      into.append(t("Move "), loc, " ", mode, " ", dx, ", ", dy, tag(api));
+      return;
+    }
+    const size = chip2(api, hook.width === null || hook.height === null ? t("its size") : `${hook.width} \xD7 ${hook.height}`, "");
+    size.title = t("Width \xD7 height in map pixels, 32 per tile; 0 keeps the location's own size");
+    size.addEventListener("click", () => pickNumber(api, size, hook.width ?? 0, (wv) => pickNumber(api, size, hook.height ?? 0, (hv) => update({ width: wv > 0 ? wv : null, height: hv > 0 ? hv : null }), { min: 0, max: 65535, unit: t("px high") }), { min: 0, max: 65535, unit: t("px wide") }));
+    into.append(t("Move "), loc, " ", mode, " ", x, ", ", y, t(" keeping "), size, tag(api));
+    return;
+  }
+  into.append(t("For each "), ...filterChips(api, host, store, hook, update), ": ", ...doChips(api, host, store, hook.do, (d) => update({ do: d })), tag(api));
+}
+function doChips(api, host, store, d, onChange, allowNothing = false) {
+  const t = api.i18n.t;
+  const namer = host.namer(store.sidecar);
+  const scratch = () => host.ensureLocation("Magenta scratch");
+  const firstLocation = () => host.locations().find((l) => l.value !== 64)?.value ?? 1;
+  const DOS = [
+    { value: 0, label: t("set hit points"), make: () => ({ set: "hp", value: 100 }) },
+    { value: 1, label: t("set shields"), make: () => ({ set: "shields", value: 100 }) },
+    { value: 2, label: t("set energy"), make: () => ({ set: "energy", value: 100 }) },
+    { value: 3, label: t("set kills"), make: () => ({ set: "kills", value: 0 }) },
+    { value: 4, label: t("kill"), make: () => ({ kill: true }) },
+    { value: 5, label: t("remove"), make: () => ({ remove: true }) },
+    { value: 6, label: t("make invincible"), make: () => ({ invincible: true }) },
+    { value: 7, label: t("make vulnerable"), make: () => ({ invincible: false }) },
+    { value: 8, label: t("hallucinate"), make: () => ({ hallucination: true }) },
+    { value: 9, label: t("un-hallucinate"), make: () => ({ hallucination: false }) },
+    { value: 10, label: t("give the speed upgrade"), make: () => ({ speed: true }) },
+    { value: 11, label: t("take the speed upgrade"), make: () => ({ speed: false }) },
+    { value: 12, label: t("give to"), make: () => ({ give: 1 }) },
+    { value: 13, label: t("center a location on it"), make: () => ({ locate: firstLocation() }) },
+    { value: 14, label: t("order to move to"), make: () => {
+      const sc = scratch();
+      return sc ? { order: "move", location: firstLocation(), scratch: sc } : null;
+    } },
+    { value: 15, label: t("order to patrol to"), make: () => {
+      const sc = scratch();
+      return sc ? { order: "patrol", location: firstLocation(), scratch: sc } : null;
+    } },
+    { value: 16, label: t("order to attack-move to"), make: () => {
+      const sc = scratch();
+      return sc ? { order: "attack", location: firstLocation(), scratch: sc } : null;
+    } },
+    { value: 17, label: t("apply a spell effect"), make: () => ({ timer: "stim", value: 10 * TIMER_TICKS_PER_SECOND }) },
+    { value: 18, label: t("hold fire"), make: () => ({ cooldown: HOLD_FIRE_COOLDOWN }) },
+    { value: 19, label: t("set the resources"), make: () => ({ set: "resources", value: 1500 }) },
+    { value: 20, label: t("set the remaining build time"), make: () => ({ set: "buildTime", value: 0 }) },
+    { value: 21, label: t("set the rank"), make: () => ({ set: "rank", value: 0 }) },
+    { value: 22, label: t("walk through anything"), make: () => ({ status: "noclip", on: true }) },
+    { value: 23, label: t("collide again"), make: () => ({ status: "noclip", on: false }) },
+    { value: 25, label: t("take"), make: () => ({ adjust: "hp", delta: -20 }) },
+    { value: 26, label: t("give"), make: () => ({ adjust: "hp", delta: 20 }) },
+    ...allowNothing ? [{ value: 24, label: t("do nothing to it"), make: () => null }] : []
+  ];
+  const current2 = d === null ? 24 : "set" in d ? { hp: 0, shields: 1, energy: 2, kills: 3, resources: 19, buildTime: 20, rank: 21 }[d.set] : "kill" in d ? 4 : "remove" in d ? 5 : "invincible" in d ? d.invincible ? 6 : 7 : "hallucination" in d ? d.hallucination ? 8 : 9 : "speed" in d ? d.speed ? 10 : 11 : "give" in d ? 12 : "locate" in d ? 13 : "order" in d ? { move: 14, patrol: 15, attack: 16 }[d.order] : "timer" in d ? 17 : "cooldown" in d ? 18 : "adjust" in d ? d.delta < 0 ? 25 : 26 : d.on ? 22 : 23;
+  const what = chip2(api, DOS.find((x) => x.value === current2)?.label ?? "?", "");
+  what.addEventListener("click", () => pickChoice(api, what, DOS, (v) => {
+    const entry2 = DOS.find((x) => x.value === v);
+    const made = entry2.make();
+    if (made === null && v !== 24) {
+      api.ui.toast({ kind: "error", title: t("No free location slot"), detail: t("Ordering one unit at a time needs a location of Magenta's own; free a location slot first.") });
+      return;
+    }
+    onChange(made);
+  }, { current: current2 }));
+  const out = [what];
+  if (d === null) return out;
+  if ("set" in d) {
+    const value = chip2(api, String(d.value), "");
+    value.addEventListener("click", () => pickNumber(api, value, d.value, (v) => onChange({ set: d.set, value: v }), { min: 0, max: 65535 }));
+    out.push(t(" to "), value);
+  } else if ("give" in d) {
+    const p = chip2(api, namer.player(d.give), "");
+    p.addEventListener("click", () => pickChoice(api, p, Array.from({ length: 12 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null })), (v) => onChange({ give: v }), { current: d.give }));
+    out.push(" ", p);
+  } else if ("locate" in d) {
+    const l = chip2(api, namer.location(d.locate), "");
+    l.addEventListener("click", () => pickLocation(api, host, l, d.locate, (v) => {
+      if (v > 0 && v < 64) onChange({ locate: v });
+    }));
+    out.push(": ", l);
+  } else if ("order" in d) {
+    const l = chip2(api, namer.location(d.location), "");
+    l.addEventListener("click", () => pickLocation(api, host, l, d.location, (v) => {
+      if (v > 0 && v < 64) onChange({ ...d, location: v });
+    }));
+    l.title = t("The destination. The order goes to one unit at a time through the location named Magenta scratch, which is Magenta's to move.");
+    out.push(" ", l);
+  } else if ("timer" in d) {
+    const which = chip2(api, TIMERS.find((x) => x.timer === d.timer)?.label ?? d.timer, "");
+    which.addEventListener("click", () => pickChoice(api, which, TIMERS.map((x, value) => ({ value, label: x.label })), (v) => onChange({ timer: TIMERS[v].timer, value: d.value }), { current: Math.max(0, TIMERS.findIndex((x) => x.timer === d.timer)) }));
+    const seconds = chip2(api, String(Math.round(d.value / TIMER_TICKS_PER_SECOND)), "");
+    seconds.title = t("Seconds at the fastest speed; the game counts these timers in ticks of about eight frames. The effect applies without the spell's overlay graphic.");
+    seconds.addEventListener("click", () => pickNumber(api, seconds, Math.round(d.value / TIMER_TICKS_PER_SECOND), (v) => onChange({ timer: d.timer, value: Math.max(1, Math.min(255, v * TIMER_TICKS_PER_SECOND)) }), { min: 1, max: 85, unit: "s" }));
+    out.push(": ", which, t(" for "), seconds, t(" s"));
+  } else if ("cooldown" in d) {
+    const note = api.ui.el("span", { className: "hint", title: t("The cooldowns are written each time the trigger fires; to keep a unit from firing, the trigger must fire every cycle (preserved, with triggers running every frame).") }, t(" (each cycle)"));
+    out.push(note);
+  } else if ("adjust" in d) {
+    const ADJ = [{ value: 0, label: t("hit points"), field: "hp" }, { value: 1, label: t("shields"), field: "shields" }, { value: 2, label: t("energy"), field: "energy" }];
+    const sign = d.delta < 0 ? -1 : 1;
+    const n = chip2(api, String(Math.abs(d.delta)), "");
+    n.addEventListener("click", () => pickNumber(api, n, Math.abs(d.delta), (v) => onChange({ adjust: d.adjust, delta: sign * Math.max(1, v) }), { min: 1, max: 65535 }));
+    const f = chip2(api, ADJ.find((x) => x.field === d.adjust)?.label ?? d.adjust, "");
+    f.title = d.delta < 0 ? t("Never below 0; a unit whose hit points reach 0 dies.") : t("Never above the type's maximum.");
+    f.addEventListener("click", () => pickChoice(api, f, ADJ, (v) => onChange({ adjust: ADJ[v].field, delta: d.delta }), { current: ADJ.findIndex((x) => x.field === d.adjust) }));
+    out.push(" ", n, " ", f);
+  }
+  return out;
+}
+function renderPick(api, host, store, hook, into, update) {
+  const t = api.i18n.t;
+  const namer = host.namer(store.sidecar);
+  const BY = [{ value: 0, label: t("with the least"), by: "min" }, { value: 1, label: t("with the greatest"), by: "max" }, { value: 2, label: t("nearest to"), by: "nearest" }, { value: 3, label: t("at random"), by: "random" }];
+  const by = chip2(api, BY.find((b) => b.by === hook.by).label, "");
+  by.addEventListener("click", () => pickChoice(api, by, BY, (v) => update({ by: BY[v].by, near: BY[v].by === "nearest" ? hook.near ?? host.locations().find((l) => l.value !== 64)?.value ?? 1 : hook.near }), { current: BY.findIndex((b) => b.by === hook.by) }));
+  into.append(t("Take the "), ...filterChips(api, host, store, hook, update), " ", by, " ");
+  if (hook.by === "nearest") {
+    const mouseOf = typeof hook.near === "object" && hook.near !== null ? hook.near.mouse : null;
+    const near = chip2(api, mouseOf !== null ? t("{player}'s mouse", { player: namer.player(mouseOf) }) : typeof hook.near === "number" ? namer.location(hook.near) : t("a location"), "");
+    near.addEventListener("click", () => {
+      const pop = pickLocation(api, host, near, typeof hook.near === "number" ? hook.near : 1, (v) => {
+        if (v > 0 && v < 64) update({ near: v, radius: null });
+      });
+      const foot = pop.root.querySelector(".mg-pop-foot");
+      foot?.prepend(api.ui.widgets.button(t("A player's mouse\u2026"), { ghost: true, onClick: () => {
+        pop.close();
+        pickChoice(api, near, Array.from({ length: 8 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null })), (p) => {
+          const m = withMsqc(host, store, true);
+          if (!m) {
+            api.ui.toast({ kind: "error", title: t("No room for the mouse"), detail: t("It needs nine free location slots for MSQC.") });
+            return;
+          }
+          store.commit(t("Pick near the mouse"), () => store.list, { sidecar: { msqc: m, builds: store.sidecar.builds.map((b) => b.id === hook.id ? { ...b, near: { mouse: p }, radius: hook.radius ?? 64 } : b) } });
+        }, { current: mouseOf ?? 0, width: 200 });
+      } }));
+    });
+    into.append(near);
+    if (mouseOf !== null) {
+      const radius = chip2(api, hook.radius === null || hook.radius === void 0 ? t("any distance") : `${hook.radius} px`, "");
+      radius.title = t("How far from the mouse a unit still counts, in map pixels (32 a tile); farther, and the pick finds nothing.");
+      radius.addEventListener("click", () => pickNumber(api, radius, hook.radius ?? 64, (v) => update({ radius: v > 0 ? v : null }), { min: 0, max: 4096, unit: "px", hint: t("0 for any distance") }));
+      into.append(t(" within "), radius);
+    }
+  } else if (hook.by === "random") {
+  } else {
+    const numeric = FIELDS.filter((f) => !f.yesNo);
+    const field = chip2(api, FIELDS[fieldIndex(hook.field)].label, "");
+    field.addEventListener("click", () => pickChoice(api, field, numeric, (v) => update({ field: FIELDS[v].field }), { current: fieldIndex(hook.field) }));
+    into.append(field);
+  }
+  into.append(t(": "), ...doChips(api, host, store, hook.do, (d) => update({ do: d }), true));
+  const locate = chip2(api, hook.locate ? namer.location(hook.locate) : t("no location"), "");
+  locate.title = t("A small box is centred on the unit once this cycle's triggers have all run, so a trigger in the next cycle can act on it through the location. A row below this one in the same trigger still sees the location where it was.");
+  locate.addEventListener("click", () => pickLocation(api, host, locate, hook.locate ?? 64, (v) => update({ locate: v > 0 && v < 64 ? v : null })));
+  const to = chip2(api, hook.to ? cellLabel(hook.to, namer) : t("no counter"));
+  to.title = t("The field's value \u2014 or the distance, for the nearest \u2014 goes into this counter; 0 when nothing matched.");
+  to.addEventListener("click", () => pickCell(api, host, store, to, hook.to ?? store.sidecar.chat?.cell ?? [0, 181], (cell) => update({ to: cell })));
+  into.append(t(", center "), locate, t(" on it, value into "), to);
+  if (hook.to) {
+    const clear = chip2(api, "\xD7", "");
+    clear.title = t("No counter");
+    clear.addEventListener("click", () => update({ to: null }));
+    into.append(clear);
+  }
+  into.append(tag(api));
+}
+function renderConditionRow(api, host, store, row, into, replace) {
+  const t = api.i18n.t;
+  const namer = host.namer(store.sidecar);
+  const playerChip = (player, onPick) => {
+    const c2 = chip2(api, namer.player(player), "");
+    c2.addEventListener("click", () => pickChoice(api, c2, [{ value: PlayerGroup.CurrentPlayer, label: namer.player(PlayerGroup.CurrentPlayer) }, ...Array.from({ length: 8 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null }))], onPick, { current: player }));
+    return c2;
+  };
+  if (row.kind === "chat") {
+    const chat = row.record;
+    const setMessage = (value) => {
+      const problem = checkChatMessage(value);
+      if (problem) {
+        api.ui.toast({ kind: "error", title: problem });
+        return;
+      }
+      const next = { ...chat, message: value.trim() };
+      const needArgs = isChatPattern(next) && !store.sidecar.chat?.args;
+      const made = needArgs ? ensureChatArgs(host, store) : null;
+      if (needArgs && !made) {
+        api.ui.toast({ kind: "error", title: t("No free counter cells for a chat pattern") });
+        return;
+      }
+      const chatCell = { ...store.sidecar.chat ?? { cell: [0, 181] }, ...made ? { args: made.args } : {} };
+      store.commit(t("Edit chat command"), () => store.list, { sidecar: { builds: store.sidecar.builds.map((b) => b.id === chat.id ? next : b), chat: chatCell, ...made ? { counters: made.counters } : {} } });
+      replace(chatCondition(chatCell, next));
+    };
+    const msg = chip2(api, chat.message, "text");
+    msg.addEventListener("click", () => pickText(api, msg, chat.message, setMessage, { title: chat.arg === "number" ? t("The command before the number: -set matches -set 250, and the number lands in the counter named Chat number") : t("What a player types in chat; ^\u2026$ writes a pattern, as in ^-give .*$") }));
+    const ARG = [{ value: 0, label: t("exactly") }, { value: 1, label: t("followed by a number") }];
+    const arg = chip2(api, chat.arg === "number" ? ARG[1].label : ARG[0].label, "");
+    arg.title = t("With a number, the message is a prefix and the number typed after it goes into the counter named Chat number.");
+    arg.addEventListener("click", () => pickChoice(api, arg, ARG, (v) => {
+      const next = v === 1 ? { ...chat, arg: "number", message: chat.message.startsWith("^") ? chat.message.replace(/^\^|\.\*|\$$/g, "").trim() || "-set" : chat.message } : { id: chat.id, kind: "chat", message: chat.message, value: chat.value };
+      const made = v === 1 && !store.sidecar.chat?.args ? ensureChatArgs(host, store) : null;
+      if (v === 1 && !store.sidecar.chat?.args && !made) {
+        api.ui.toast({ kind: "error", title: t("No free counter cells for the number") });
+        return;
+      }
+      const chatCell = { ...store.sidecar.chat ?? { cell: [0, 181] }, ...made ? { args: made.args } : {} };
+      store.commit(t("Edit chat command"), () => store.list, { sidecar: { builds: store.sidecar.builds.map((b) => b.id === chat.id ? next : b), chat: chatCell, ...made ? { counters: made.counters } : {} } });
+      replace(chatCondition(chatCell, next));
+    }, { current: chat.arg === "number" ? 1 : 0 }));
+    into.append(t("The chat said "), msg, " ", arg, tag(api, t("Needs a Build (\u22EF menu): the chat plugin in the built map writes the command's number into a cell this condition reads, in the cycle the message arrives, for every player at once. A message with a number is matched as a pattern and the number is parsed out for you.")));
+    return;
+  }
+  if (row.kind === "scan") {
+    const s = row.record;
+    const update = (patch) => store.updateSidecar(t("Edit unit check"), { builds: store.sidecar.builds.map((b) => b.id === s.id ? { ...b, ...patch } : b) });
+    const fi = FIELDS[fieldIndex(s.field)];
+    const field = chip2(api, fi.label, "");
+    field.addEventListener("click", () => pickChoice(api, field, FIELDS, (v) => update(FIELDS[v].yesNo ? { field: FIELDS[v].field, cmp: "=", value: s.cmp === "=" && s.value === 0 ? 0 : 1 } : { field: FIELDS[v].field }), { current: fieldIndex(s.field) }));
+    const note = tag(api, t("Needs a Build (\u22EF menu): the built map checks this every cycle, before the triggers run, and leaves the answer in a cell this condition reads."));
+    if (fi.yesNo) {
+      const IS = [{ value: 1, label: t("is") }, { value: 0, label: t("is not") }];
+      const is = chip2(api, s.value === 0 ? IS[1].label : IS[0].label, "");
+      is.addEventListener("click", () => pickChoice(api, is, IS, (v) => update({ cmp: "=", value: v }), { current: s.value === 0 ? 0 : 1 }));
+      into.append(t("Any "), ...filterChips(api, host, store, s, update), " ", is, " ", field, note);
+      return;
+    }
+    const CMP = [{ value: 0, label: t("below"), cmp: "<" }, { value: 1, label: t("above"), cmp: ">" }, { value: 2, label: t("exactly"), cmp: "=" }];
+    const cmp = chip2(api, CMP.find((c2) => c2.cmp === s.cmp)?.label ?? s.cmp, "");
+    cmp.addEventListener("click", () => pickChoice(api, cmp, CMP, (v) => update({ cmp: CMP[v].cmp }), { current: CMP.findIndex((c2) => c2.cmp === s.cmp) }));
+    const value = chip2(api, String(s.value), "");
+    value.addEventListener("click", () => pickNumber(api, value, s.value, (v) => update({ value: v }), { min: 0, max: 65535 }));
+    into.append(t("Any "), ...filterChips(api, host, store, s, update), t(" has "), field, " ", cmp, " ", value, note);
+    return;
+  }
+  const m = store.sidecar.msqc ?? DEFAULT_MSQC;
+  if (row.kind === "key") {
+    const key = chip2(api, KEYS.find((k) => k.code === row.code)?.label ?? `0x${row.code.toString(16)}`, "");
+    key.addEventListener("click", () => pickKey(api, key, row.code, (code) => {
+      const unit = m.keys[String(code)] ?? m.keys[String(row.code)];
+      void unit;
+      store.commit(t("Change key"), () => store.list, { sidecar: { msqc: { ...m, keys: { ...m.keys, [String(code)]: m.keys[String(code)] ?? freeUnit(store, host) ?? m.keys[String(row.code)] } } } });
+      replace(deathsIs2([row.player, (store.sidecar.msqc ?? m).keys[String(code)] ?? m.keys[String(row.code)]], Comparison.AtLeast, 1));
+    }));
+    into.append(playerChip(row.player, (p) => replace(deathsIs2([p, m.keys[String(row.code)]], Comparison.AtLeast, 1))), t(" pressed "), key, tag(api, INPUT_NOTE));
+    return;
+  }
+  if (row.kind === "click") {
+    const button = chip2(api, row.button === "L" ? t("left") : row.button === "M" ? t("middle") : t("right"), "");
+    button.addEventListener("click", () => pickChoice(api, button, [{ value: 0, label: t("left") }, { value: 1, label: t("right") }, { value: 2, label: t("middle") }], (v) => {
+      const b = v === 0 ? "L" : v === 1 ? "R" : "M";
+      const unit = m.clicks[b] ?? freeUnit(store, host);
+      if (unit === null) return;
+      store.commit(t("Change button"), () => store.list, { sidecar: { msqc: { ...m, clicks: { ...m.clicks, [b]: unit } } } });
+      replace(deathsIs2([row.player, unit], Comparison.AtLeast, 1));
+    }, { current: row.button === "L" ? 0 : row.button === "R" ? 1 : 2 }));
+    into.append(playerChip(row.player, (p) => replace(deathsIs2([p, m.clicks[row.button]], Comparison.AtLeast, 1))), t(" clicked the "), button, t(" button"), tag(api, INPUT_NOTE));
+    return;
+  }
+  const loc = chip2(api, namer.location(row.location), "");
+  loc.addEventListener("click", () => pickLocation(api, host, loc, row.location, (v) => {
+    if (v <= 0 || v >= 64) return;
+    const unit = m.mouseIn[String(v)] ?? freeUnit(store, host);
+    if (unit === null) return;
+    store.commit(t("Change location"), () => store.list, { sidecar: { msqc: { ...m, mouseIn: { ...m.mouseIn, [String(v)]: unit } } } });
+    replace(deathsIs2([row.player, unit], Comparison.Exactly, 1));
+  }));
+  into.append(playerChip(row.player, (p) => replace(deathsIs2([p, m.mouseIn[String(row.location)]], Comparison.Exactly, 1))), t("'s mouse is over "), loc, tag(api, INPUT_NOTE));
+}
+function newChat(host, store, message = "-command", arg = null) {
+  const chat = store.sidecar.chat ?? (() => {
+    const cell = freeCell(store, host);
+    return cell ? { cell, args: null } : null;
+  })();
+  if (!chat) return null;
+  const value = nextChatValue(store.sidecar.builds);
+  const record = { id: `h${Date.now().toString(36)}`, kind: "chat", message, value, ...arg ? { arg } : {} };
+  let counters;
+  let withArgs = chat;
+  if (isChatPattern(record) && !chat.args) {
+    const made = ensureChatArgs(host, { ...store, sidecar: { ...store.sidecar, chat } });
+    if (!made) return null;
+    withArgs = { ...chat, args: made.args };
+    counters = made.counters;
+  }
+  return { condition: chatCondition(withArgs, record), builds: [...store.sidecar.builds, record], chat: withArgs, ...counters ? { counters } : {} };
+}
+function withMsqc(host, store, needMouse) {
+  const m = store.sidecar.msqc ? { ...store.sidecar.msqc } : { ...DEFAULT_MSQC, keys: {}, clicks: {}, mouseIn: {} };
+  if (!store.sidecar.msqc) {
+    const free = host.freeLocationSlots();
+    if (!free.length) return null;
+    m.qcLoc = free[0];
+  }
+  if (needMouse && m.mouseBase === null) {
+    const free = new Set(host.freeLocationSlots().filter((i) => i !== m.qcLoc));
+    for (let slot = 0; slot + 8 <= 63; slot++) {
+      let ok = true;
+      for (let p = 0; p < 8; p++) if (!free.has(slot + p)) {
+        ok = false;
+        break;
+      }
+      if (ok) {
+        m.mouseBase = slot + 1;
+        break;
+      }
+    }
+    if (m.mouseBase === null) return null;
+  }
+  return m;
+}
+function newInput(host, store, what, options = {}) {
+  const m = withMsqc(host, store, what !== "key");
+  if (!m) return null;
+  if (what === "key") {
+    const code = options.code ?? 65;
+    const unit2 = m.keys[String(code)] ?? freeUnit({ ...store, sidecar: { ...store.sidecar, msqc: m } }, host);
+    if (unit2 === null) return null;
+    m.keys = { ...m.keys, [String(code)]: unit2 };
+    return { condition: deathsIs2([PlayerGroup.CurrentPlayer, unit2], Comparison.AtLeast, 1), msqc: m };
+  }
+  if (what === "click") {
+    const b = options.button ?? "L";
+    const unit2 = m.clicks[b] ?? freeUnit({ ...store, sidecar: { ...store.sidecar, msqc: m } }, host);
+    if (unit2 === null) return null;
+    m.clicks = { ...m.clicks, [b]: unit2 };
+    return { condition: deathsIs2([PlayerGroup.CurrentPlayer, unit2], Comparison.AtLeast, 1), msqc: m };
+  }
+  const location = options.location ?? host.locations().find((l) => l.value !== 64)?.value ?? 0;
+  if (!location) return null;
+  const unit = m.mouseIn[String(location)] ?? freeUnit({ ...store, sidecar: { ...store.sidecar, msqc: m } }, host);
+  if (unit === null) return null;
+  m.mouseIn = { ...m.mouseIn, [String(location)]: unit };
+  return { condition: deathsIs2([PlayerGroup.CurrentPlayer, unit], Comparison.Exactly, 1), msqc: m };
+}
+function newScan(host, store, query = "", unit = 0) {
+  const cell = freeCell(store, host);
+  if (!cell) return null;
+  const pct = /percent|%/i.test(query);
+  const field = /shield/i.test(query) ? pct ? "shieldsPct" : "shields" : /energy|mana/i.test(query) ? pct ? "energyPct" : "energy" : /under attack/i.test(query) ? "underAttack" : /target/i.test(query) ? "hasTarget" : /burrow/i.test(query) ? "burrowed" : /moving/i.test(query) ? "speed" : /attacking|order/i.test(query) ? "order" : /kills/i.test(query) ? "kills" : pct ? "hpPct" : "hp";
+  const yesNo = FIELDS[fieldIndex(field)].yesNo;
+  const record = { id: `s${Date.now().toString(36)}`, kind: "scan", cell, unit, owner: PlayerGroup.Player1, location: null, field, cmp: yesNo ? "=" : /above|over|more/i.test(query) ? ">" : "<", value: yesNo ? 1 : pct ? 30 : 20 };
+  return { condition: deathsIs2(cell, Comparison.Exactly, 1), builds: [...store.sidecar.builds, record] };
+}
+function newHook(host, store, what, query = "", named_ = {}) {
+  const flag = freeCell(store, host);
+  if (!flag) return null;
+  const named = store.sidecar.counters;
+  const a2 = named[0] ? [named[0].player, named[0].unit] : freeCell(store, host, [flag]) ?? [0, 181];
+  const id = `b${Date.now().toString(36)}`;
+  const filter = { unit: named_.unit === void 0 ? 0 : named_.unit, owner: PlayerGroup.Player1, location: named_.location ?? null };
+  const record = what === "text" ? { id, kind: "text", flag, parts: [{ text: "Score: " }, { counter: a2 }], to: "all" } : what === "math" ? { id, kind: "math", flag, op: /random/i.test(query) ? "rand" : /divid/i.test(query) ? "div" : /modul|remainder/i.test(query) ? "mod" : "mul", a: a2, b: /random/i.test(query) ? 100 : 2, to: a2 } : what === "count" ? { id, kind: "count", flag, ...filter, to: a2 } : what === "read" ? { id, kind: "read", flag, ...filter, field: "hp", to: a2 } : what === "setloc" ? { id, kind: "setloc", flag, location: host.locations().find((l) => l.value !== 64)?.value ?? 1, x: 0, y: 0, width: null, height: null, .../\bby\b|shift|offset|slide|scroll/i.test(query) ? { relative: true, x: 32 } : {} } : what === "pick" ? { id, kind: "pick", flag, ...filter, by: /random|lottery|any one/i.test(query) ? "random" : /near|clos|mouse|under/i.test(query) ? "nearest" : /strong|most|great|high/i.test(query) ? "max" : "min", field: /kill/i.test(query) ? "kills" : "hp", near: /near|clos|mouse|under/i.test(query) ? host.locations().find((l) => l.value !== 64)?.value ?? 1 : null, locate: null, to: null, do: /kill/i.test(query) ? { kill: true } : null } : { id, kind: "foreach", flag, ...filter, do: /give to|owner/i.test(query) ? { give: 1 } : /kill/i.test(query) ? { kill: true } : /damage|hurt|take|drain/i.test(query) ? { adjust: /shield/i.test(query) ? "shields" : /energy|mana/i.test(query) ? "energy" : "hp", delta: -20 } : /heal|restore|regen/i.test(query) ? { adjust: /shield/i.test(query) ? "shields" : /energy|mana/i.test(query) ? "energy" : "hp", delta: 20 } : { set: "hp", value: 100 } };
+  return { action: flagAction({ cell: flag }), builds: [...store.sidecar.builds, record] };
+}
+function needsBuild(store, trigger4) {
+  return trigger4.actions.some((a2) => a2.type === ActionType.SetDeaths && a2.modifier === SetModifier.SetTo && hookOf(store, a2) !== null) || trigger4.conditions.some((c2) => conditionRowOf(store, c2) !== null);
+}
+
+// src/ui/build.ts
+var CAMMOVE_LOC = "cammoveLoc";
+var CAMMOVE_SWITCH = "cammove";
+var DEFAULT_SERVER = "https://eud.scmjs.dev";
+var SERVER_KEY = "server";
+var serverUrl = (api) => api.storage.get(SERVER_KEY, DEFAULT_SERVER).replace(/\/+$/, "");
+var setServerUrl = (api, url) => {
+  api.storage.set(SERVER_KEY, url.trim().replace(/\/+$/, "") || DEFAULT_SERVER);
+};
+var toBase64 = (bytes) => {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 32768) s += String.fromCharCode(...bytes.subarray(i, i + 32768));
+  return btoa(s);
+};
+var fromBase64 = (b64) => Uint8Array.from(atob(b64), (c2) => c2.charCodeAt(0));
+function openBuildDialog(api, host, store, everyFrame) {
+  const t = api.i18n.t;
+  const el = api.ui.el;
+  const w = api.ui.widgets;
+  const builds = orderBuilds(store.sidecar.builds, store.list);
+  const chats = builds.filter((b) => b.kind === "chat").length;
+  const hooks = builds.length - chats;
+  const options = { ...DEFAULT_OPTIONS, ...store.sidecar.settings.build };
+  const saveOptions = () => store.updateSidecar(t("Build options"), { settings: { ...store.sidecar.settings, build: options } });
+  const plugins = () => composePlugins(builds, store.sidecar.chat, everyFrame, store.sidecar.msqc, options, options.camera ? 0 : null);
+  const locations = host.locations().filter((l) => l.value !== 64 && l.named);
+  const cameraOn = w.checkbox(t("The camera follows a location, for everyone"), { value: !!options.camera });
+  const cameraLoc = w.select(locations.map((l) => ({ value: l.value, label: l.label })), { value: options.camera?.location ?? locations[0]?.value ?? 0 });
+  const inertia = w.number({ value: options.camera?.inertia ?? 5, min: 1, max: 60 });
+  const maxspeed = w.number({ value: options.camera?.maxspeed ?? 48, min: 1, max: 999 });
+  const cameraStart = w.checkbox(t("Start following at once (a trigger sets the cammove switch)"), { value: true });
+  const readCamera = () => {
+    const loc = locations.find((l) => l.value === Number(cameraLoc.value));
+    options.camera = cameraOn.input.checked && loc ? { location: loc.value, name: loc.label, inertia: Number(inertia.value) || 5, maxspeed: Number(maxspeed.value) || 48 } : null;
+  };
+  const sounds = host.sounds().filter((s) => s.value !== 0);
+  const bgmOn = w.checkbox(t("Loop a sound as background music"), { value: !!options.bgm });
+  const bgmPath = w.select(sounds.map((s) => ({ value: s.value, label: s.label })), { value: sounds.find((s) => api.names.string(s.value) === options.bgm?.path)?.value ?? sounds[0]?.value ?? 0 });
+  const bgmLen = w.number({ value: options.bgm?.length ?? 60, min: 1, max: 3600, step: 0.5 });
+  const readBgm = () => {
+    if (!bgmOn.input.checked || !sounds.length) {
+      options.bgm = null;
+      return;
+    }
+    const path = api.names.string(Number(bgmPath.value)) ?? "";
+    options.bgm = { path, length: Number(bgmLen.value) || 60 };
+  };
+  bgmPath.addEventListener("change", () => {
+    const path = api.names.string(Number(bgmPath.value)) ?? "";
+    const secs = host.wavSeconds(path);
+    if (secs) bgmLen.value = String(Math.round(secs * 2) / 2);
+  });
+  const noAir = w.checkbox(t("Air units pass through one another"), { value: options.noAirCollision });
+  const unlimiter = w.checkbox(t("Lift the sprite and image limits"), { value: options.unlimiter });
+  const readAll = () => {
+    readCamera();
+    readBgm();
+    options.noAirCollision = noAir.input.checked;
+    options.unlimiter = unlimiter.input.checked;
+  };
+  const info = api.document.info();
+  const stem2 = (info?.fileName ?? "map").replace(/\.(scx|scm|chk)$/i, "");
+  const server = w.text({ value: serverUrl(api), placeholder: DEFAULT_SERVER });
+  const status = w.statusLine();
+  const log = el("textarea", { className: "textarea", rows: 10, readOnly: true, spellcheck: false, style: "font-family: var(--font-mono); font-size: var(--fs-xs); display: none" });
+  const summary = el(
+    "ul",
+    {},
+    el("li", {}, chats ? t("{n, plural, one {# chat command} other {# chat commands}}", { n: chats }) : t("No chat commands")),
+    el("li", {}, hooks ? t("{n, plural, one {# build row} other {# build rows}} (text, maths, unit passes, checks)", { n: hooks }) : t("No build rows")),
+    el("li", {}, plugins().MSQC ? t("Synced input (keys, clicks, mouse) through MSQC") : t("No synced input")),
+    el("li", {}, everyFrame ? t("Triggers run every frame (turbo)") : t("Triggers run every two seconds"))
+  );
+  const nothing = !Object.keys(plugins()).length;
+  api.ui.dialog({
+    title: t("Build EUD map"),
+    size: "md",
+    mount(body) {
+      body.append(
+        w.hint(t("The map goes to the build server as it stands, euddraft adds the code for the rows below, and the built map comes back as a file to save. The server keeps nothing. Only StarCraft: Remastered plays the result. Keep this map as the source: the built one is the compiled output, the way a program is.")),
+        summary,
+        w.group(
+          t("Map-wide"),
+          w.column(cameraOn, w.form([{ label: t("Location"), field: cameraLoc }, { label: t("Inertia"), field: inertia }, { label: t("Max speed"), field: maxspeed }]), cameraStart),
+          w.column(bgmOn, w.form([{ label: t("Sound"), field: bgmPath }, { label: t("Seconds"), field: bgmLen }])),
+          noAir,
+          unlimiter,
+          w.hint(t("The camera follows a location by its name, so only named locations are offered. It follows while a switch named cammove is set, so a trigger can turn it on and off; the switch and a helper location named cammoveLoc are made in this map at build time. A looped sound needs its length; a plain WAV's is read from the file."))
+        ),
+        w.form([{ label: t("Build server"), field: server }]),
+        status,
+        log
+      );
+      if (nothing && !locations.length) status.set(t("Nothing in this map needs a build; a plain save is all it takes."), "warn");
+    },
+    buttons: [
+      { label: t("Build\u2026"), primary: true, closes: false, run: async () => {
+        setServerUrl(api, server.value);
+        readAll();
+        saveOptions();
+        let cammove = null;
+        if (options.camera) {
+          cammove = host.ensureLocation(CAMMOVE_LOC);
+          if (cammove === null) {
+            status.set(t("The camera needs one free location slot for its helper location."), "error");
+            return;
+          }
+          const sw = host.ensureSwitch(CAMMOVE_SWITCH);
+          if (sw === null) {
+            status.set(t("The camera needs one free switch to turn it on and off."), "error");
+            return;
+          }
+          store.reload();
+          const sets = store.list.some((tr) => tr.actions.some((a2) => a2.type === 13 && a2.target === sw));
+          if (cameraStart.input.checked && !sets) {
+            store.commit(t("Start the camera"), (intern) => {
+              const tr = api.triggers.newTrigger([17]);
+              tr.conditions = [api.triggers.newCondition(22)];
+              tr.actions = [{ ...api.triggers.newAction(47), text: intern("Camera: start following") }, { ...api.triggers.newAction(13), target: sw, modifier: 4 }];
+              return [...store.list, tr];
+            });
+          }
+        }
+        const plugins2 = composePlugins(builds, store.sidecar.chat, everyFrame, store.sidecar.msqc, options, cammove);
+        const file = await api.document.export();
+        if (!file) {
+          status.set(t("No map is open."), "error");
+          return;
+        }
+        status.busy(t("Building\u2026"));
+        log.style.display = "none";
+        try {
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          const res = await fetch(`${serverUrl(api)}/build`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ map: toBase64(bytes), plugins: plugins2 }) });
+          const answer = await res.json().catch(() => null);
+          if (!res.ok || !answer?.map) {
+            const e = answer?.error;
+            status.set(e?.message ?? t("The server answered {status}.", { status: res.status }), "error");
+            if (e?.log) {
+              log.value = e.log;
+              log.style.display = "";
+            }
+            return;
+          }
+          const out = fromBase64(answer.map);
+          const saved = await api.ui.saveFile(out, `${stem2}-eud.scx`);
+          status.set(saved ? t("Built: {name}, {kb} KB.", { name: saved.fileName, kb: Math.round(out.length / 1024) }) : t("Built, but not saved."), saved ? "ok" : "warn");
+          if (answer.log) {
+            log.value = answer.log;
+            log.style.display = "";
+          }
+        } catch (err) {
+          status.set(t("Could not reach the build server: {why}", { why: String(err.message ?? err) }), "error");
+        }
+      } },
+      { label: t("Close") }
+    ]
+  });
+}
+
 // src/model/checks.ts
+var LOCAL_ACTIONS = /* @__PURE__ */ new Set([ActionType.Comment, ActionType.PreserveTrigger, ActionType.Wait, ActionType.DisplayText, ActionType.PlayWav, ActionType.CenterView, ActionType.MinimapPing, ActionType.TalkingPortrait, ActionType.Transmission, ActionType.MuteUnitSpeech, ActionType.UnmuteUnitSpeech, ActionType.SetMissionObjectives, ActionType.LeaderboardControl, ActionType.LeaderboardControlAt, ActionType.LeaderboardResources, ActionType.LeaderboardKills, ActionType.LeaderboardPoints, ActionType.LeaderboardGoalControl, ActionType.LeaderboardGoalControlAt, ActionType.LeaderboardGoalResources, ActionType.LeaderboardGoalKills, ActionType.LeaderboardGoalPoints, ActionType.LeaderboardComputerPlayers, ActionType.LeaderboardGreed]);
 var LOCATION_ANYWHERE = 64;
 function check(trigger4, ctx = {}) {
   const out = [];
@@ -6046,6 +6868,10 @@ function check(trigger4, ctx = {}) {
   const perPlayer = enabledConditions.some(({ c: c2 }) => c2.type === ConditionType.Deaths && c2.player === 13);
   const usesSwitch = enabledConditions.some(({ c: c2 }) => c2.type === ConditionType.Switch) && actions.some((a2) => a2.type === ActionType.SetSwitch && !isActionDisabled(a2));
   if (sharedOwner && perPlayer && usesSwitch) out.push({ level: "warn", text: "Every owner runs this trigger, and its switch is shared: when the Current Player condition is false for one of them, that run can flip the switch for the others. Guard with a death counter of the Current Player instead." });
+  const localRead = enabledConditions.find(({ c: c2 }) => c2.type === ConditionType.Deaths && isEud(c2.player) && recognizeCondition(c2)?.entry.local);
+  if (localRead && actions.some((a2) => !isActionDisabled(a2) && !LOCAL_ACTIONS.has(a2.type))) {
+    out.push({ level: "warn", text: `${recognizeCondition(localRead.c).entry.name} is each computer's own, and this trigger changes the game for everyone: the players can go out of sync. For a key or a click, use a synced press (search "key press"); a read like this fits only what one screen shows.`, at: { kind: "condition", index: localRead.index } });
+  }
   const preserved = (trigger4.flags & TriggerFlag.Preserve) !== 0 || actions.some((a2) => a2.type === ActionType.PreserveTrigger && !isActionDisabled(a2));
   const groups = actionSpans(actions).filter((s) => s.group);
   const inGroup = new Set(groups.flatMap((s) => Array.from({ length: s.count }, (_, i) => s.at + i)));
@@ -6053,9 +6879,24 @@ function check(trigger4, ctx = {}) {
     const v = s.group.entry.value;
     if (v?.kind === "string" && s.group.value !== 0 && ctx.stringExists && !ctx.stringExists(s.group.value)) out.push({ level: "error", text: `${s.group.entry.name} names string ${s.group.value}, which the map does not have.`, at: { kind: "action", index: s.at } });
   }
+  const movedLater = /* @__PURE__ */ new Map();
   actions.forEach((a2, index) => {
     if (isActionDisabled(a2) || inGroup.has(index)) return;
     const at = { kind: "action", index };
+    const deferred = ctx.deferredLocation?.(a2) ?? null;
+    if (deferred !== null) {
+      if (!movedLater.has(deferred)) movedLater.set(deferred, index);
+      return;
+    }
+    const def0 = actionDef(a2.type);
+    for (const arg of def0?.args ?? []) {
+      if (arg.kind !== "location") continue;
+      const value = a2[arg.field];
+      const row = movedLater.get(value);
+      if (row === void 0) continue;
+      out.push({ level: "warn", text: `Row ${row + 1} moves ${ctx.locationName?.(value) ?? `location ${value}`} only after this cycle's triggers have all run, so this row still sees it where it was. Put this row in a trigger that fires in a later cycle.`, at });
+      break;
+    }
     if (a2.type === ActionType.Wait || a2.type === ActionType.Transmission) {
       if (preserved) out.push({ level: "warn", text: "A Wait in a preserved trigger holds up every other trigger of its owner while it waits, every cycle.", at });
       if (ctx.everyFrame) out.push({ level: "warn", text: "With triggers running every frame, a Wait blocks the owner's other triggers for its whole length.", at });
@@ -6114,7 +6955,7 @@ function check(trigger4, ctx = {}) {
 }
 
 // src/model/search.ts
-var norm2 = (s) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+var norm2 = (s) => s.toLowerCase().replace(/[^\p{L}\p{N} ]+/gu, " ").replace(/\s+/g, " ").trim();
 var stem = (w) => w.length > 3 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w;
 var startsWord = (token, w) => token.startsWith(w) || token.startsWith(stem(w)) || stem(token).startsWith(stem(w));
 function scoreText(text, query, words2) {
@@ -6812,712 +7653,6 @@ function renderEud(ctx, kind, row, into, onChange, onText) {
   if (kind === "action" && !entry2.remastered.write) into.append(api.ui.el("span", { className: "mg-tag ro", title: t("Remastered does not let a trigger write this address; the action does nothing in the game.") }, t("read only")));
 }
 
-// src/ui/expansionRows.ts
-var RELATIONS = [
-  { value: 0, label: "greater than", rel: ">" },
-  { value: 1, label: "at least", rel: ">=" },
-  { value: 2, label: "equal to", rel: "==" },
-  { value: 3, label: "less than", rel: "<" },
-  { value: 4, label: "at most", rel: "<=" }
-];
-var RELATION_WORDS = Object.fromEntries(RELATIONS.map((r) => [r.rel, r.label]));
-var counterExpansionOf = (store, a2) => store.sidecar.expansions.find((x) => (x.kind === "copy" || x.kind === "add" || x.kind === "subtract") && isFlagAction(a2, { cell: x.flag })) ?? null;
-function compareOf(store, index, trigger4) {
-  const clean2 = store.cleanIndex(index);
-  const x = store.sidecar.expansions.find((e) => e.kind === "compare" && e.anchor.i === clean2);
-  if (!x) return null;
-  const reads = (c2, cell) => c2.type === ConditionType.Deaths && c2.player === cell[0] && c2.unitId === cell[1];
-  const rows = trigger4.conditions.map((c2, i) => reads(c2, x.scratch[0]) || reads(c2, x.scratch[1]) ? i : -1).filter((i) => i >= 0);
-  const found = rows.map((i) => trigger4.conditions[i]);
-  let relation = "==";
-  for (const r of RELATIONS) {
-    const want = compareConditions(x, r.rel);
-    if (want.length === found.length && want.every((w, i) => w.player === found[i].player && w.unitId === found[i].unitId && w.comparison === found[i].comparison && w.amount === found[i].amount)) relation = r.rel;
-  }
-  return { x, rows, relation };
-}
-function cellLabel(cell, namer) {
-  return namer.counter?.(cell[0], cell[1]) ?? `${namer.player(cell[0])}'s ${namer.unit(cell[1]).replace(/ \(Unused\)$/, "")} deaths`;
-}
-function freeCell(store, host, taken = []) {
-  const used = usage(store.list).cells;
-  for (const c2 of store.sidecar.counters) used.add(cellKey(c2.player, c2.unit));
-  for (const x of store.sidecar.expansions) {
-    if (x.kind === "compare") {
-      used.add(cellKey(...x.scratch[0]));
-      used.add(cellKey(...x.scratch[1]));
-      used.add(cellKey(...x.a));
-      used.add(cellKey(...x.b));
-    } else if (x.kind !== "forEachPlayer") {
-      used.add(cellKey(...x.flag));
-      used.add(cellKey(...x.from));
-      used.add(cellKey(...x.to));
-    }
-  }
-  for (const b of store.sidecar.builds) if ("flag" in b) used.add(cellKey(...b.flag));
-  if (store.sidecar.chat) used.add(cellKey(...store.sidecar.chat.cell));
-  for (const b of store.sidecar.builds) if (b.kind === "scan") used.add(cellKey(...b.cell));
-  const m = store.sidecar.msqc;
-  if (m) for (const unit of [...Object.values(m.keys), ...Object.values(m.clicks), ...Object.values(m.mouseIn), ...m.select ? [m.select.ptr, m.select.type] : []]) for (let p = 0; p < 12; p++) used.add(cellKey(p, unit));
-  for (const c2 of taken) used.add(cellKey(...c2));
-  return allocate(used, host.placedUnitIds());
-}
-function freeUnit(store, host) {
-  const used = usage(store.list).cells;
-  const taken = /* @__PURE__ */ new Set();
-  for (const k of used) taken.add(Math.floor(k / 12));
-  for (const c2 of store.sidecar.counters) taken.add(c2.unit);
-  for (const x of store.sidecar.expansions) {
-    if (x.kind === "compare") {
-      taken.add(x.scratch[0][1]);
-      taken.add(x.scratch[1][1]);
-      taken.add(x.a[1]);
-      taken.add(x.b[1]);
-    } else if (x.kind !== "forEachPlayer") {
-      taken.add(x.flag[1]);
-      taken.add(x.from[1]);
-      taken.add(x.to[1]);
-    }
-  }
-  for (const b of store.sidecar.builds) {
-    if ("flag" in b) taken.add(b.flag[1]);
-    if (b.kind === "scan") taken.add(b.cell[1]);
-  }
-  if (store.sidecar.chat) taken.add(store.sidecar.chat.cell[1]);
-  const m = store.sidecar.msqc;
-  if (m) for (const unit of [...Object.values(m.keys), ...Object.values(m.clicks), ...Object.values(m.mouseIn), ...m.select ? [m.select.ptr, m.select.type] : []]) taken.add(unit);
-  const placed = host.placedUnitIds();
-  for (const unit of COUNTER_UNITS) if (!taken.has(unit) && !placed.has(unit)) return unit;
-  return null;
-}
-function pickCell(api, host, store, anchor, current2, onPick) {
-  const t = api.i18n.t;
-  const namer = host.namer(store.sidecar);
-  const items = store.sidecar.counters.map((c2) => ({ value: cellKey(c2.player, c2.unit), label: c2.name, hint: `${namer.player(c2.player)} \xB7 ${namer.unit(c2.unit)}` }));
-  pickChoice(api, anchor, items, (key) => onPick([key % 12, Math.floor(key / 12)]), {
-    current: cellKey(...current2),
-    width: 280,
-    searchable: true,
-    actions: [{ label: t("New counter\u2026"), run: (p) => {
-      p.close();
-      const cell = freeCell(store, host);
-      if (!cell) {
-        api.ui.toast({ kind: "error", title: t("No free counter cell") });
-        return;
-      }
-      void api.ui.prompt(t("Name for the new counter"), { title: t("New counter") }).then((name) => {
-        if (typeof name !== "string" || !name.trim()) return;
-        store.sidecar.counters.push({ player: cell[0], unit: cell[1], name: name.trim() });
-        onPick(cell);
-      });
-    } }]
-  });
-}
-function chip(api, label, className = "counter") {
-  return api.ui.el("button", { type: "button", className: `mg-chip ${className}` }, label);
-}
-function renderCounterExpansion(api, host, store, x, into) {
-  const t = api.i18n.t;
-  const namer = host.namer(store.sidecar);
-  const update = (patch) => store.updateSidecar(t("Edit counter step"), { expansions: store.sidecar.expansions.map((e) => e.id === x.id ? { ...e, ...patch } : e) });
-  const from = chip(api, cellLabel(x.from, namer));
-  from.addEventListener("click", () => pickCell(api, host, store, from, x.from, (cell) => update({ from: cell })));
-  const to = chip(api, cellLabel(x.to, namer));
-  to.addEventListener("click", () => pickCell(api, host, store, to, x.to, (cell) => update({ to: cell })));
-  const bits = chip(api, `${x.bits ?? 32}-bit`, "");
-  bits.title = t("How many bits of the counter to carry: 16 is half the triggers for a counter that stays under 65536");
-  bits.addEventListener("click", () => pickChoice(api, bits, [{ value: 16, label: t("16-bit (up to 65,535)") }, { value: 32, label: t("32-bit (any count)") }], (v) => update({ bits: v }), { current: x.bits ?? 32 }));
-  if (x.kind === "copy") into.append(t("Copy "), from, t(" into "), to, " ", bits);
-  else if (x.kind === "add") into.append(t("Add "), from, t(" to "), to, " ", bits);
-  else into.append(t("Subtract "), from, t(" from "), to, " ", bits);
-  into.append(api.ui.el("span", { className: "mg-tag", title: t("Done by a run of {n} generated triggers after this one, in the same cycle; they are hidden here and locked in the other editors.", { n: (x.bits ?? 32) + (x.kind === "copy" ? 2 : 1) }) }, "A+"));
-}
-function renderCompare(api, host, store, index, trigger4, cmp, into) {
-  const t = api.i18n.t;
-  const namer = host.namer(store.sidecar);
-  const { x } = cmp;
-  const update = (patch) => store.updateSidecar(t("Edit comparison"), { expansions: store.sidecar.expansions.map((e) => e.id === x.id ? { ...e, ...patch } : e) });
-  const a2 = chip(api, cellLabel(x.a, namer));
-  a2.addEventListener("click", () => pickCell(api, host, store, a2, x.a, (cell) => update({ a: cell })));
-  const b = chip(api, cellLabel(x.b, namer));
-  b.addEventListener("click", () => pickCell(api, host, store, b, x.b, (cell) => update({ b: cell })));
-  const rel = chip(api, RELATIONS.find((r) => r.rel === cmp.relation)?.label ?? "?", "");
-  rel.addEventListener("click", () => pickChoice(api, rel, RELATIONS, (v) => {
-    const next = compareConditions(x, RELATIONS[v].rel);
-    const conditions = trigger4.conditions.filter((_, i) => !cmp.rows.includes(i));
-    conditions.splice(cmp.rows[0] ?? conditions.length, 0, ...next);
-    store.replace(index, { ...trigger4, conditions }, t("Edit comparison"));
-  }, { current: RELATIONS.findIndex((r) => r.rel === cmp.relation) }));
-  into.append(a2, t(" is "), rel, " ", b);
-  into.append(api.ui.el("span", { className: "mg-tag", title: t("Answered by a run of generated triggers before this one, every cycle; they are hidden here and locked in the other editors.") }, "A+"));
-}
-function newCompare(store, host, index, trigger4) {
-  const named = store.sidecar.counters;
-  const a2 = named[0] ? [named[0].player, named[0].unit] : freeCell(store, host) ?? [0, 181];
-  const b = named[1] ? [named[1].player, named[1].unit] : freeCell(store, host, [a2]) ?? [1, 181];
-  const s0 = freeCell(store, host, [a2, b]);
-  const s1 = s0 ? freeCell(store, host, [a2, b, s0]) : null;
-  if (!s0 || !s1) return null;
-  const x = { id: `k${Date.now().toString(36)}`, kind: "compare", a: a2, b, scratch: [s0, s1], bits: 32, anchor: { i: store.cleanIndex(index), h: "" } };
-  void trigger4;
-  return { conditions: compareConditions(x, ">"), expansion: x };
-}
-function newCounterStep(store, host, what) {
-  const named = store.sidecar.counters;
-  const from = named[0] ? [named[0].player, named[0].unit] : freeCell(store, host) ?? [0, 181];
-  const to = named[1] ? [named[1].player, named[1].unit] : freeCell(store, host, [from]) ?? [1, 181];
-  const flag = freeCell(store, host, [from, to]);
-  if (!flag) return null;
-  return { expansion: { id: `c${Date.now().toString(36)}`, kind: what, from, to, bits: 32, flag }, flag };
-}
-
-// src/model/textParts.ts
-function partsToText(parts, names) {
-  return parts.map((p) => {
-    if ("text" in p) return p.text.replace(/[{}]/g, (c2) => `\\${c2}`);
-    if ("player" in p) return `{Player ${p.player + 1}}`;
-    if ("color" in p) return `{Player ${p.color + 1}'s colour}`;
-    return `{${names.name(p.counter) ?? `${p.counter[0]}:${p.counter[1]}`}}`;
-  }).join("");
-}
-function textToParts(text, names) {
-  const out = [];
-  let buf = "";
-  const flush = () => {
-    if (buf) {
-      out.push({ text: buf });
-      buf = "";
-    }
-  };
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (ch === "\\" && (text[i + 1] === "{" || text[i + 1] === "}")) {
-      buf += text[i + 1];
-      i++;
-      continue;
-    }
-    if (ch === "{") {
-      const end = text.indexOf("}", i + 1);
-      if (end > i) {
-        const inner = text.slice(i + 1, end).trim();
-        const player = /^player\s*(\d{1,2})('s)?\s*(colou?r)?$/i.exec(inner);
-        if (player && Number(player[1]) >= 1 && Number(player[1]) <= 12) {
-          flush();
-          out.push(player[3] ? { color: Number(player[1]) - 1 } : { player: Number(player[1]) - 1 });
-          i = end;
-          continue;
-        }
-        const raw = /^(\d{1,2}):(\d{1,3})$/.exec(inner);
-        const cell = raw ? [Number(raw[1]), Number(raw[2])] : names.cell(inner);
-        if (cell) {
-          flush();
-          out.push({ counter: cell });
-          i = end;
-          continue;
-        }
-      }
-    }
-    buf += ch;
-  }
-  flush();
-  return out;
-}
-
-// src/ui/buildRows.ts
-var hookOf = (store, a2) => store.sidecar.builds.find((b) => "flag" in b && isFlagAction(a2, { cell: b.flag })) ?? null;
-function conditionRowOf(store, c2) {
-  if (c2.type !== ConditionType.Deaths) return null;
-  const chat = store.sidecar.chat;
-  if (chat && c2.comparison === Comparison.Exactly) {
-    const onCell = c2.player === chat.cell[0] && c2.unitId === chat.cell[1];
-    const onPattern = !!chat.args && c2.player === chat.args.pattern[0] && c2.unitId === chat.args.pattern[1];
-    if (onCell || onPattern) {
-      const record = store.sidecar.builds.find((b) => b.kind === "chat" && b.value === c2.amount && isChatPattern(b) === onPattern);
-      return record ? { kind: "chat", record } : null;
-    }
-  }
-  const scan = store.sidecar.builds.find((b) => b.kind === "scan" && b.cell[0] === c2.player && b.cell[1] === c2.unitId);
-  if (scan) return { kind: "scan", record: scan };
-  const m = store.sidecar.msqc;
-  if (m) {
-    for (const [code, unit] of Object.entries(m.keys)) if (unit === c2.unitId) return { kind: "key", player: c2.player, code: Number(code) };
-    for (const [button, unit] of Object.entries(m.clicks)) if (unit === c2.unitId) return { kind: "click", player: c2.player, button };
-    for (const [location, unit] of Object.entries(m.mouseIn)) if (unit === c2.unitId) return { kind: "mouseIn", player: c2.player, location: Number(location) };
-  }
-  return null;
-}
-var deathsIs2 = (cell, comparison, amount) => ({ location: 0, player: cell[0], amount, unitId: cell[1], comparison, type: ConditionType.Deaths, resource: 0, flags: 0, mask: 0 });
-var chatCondition = (chat, record) => deathsIs2(isChatPattern(record) && chat.args ? chat.args.pattern : chat.cell, Comparison.Exactly, record.value);
-function counterNames(store, host) {
-  const namer = host.namer(store.sidecar);
-  return {
-    name: (cell) => store.sidecar.counters.find((c2) => c2.player === cell[0] && c2.unit === cell[1])?.name ?? cellLabel(cell, namer),
-    cell: (name) => {
-      const c2 = store.sidecar.counters.find((x) => x.name.toLowerCase() === name.toLowerCase());
-      if (c2) return [c2.player, c2.unit];
-      const byLabel = store.sidecar.counters.map((x) => [x.player, x.unit]).find((cell) => cellLabel(cell, namer).toLowerCase() === name.toLowerCase());
-      return byLabel ?? null;
-    }
-  };
-}
-function chip2(api, label, className = "counter") {
-  return api.ui.el("button", { type: "button", className: `mg-chip ${className}` }, label);
-}
-var BUILD_NOTE = "Needs a Build (\u22EF menu): the game's own triggers cannot do this, so the built map carries the code that does. The source map stays as it is.";
-var INPUT_NOTE = "Needs a Build (\u22EF menu). The MSQC plugin in the built map turns each player's input into a game command, so every client sees it in the same cycle; the cell is cleared after the triggers have read it.";
-var tag = (api, title = BUILD_NOTE) => api.ui.el("span", { className: "mg-tag", title }, "BUILD");
-var FIELDS = UNIT_FIELDS.map((f, value) => ({ value, label: f.label, field: f.field, yesNo: f.yesNo === true }));
-var fieldIndex = (field) => Math.max(0, FIELDS.findIndex((f) => f.field === field));
-var CHAT_NUMBER_NAME = "Chat number";
-function ensureChatArgs(host, store) {
-  const have = store.sidecar.chat?.args;
-  if (have) return { args: have, counters: store.sidecar.counters };
-  const taken = [];
-  const next = () => {
-    const c2 = freeCell(store, host, taken);
-    if (c2) taken.push(c2);
-    return c2;
-  };
-  const ptr = next(), len = next(), pattern = next(), number = next();
-  if (!ptr || !len || !pattern || !number) return null;
-  const counters = store.sidecar.counters.some((c2) => c2.name === CHAT_NUMBER_NAME) ? store.sidecar.counters : [...store.sidecar.counters, { player: number[0], unit: number[1], name: CHAT_NUMBER_NAME }];
-  return { args: { ptr, len, pattern, number }, counters };
-}
-function filterChips(api, host, store, f, update) {
-  const t = api.i18n.t;
-  const namer = host.namer(store.sidecar);
-  const unit = chip2(api, f.unit === null ? t("any unit") : namer.unit(f.unit));
-  unit.addEventListener("click", () => pickUnitType(api, host, unit, f.unit ?? 228, (v) => update({ unit: v >= 228 ? null : v }), { classes: true }));
-  const owner = chip2(api, f.owner === null ? t("anyone") : namer.player(f.owner), "");
-  owner.addEventListener("click", () => pickChoice(api, owner, [{ value: -1, label: t("anyone") }, ...Array.from({ length: 12 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null }))], (v) => update({ owner: v < 0 ? null : v }), { current: f.owner ?? -1 }));
-  const loc = chip2(api, f.location === null ? t("anywhere") : namer.location(f.location), "");
-  loc.addEventListener("click", () => pickLocation(api, host, loc, f.location ?? 64, (v) => update({ location: v === 0 || v === 64 ? null : v })));
-  return [unit, api.ui.el("span", {}, t(" owned by ")), owner, api.ui.el("span", {}, t(" at ")), loc];
-}
-function renderHook(api, host, store, hook, into) {
-  const t = api.i18n.t;
-  const namer = host.namer(store.sidecar);
-  const update = (patch) => store.updateSidecar(t("Edit build row"), { builds: store.sidecar.builds.map((b) => b.id === hook.id ? { ...b, ...patch } : b) });
-  if (hook.kind === "text") {
-    const names = counterNames(store, host);
-    const text = chip2(api, partsToText(hook.parts, names), "text");
-    text.addEventListener("click", () => pickText(api, text, partsToText(hook.parts, names), (value) => update({ parts: textToParts(value, names) }), { title: t("{Counter name} for a counter's value, {Player 1} for a name, {Player 1's colour} to switch colour; the buttons insert the game's own codes") }));
-    const to = chip2(api, hook.to === "all" ? t("everyone") : namer.player(hook.to), "");
-    to.addEventListener("click", () => pickChoice(api, to, [{ value: -1, label: t("everyone") }, ...Array.from({ length: 8 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null }))], (v) => update({ to: v < 0 ? "all" : v }), { current: hook.to === "all" ? -1 : hook.to }));
-    into.append(t("Show "), text, t(" to "), to, tag(api));
-    return;
-  }
-  if (hook.kind === "math") {
-    const OPS = [{ value: 0, label: t("times"), op: "mul" }, { value: 1, label: t("divided by"), op: "div" }, { value: 2, label: t("modulo"), op: "mod" }, { value: 3, label: t("a random number below"), op: "rand" }];
-    const to = chip2(api, cellLabel(hook.to, namer));
-    to.addEventListener("click", () => pickCell(api, host, store, to, hook.to, (cell) => update({ to: cell })));
-    const a2 = chip2(api, cellLabel(hook.a, namer));
-    a2.addEventListener("click", () => pickCell(api, host, store, a2, hook.a, (cell) => update({ a: cell })));
-    const op = chip2(api, OPS.find((o) => o.op === hook.op)?.label ?? hook.op, "");
-    op.addEventListener("click", () => pickChoice(api, op, OPS, (v) => update({ op: OPS[v].op }), { current: OPS.findIndex((o) => o.op === hook.op) }));
-    const b = chip2(api, typeof hook.b === "number" ? String(hook.b) : cellLabel(hook.b, namer));
-    b.addEventListener("click", () => pickCell(api, host, store, b, typeof hook.b === "number" ? hook.a : hook.b, (cell) => update({ b: cell })));
-    const num = chip2(api, "#", "");
-    num.title = t("A number instead of a counter");
-    num.addEventListener("click", () => pickNumber(api, num, typeof hook.b === "number" ? hook.b : 2, (v) => update({ b: v }), { min: hook.op === "mul" ? 0 : 1 }));
-    if (hook.op === "rand") into.append(t("Set "), to, t(" to "), op, " ", b, num, tag(api));
-    else into.append(t("Set "), to, t(" to "), a2, " ", op, " ", b, num, tag(api));
-    return;
-  }
-  if (hook.kind === "count") {
-    const to = chip2(api, cellLabel(hook.to, namer));
-    to.addEventListener("click", () => pickCell(api, host, store, to, hook.to, (cell) => update({ to: cell })));
-    into.append(t("Set "), to, t(" to the number of "), ...filterChips(api, host, store, hook, update), tag(api));
-    return;
-  }
-  if (hook.kind === "read") {
-    const to = chip2(api, cellLabel(hook.to, namer));
-    to.addEventListener("click", () => pickCell(api, host, store, to, hook.to, (cell) => update({ to: cell })));
-    const field = chip2(api, FIELDS[fieldIndex(hook.field)].label, "");
-    field.addEventListener("click", () => pickChoice(api, field, FIELDS, (v) => update({ field: FIELDS[v].field }), { current: fieldIndex(hook.field) }));
-    into.append(t("Set "), to, t(" to the "), field, t(" of the first "), ...filterChips(api, host, store, hook, update), tag(api));
-    return;
-  }
-  if (hook.kind === "pick") {
-    renderPick(api, host, store, hook, into, update);
-    return;
-  }
-  if (hook.kind === "setloc") {
-    const loc = chip2(api, namer.location(hook.location), "");
-    loc.addEventListener("click", () => pickLocation(api, host, loc, hook.location, (v) => {
-      if (v > 0 && v < 64) update({ location: v });
-    }));
-    const x = chip2(api, String(hook.x), "");
-    x.addEventListener("click", () => pickNumber(api, x, hook.x, (v) => update({ x: v }), { min: 0, max: 65535, unit: "px" }));
-    const y = chip2(api, String(hook.y), "");
-    y.addEventListener("click", () => pickNumber(api, y, hook.y, (v) => update({ y: v }), { min: 0, max: 65535, unit: "px" }));
-    const MODE = [{ value: 0, label: t("to") }, { value: 1, label: t("by") }];
-    const mode = chip2(api, hook.relative ? MODE[1].label : MODE[0].label, "");
-    mode.title = t("To: the top-left corner lands on x, y. By: the whole location shifts by x, y from where it is (negative goes left or up).");
-    mode.addEventListener("click", () => pickChoice(api, mode, MODE, (v) => update({ relative: v === 1 }), { current: hook.relative ? 1 : 0 }));
-    if (hook.relative) {
-      const dx = chip2(api, String(hook.x), "");
-      dx.addEventListener("click", () => pickNumber(api, dx, hook.x, (v) => update({ x: v }), { min: -65535, max: 65535, unit: "px" }));
-      const dy = chip2(api, String(hook.y), "");
-      dy.addEventListener("click", () => pickNumber(api, dy, hook.y, (v) => update({ y: v }), { min: -65535, max: 65535, unit: "px" }));
-      into.append(t("Move "), loc, " ", mode, " ", dx, ", ", dy, tag(api));
-      return;
-    }
-    const size = chip2(api, hook.width === null || hook.height === null ? t("its size") : `${hook.width} \xD7 ${hook.height}`, "");
-    size.title = t("Width \xD7 height in map pixels, 32 per tile; 0 keeps the location's own size");
-    size.addEventListener("click", () => pickNumber(api, size, hook.width ?? 0, (wv) => pickNumber(api, size, hook.height ?? 0, (hv) => update({ width: wv > 0 ? wv : null, height: hv > 0 ? hv : null }), { min: 0, max: 65535, unit: t("px high") }), { min: 0, max: 65535, unit: t("px wide") }));
-    into.append(t("Move "), loc, " ", mode, " ", x, ", ", y, t(" keeping "), size, tag(api));
-    return;
-  }
-  into.append(t("For each "), ...filterChips(api, host, store, hook, update), ": ", ...doChips(api, host, store, hook.do, (d) => update({ do: d })), tag(api));
-}
-function doChips(api, host, store, d, onChange, allowNothing = false) {
-  const t = api.i18n.t;
-  const namer = host.namer(store.sidecar);
-  const scratch = () => host.ensureLocation("Magenta scratch");
-  const firstLocation = () => host.locations().find((l) => l.value !== 64)?.value ?? 1;
-  const DOS = [
-    { value: 0, label: t("set hit points"), make: () => ({ set: "hp", value: 100 }) },
-    { value: 1, label: t("set shields"), make: () => ({ set: "shields", value: 100 }) },
-    { value: 2, label: t("set energy"), make: () => ({ set: "energy", value: 100 }) },
-    { value: 3, label: t("set kills"), make: () => ({ set: "kills", value: 0 }) },
-    { value: 4, label: t("kill"), make: () => ({ kill: true }) },
-    { value: 5, label: t("remove"), make: () => ({ remove: true }) },
-    { value: 6, label: t("make invincible"), make: () => ({ invincible: true }) },
-    { value: 7, label: t("make vulnerable"), make: () => ({ invincible: false }) },
-    { value: 8, label: t("hallucinate"), make: () => ({ hallucination: true }) },
-    { value: 9, label: t("un-hallucinate"), make: () => ({ hallucination: false }) },
-    { value: 10, label: t("give the speed upgrade"), make: () => ({ speed: true }) },
-    { value: 11, label: t("take the speed upgrade"), make: () => ({ speed: false }) },
-    { value: 12, label: t("give to"), make: () => ({ give: 1 }) },
-    { value: 13, label: t("center a location on it"), make: () => ({ locate: firstLocation() }) },
-    { value: 14, label: t("order to move to"), make: () => {
-      const sc = scratch();
-      return sc ? { order: "move", location: firstLocation(), scratch: sc } : null;
-    } },
-    { value: 15, label: t("order to patrol to"), make: () => {
-      const sc = scratch();
-      return sc ? { order: "patrol", location: firstLocation(), scratch: sc } : null;
-    } },
-    { value: 16, label: t("order to attack-move to"), make: () => {
-      const sc = scratch();
-      return sc ? { order: "attack", location: firstLocation(), scratch: sc } : null;
-    } },
-    { value: 17, label: t("apply a spell effect"), make: () => ({ timer: "stim", value: 10 * TIMER_TICKS_PER_SECOND }) },
-    { value: 18, label: t("hold fire"), make: () => ({ cooldown: HOLD_FIRE_COOLDOWN }) },
-    { value: 19, label: t("set the resources"), make: () => ({ set: "resources", value: 1500 }) },
-    { value: 20, label: t("set the remaining build time"), make: () => ({ set: "buildTime", value: 0 }) },
-    { value: 21, label: t("set the rank"), make: () => ({ set: "rank", value: 0 }) },
-    { value: 22, label: t("walk through anything"), make: () => ({ status: "noclip", on: true }) },
-    { value: 23, label: t("collide again"), make: () => ({ status: "noclip", on: false }) },
-    { value: 25, label: t("take"), make: () => ({ adjust: "hp", delta: -20 }) },
-    { value: 26, label: t("give"), make: () => ({ adjust: "hp", delta: 20 }) },
-    ...allowNothing ? [{ value: 24, label: t("do nothing to it"), make: () => null }] : []
-  ];
-  const current2 = d === null ? 24 : "set" in d ? { hp: 0, shields: 1, energy: 2, kills: 3, resources: 19, buildTime: 20, rank: 21 }[d.set] : "kill" in d ? 4 : "remove" in d ? 5 : "invincible" in d ? d.invincible ? 6 : 7 : "hallucination" in d ? d.hallucination ? 8 : 9 : "speed" in d ? d.speed ? 10 : 11 : "give" in d ? 12 : "locate" in d ? 13 : "order" in d ? { move: 14, patrol: 15, attack: 16 }[d.order] : "timer" in d ? 17 : "cooldown" in d ? 18 : "adjust" in d ? d.delta < 0 ? 25 : 26 : d.on ? 22 : 23;
-  const what = chip2(api, DOS.find((x) => x.value === current2)?.label ?? "?", "");
-  what.addEventListener("click", () => pickChoice(api, what, DOS, (v) => {
-    const entry2 = DOS.find((x) => x.value === v);
-    const made = entry2.make();
-    if (made === null && v !== 24) {
-      api.ui.toast({ kind: "error", title: t("No free location slot"), detail: t("Ordering one unit at a time needs a location of Magenta's own; free a location slot first.") });
-      return;
-    }
-    onChange(made);
-  }, { current: current2 }));
-  const out = [what];
-  if (d === null) return out;
-  if ("set" in d) {
-    const value = chip2(api, String(d.value), "");
-    value.addEventListener("click", () => pickNumber(api, value, d.value, (v) => onChange({ set: d.set, value: v }), { min: 0, max: 65535 }));
-    out.push(t(" to "), value);
-  } else if ("give" in d) {
-    const p = chip2(api, namer.player(d.give), "");
-    p.addEventListener("click", () => pickChoice(api, p, Array.from({ length: 12 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null })), (v) => onChange({ give: v }), { current: d.give }));
-    out.push(" ", p);
-  } else if ("locate" in d) {
-    const l = chip2(api, namer.location(d.locate), "");
-    l.addEventListener("click", () => pickLocation(api, host, l, d.locate, (v) => {
-      if (v > 0 && v < 64) onChange({ locate: v });
-    }));
-    out.push(": ", l);
-  } else if ("order" in d) {
-    const l = chip2(api, namer.location(d.location), "");
-    l.addEventListener("click", () => pickLocation(api, host, l, d.location, (v) => {
-      if (v > 0 && v < 64) onChange({ ...d, location: v });
-    }));
-    l.title = t("The destination. The order goes to one unit at a time through the location named Magenta scratch, which is Magenta's to move.");
-    out.push(" ", l);
-  } else if ("timer" in d) {
-    const which = chip2(api, TIMERS.find((x) => x.timer === d.timer)?.label ?? d.timer, "");
-    which.addEventListener("click", () => pickChoice(api, which, TIMERS.map((x, value) => ({ value, label: x.label })), (v) => onChange({ timer: TIMERS[v].timer, value: d.value }), { current: Math.max(0, TIMERS.findIndex((x) => x.timer === d.timer)) }));
-    const seconds = chip2(api, String(Math.round(d.value / TIMER_TICKS_PER_SECOND)), "");
-    seconds.title = t("Seconds at the fastest speed; the game counts these timers in ticks of about eight frames. The effect applies without the spell's overlay graphic.");
-    seconds.addEventListener("click", () => pickNumber(api, seconds, Math.round(d.value / TIMER_TICKS_PER_SECOND), (v) => onChange({ timer: d.timer, value: Math.max(1, Math.min(255, v * TIMER_TICKS_PER_SECOND)) }), { min: 1, max: 85, unit: "s" }));
-    out.push(": ", which, t(" for "), seconds, t(" s"));
-  } else if ("cooldown" in d) {
-    const note = api.ui.el("span", { className: "hint", title: t("The cooldowns are written each time the trigger fires; to keep a unit from firing, the trigger must fire every cycle (preserved, with triggers running every frame).") }, t(" (each cycle)"));
-    out.push(note);
-  } else if ("adjust" in d) {
-    const ADJ = [{ value: 0, label: t("hit points"), field: "hp" }, { value: 1, label: t("shields"), field: "shields" }, { value: 2, label: t("energy"), field: "energy" }];
-    const sign = d.delta < 0 ? -1 : 1;
-    const n = chip2(api, String(Math.abs(d.delta)), "");
-    n.addEventListener("click", () => pickNumber(api, n, Math.abs(d.delta), (v) => onChange({ adjust: d.adjust, delta: sign * Math.max(1, v) }), { min: 1, max: 65535 }));
-    const f = chip2(api, ADJ.find((x) => x.field === d.adjust)?.label ?? d.adjust, "");
-    f.title = d.delta < 0 ? t("Never below 0; a unit whose hit points reach 0 dies.") : t("Never above the type's maximum.");
-    f.addEventListener("click", () => pickChoice(api, f, ADJ, (v) => onChange({ adjust: ADJ[v].field, delta: d.delta }), { current: ADJ.findIndex((x) => x.field === d.adjust) }));
-    out.push(" ", n, " ", f);
-  }
-  return out;
-}
-function renderPick(api, host, store, hook, into, update) {
-  const t = api.i18n.t;
-  const namer = host.namer(store.sidecar);
-  const BY = [{ value: 0, label: t("with the least"), by: "min" }, { value: 1, label: t("with the greatest"), by: "max" }, { value: 2, label: t("nearest to"), by: "nearest" }, { value: 3, label: t("at random"), by: "random" }];
-  const by = chip2(api, BY.find((b) => b.by === hook.by).label, "");
-  by.addEventListener("click", () => pickChoice(api, by, BY, (v) => update({ by: BY[v].by, near: BY[v].by === "nearest" ? hook.near ?? host.locations().find((l) => l.value !== 64)?.value ?? 1 : hook.near }), { current: BY.findIndex((b) => b.by === hook.by) }));
-  into.append(t("Take the "), ...filterChips(api, host, store, hook, update), " ", by, " ");
-  if (hook.by === "nearest") {
-    const mouseOf = typeof hook.near === "object" && hook.near !== null ? hook.near.mouse : null;
-    const near = chip2(api, mouseOf !== null ? t("{player}'s mouse", { player: namer.player(mouseOf) }) : typeof hook.near === "number" ? namer.location(hook.near) : t("a location"), "");
-    near.addEventListener("click", () => {
-      const pop = pickLocation(api, host, near, typeof hook.near === "number" ? hook.near : 1, (v) => {
-        if (v > 0 && v < 64) update({ near: v, radius: null });
-      });
-      const foot = pop.root.querySelector(".mg-pop-foot");
-      foot?.prepend(api.ui.widgets.button(t("A player's mouse\u2026"), { ghost: true, onClick: () => {
-        pop.close();
-        pickChoice(api, near, Array.from({ length: 8 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null })), (p) => {
-          const m = withMsqc(host, store, true);
-          if (!m) {
-            api.ui.toast({ kind: "error", title: t("No room for the mouse"), detail: t("It needs nine free location slots for MSQC.") });
-            return;
-          }
-          store.commit(t("Pick near the mouse"), () => store.list, { sidecar: { msqc: m, builds: store.sidecar.builds.map((b) => b.id === hook.id ? { ...b, near: { mouse: p }, radius: hook.radius ?? 64 } : b) } });
-        }, { current: mouseOf ?? 0, width: 200 });
-      } }));
-    });
-    into.append(near);
-    if (mouseOf !== null) {
-      const radius = chip2(api, hook.radius === null || hook.radius === void 0 ? t("any distance") : `${hook.radius} px`, "");
-      radius.title = t("How far from the mouse a unit still counts, in map pixels (32 a tile); farther, and the pick finds nothing.");
-      radius.addEventListener("click", () => pickNumber(api, radius, hook.radius ?? 64, (v) => update({ radius: v > 0 ? v : null }), { min: 0, max: 4096, unit: "px", hint: t("0 for any distance") }));
-      into.append(t(" within "), radius);
-    }
-  } else if (hook.by === "random") {
-  } else {
-    const numeric = FIELDS.filter((f) => !f.yesNo);
-    const field = chip2(api, FIELDS[fieldIndex(hook.field)].label, "");
-    field.addEventListener("click", () => pickChoice(api, field, numeric, (v) => update({ field: FIELDS[v].field }), { current: fieldIndex(hook.field) }));
-    into.append(field);
-  }
-  into.append(t(": "), ...doChips(api, host, store, hook.do, (d) => update({ do: d }), true));
-  const locate = chip2(api, hook.locate ? namer.location(hook.locate) : t("no location"), "");
-  locate.title = t("A small box is centred on the unit, so the trigger's other actions \u2014 or the next trigger's \u2014 can act on it through the location.");
-  locate.addEventListener("click", () => pickLocation(api, host, locate, hook.locate ?? 64, (v) => update({ locate: v > 0 && v < 64 ? v : null })));
-  const to = chip2(api, hook.to ? cellLabel(hook.to, namer) : t("no counter"));
-  to.title = t("The field's value \u2014 or the distance, for the nearest \u2014 goes into this counter; 0 when nothing matched.");
-  to.addEventListener("click", () => pickCell(api, host, store, to, hook.to ?? store.sidecar.chat?.cell ?? [0, 181], (cell) => update({ to: cell })));
-  into.append(t(", center "), locate, t(" on it, value into "), to);
-  if (hook.to) {
-    const clear = chip2(api, "\xD7", "");
-    clear.title = t("No counter");
-    clear.addEventListener("click", () => update({ to: null }));
-    into.append(clear);
-  }
-  into.append(tag(api));
-}
-function renderConditionRow(api, host, store, row, into, replace) {
-  const t = api.i18n.t;
-  const namer = host.namer(store.sidecar);
-  const playerChip = (player, onPick) => {
-    const c2 = chip2(api, namer.player(player), "");
-    c2.addEventListener("click", () => pickChoice(api, c2, [{ value: PlayerGroup.CurrentPlayer, label: namer.player(PlayerGroup.CurrentPlayer) }, ...Array.from({ length: 8 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null }))], onPick, { current: player }));
-    return c2;
-  };
-  if (row.kind === "chat") {
-    const chat = row.record;
-    const setMessage = (value) => {
-      const problem = checkChatMessage(value);
-      if (problem) {
-        api.ui.toast({ kind: "error", title: problem });
-        return;
-      }
-      const next = { ...chat, message: value.trim() };
-      const needArgs = isChatPattern(next) && !store.sidecar.chat?.args;
-      const made = needArgs ? ensureChatArgs(host, store) : null;
-      if (needArgs && !made) {
-        api.ui.toast({ kind: "error", title: t("No free counter cells for a chat pattern") });
-        return;
-      }
-      const chatCell = { ...store.sidecar.chat ?? { cell: [0, 181] }, ...made ? { args: made.args } : {} };
-      store.commit(t("Edit chat command"), () => store.list, { sidecar: { builds: store.sidecar.builds.map((b) => b.id === chat.id ? next : b), chat: chatCell, ...made ? { counters: made.counters } : {} } });
-      replace(chatCondition(chatCell, next));
-    };
-    const msg = chip2(api, chat.message, "text");
-    msg.addEventListener("click", () => pickText(api, msg, chat.message, setMessage, { title: chat.arg === "number" ? t("The command before the number: -set matches -set 250, and the number lands in the counter named Chat number") : t("What a player types in chat; ^\u2026$ writes a pattern, as in ^-give .*$") }));
-    const ARG = [{ value: 0, label: t("exactly") }, { value: 1, label: t("followed by a number") }];
-    const arg = chip2(api, chat.arg === "number" ? ARG[1].label : ARG[0].label, "");
-    arg.title = t("With a number, the message is a prefix and the number typed after it goes into the counter named Chat number.");
-    arg.addEventListener("click", () => pickChoice(api, arg, ARG, (v) => {
-      const next = v === 1 ? { ...chat, arg: "number", message: chat.message.startsWith("^") ? chat.message.replace(/^\^|\.\*|\$$/g, "").trim() || "-set" : chat.message } : { id: chat.id, kind: "chat", message: chat.message, value: chat.value };
-      const made = v === 1 && !store.sidecar.chat?.args ? ensureChatArgs(host, store) : null;
-      if (v === 1 && !store.sidecar.chat?.args && !made) {
-        api.ui.toast({ kind: "error", title: t("No free counter cells for the number") });
-        return;
-      }
-      const chatCell = { ...store.sidecar.chat ?? { cell: [0, 181] }, ...made ? { args: made.args } : {} };
-      store.commit(t("Edit chat command"), () => store.list, { sidecar: { builds: store.sidecar.builds.map((b) => b.id === chat.id ? next : b), chat: chatCell, ...made ? { counters: made.counters } : {} } });
-      replace(chatCondition(chatCell, next));
-    }, { current: chat.arg === "number" ? 1 : 0 }));
-    into.append(t("The chat said "), msg, " ", arg, tag(api, t("Needs a Build (\u22EF menu): the chat plugin in the built map writes the command's number into a cell this condition reads, in the cycle the message arrives, for every player at once. A message with a number is matched as a pattern and the number is parsed out for you.")));
-    return;
-  }
-  if (row.kind === "scan") {
-    const s = row.record;
-    const update = (patch) => store.updateSidecar(t("Edit unit check"), { builds: store.sidecar.builds.map((b) => b.id === s.id ? { ...b, ...patch } : b) });
-    const fi = FIELDS[fieldIndex(s.field)];
-    const field = chip2(api, fi.label, "");
-    field.addEventListener("click", () => pickChoice(api, field, FIELDS, (v) => update(FIELDS[v].yesNo ? { field: FIELDS[v].field, cmp: "=", value: s.cmp === "=" && s.value === 0 ? 0 : 1 } : { field: FIELDS[v].field }), { current: fieldIndex(s.field) }));
-    const note = tag(api, t("Needs a Build (\u22EF menu): the built map checks this every cycle and leaves the answer in a cell this condition reads."));
-    if (fi.yesNo) {
-      const IS = [{ value: 1, label: t("is") }, { value: 0, label: t("is not") }];
-      const is = chip2(api, s.value === 0 ? IS[1].label : IS[0].label, "");
-      is.addEventListener("click", () => pickChoice(api, is, IS, (v) => update({ cmp: "=", value: v }), { current: s.value === 0 ? 0 : 1 }));
-      into.append(t("Any "), ...filterChips(api, host, store, s, update), " ", is, " ", field, note);
-      return;
-    }
-    const CMP = [{ value: 0, label: t("below"), cmp: "<" }, { value: 1, label: t("above"), cmp: ">" }, { value: 2, label: t("exactly"), cmp: "=" }];
-    const cmp = chip2(api, CMP.find((c2) => c2.cmp === s.cmp)?.label ?? s.cmp, "");
-    cmp.addEventListener("click", () => pickChoice(api, cmp, CMP, (v) => update({ cmp: CMP[v].cmp }), { current: CMP.findIndex((c2) => c2.cmp === s.cmp) }));
-    const value = chip2(api, String(s.value), "");
-    value.addEventListener("click", () => pickNumber(api, value, s.value, (v) => update({ value: v }), { min: 0, max: 65535 }));
-    into.append(t("Any "), ...filterChips(api, host, store, s, update), t(" has "), field, " ", cmp, " ", value, note);
-    return;
-  }
-  const m = store.sidecar.msqc ?? DEFAULT_MSQC;
-  if (row.kind === "key") {
-    const key = chip2(api, KEYS.find((k) => k.code === row.code)?.label ?? `0x${row.code.toString(16)}`, "");
-    key.addEventListener("click", () => pickKey(api, key, row.code, (code) => {
-      const unit = m.keys[String(code)] ?? m.keys[String(row.code)];
-      void unit;
-      store.commit(t("Change key"), () => store.list, { sidecar: { msqc: { ...m, keys: { ...m.keys, [String(code)]: m.keys[String(code)] ?? freeUnit(store, host) ?? m.keys[String(row.code)] } } } });
-      replace(deathsIs2([row.player, (store.sidecar.msqc ?? m).keys[String(code)] ?? m.keys[String(row.code)]], Comparison.AtLeast, 1));
-    }));
-    into.append(playerChip(row.player, (p) => replace(deathsIs2([p, m.keys[String(row.code)]], Comparison.AtLeast, 1))), t(" pressed "), key, tag(api, INPUT_NOTE));
-    return;
-  }
-  if (row.kind === "click") {
-    const button = chip2(api, row.button === "L" ? t("left") : row.button === "M" ? t("middle") : t("right"), "");
-    button.addEventListener("click", () => pickChoice(api, button, [{ value: 0, label: t("left") }, { value: 1, label: t("right") }, { value: 2, label: t("middle") }], (v) => {
-      const b = v === 0 ? "L" : v === 1 ? "R" : "M";
-      const unit = m.clicks[b] ?? freeUnit(store, host);
-      if (unit === null) return;
-      store.commit(t("Change button"), () => store.list, { sidecar: { msqc: { ...m, clicks: { ...m.clicks, [b]: unit } } } });
-      replace(deathsIs2([row.player, unit], Comparison.AtLeast, 1));
-    }, { current: row.button === "L" ? 0 : row.button === "R" ? 1 : 2 }));
-    into.append(playerChip(row.player, (p) => replace(deathsIs2([p, m.clicks[row.button]], Comparison.AtLeast, 1))), t(" clicked the "), button, t(" button"), tag(api, INPUT_NOTE));
-    return;
-  }
-  const loc = chip2(api, namer.location(row.location), "");
-  loc.addEventListener("click", () => pickLocation(api, host, loc, row.location, (v) => {
-    if (v <= 0 || v >= 64) return;
-    const unit = m.mouseIn[String(v)] ?? freeUnit(store, host);
-    if (unit === null) return;
-    store.commit(t("Change location"), () => store.list, { sidecar: { msqc: { ...m, mouseIn: { ...m.mouseIn, [String(v)]: unit } } } });
-    replace(deathsIs2([row.player, unit], Comparison.Exactly, 1));
-  }));
-  into.append(playerChip(row.player, (p) => replace(deathsIs2([p, m.mouseIn[String(row.location)]], Comparison.Exactly, 1))), t("'s mouse is over "), loc, tag(api, INPUT_NOTE));
-}
-function newChat(host, store, message = "-command", arg = null) {
-  const chat = store.sidecar.chat ?? (() => {
-    const cell = freeCell(store, host);
-    return cell ? { cell, args: null } : null;
-  })();
-  if (!chat) return null;
-  const value = nextChatValue(store.sidecar.builds);
-  const record = { id: `h${Date.now().toString(36)}`, kind: "chat", message, value, ...arg ? { arg } : {} };
-  let counters;
-  let withArgs = chat;
-  if (isChatPattern(record) && !chat.args) {
-    const made = ensureChatArgs(host, { ...store, sidecar: { ...store.sidecar, chat } });
-    if (!made) return null;
-    withArgs = { ...chat, args: made.args };
-    counters = made.counters;
-  }
-  return { condition: chatCondition(withArgs, record), builds: [...store.sidecar.builds, record], chat: withArgs, ...counters ? { counters } : {} };
-}
-function withMsqc(host, store, needMouse) {
-  const m = store.sidecar.msqc ? { ...store.sidecar.msqc } : { ...DEFAULT_MSQC, keys: {}, clicks: {}, mouseIn: {} };
-  if (!store.sidecar.msqc) {
-    const free = host.freeLocationSlots();
-    if (!free.length) return null;
-    m.qcLoc = free[0];
-  }
-  if (needMouse && m.mouseBase === null) {
-    const free = new Set(host.freeLocationSlots().filter((i) => i !== m.qcLoc));
-    for (let slot = 0; slot + 8 <= 63; slot++) {
-      let ok = true;
-      for (let p = 0; p < 8; p++) if (!free.has(slot + p)) {
-        ok = false;
-        break;
-      }
-      if (ok) {
-        m.mouseBase = slot + 1;
-        break;
-      }
-    }
-    if (m.mouseBase === null) return null;
-  }
-  return m;
-}
-function newInput(host, store, what, options = {}) {
-  const m = withMsqc(host, store, what !== "key");
-  if (!m) return null;
-  if (what === "key") {
-    const code = options.code ?? 65;
-    const unit2 = m.keys[String(code)] ?? freeUnit({ ...store, sidecar: { ...store.sidecar, msqc: m } }, host);
-    if (unit2 === null) return null;
-    m.keys = { ...m.keys, [String(code)]: unit2 };
-    return { condition: deathsIs2([PlayerGroup.CurrentPlayer, unit2], Comparison.AtLeast, 1), msqc: m };
-  }
-  if (what === "click") {
-    const b = options.button ?? "L";
-    const unit2 = m.clicks[b] ?? freeUnit({ ...store, sidecar: { ...store.sidecar, msqc: m } }, host);
-    if (unit2 === null) return null;
-    m.clicks = { ...m.clicks, [b]: unit2 };
-    return { condition: deathsIs2([PlayerGroup.CurrentPlayer, unit2], Comparison.AtLeast, 1), msqc: m };
-  }
-  const location = options.location ?? host.locations().find((l) => l.value !== 64)?.value ?? 0;
-  if (!location) return null;
-  const unit = m.mouseIn[String(location)] ?? freeUnit({ ...store, sidecar: { ...store.sidecar, msqc: m } }, host);
-  if (unit === null) return null;
-  m.mouseIn = { ...m.mouseIn, [String(location)]: unit };
-  return { condition: deathsIs2([PlayerGroup.CurrentPlayer, unit], Comparison.Exactly, 1), msqc: m };
-}
-function newScan(host, store, query = "", unit = 0) {
-  const cell = freeCell(store, host);
-  if (!cell) return null;
-  const pct = /percent|%/i.test(query);
-  const field = /shield/i.test(query) ? pct ? "shieldsPct" : "shields" : /energy|mana/i.test(query) ? pct ? "energyPct" : "energy" : /under attack/i.test(query) ? "underAttack" : /target/i.test(query) ? "hasTarget" : /burrow/i.test(query) ? "burrowed" : /moving/i.test(query) ? "speed" : /attacking|order/i.test(query) ? "order" : /kills/i.test(query) ? "kills" : pct ? "hpPct" : "hp";
-  const yesNo = FIELDS[fieldIndex(field)].yesNo;
-  const record = { id: `s${Date.now().toString(36)}`, kind: "scan", cell, unit, owner: PlayerGroup.Player1, location: null, field, cmp: yesNo ? "=" : /above|over|more/i.test(query) ? ">" : "<", value: yesNo ? 1 : pct ? 30 : 20 };
-  return { condition: deathsIs2(cell, Comparison.Exactly, 1), builds: [...store.sidecar.builds, record] };
-}
-function newHook(host, store, what, query = "", named_ = {}) {
-  const flag = freeCell(store, host);
-  if (!flag) return null;
-  const named = store.sidecar.counters;
-  const a2 = named[0] ? [named[0].player, named[0].unit] : freeCell(store, host, [flag]) ?? [0, 181];
-  const id = `b${Date.now().toString(36)}`;
-  const filter = { unit: named_.unit === void 0 ? 0 : named_.unit, owner: PlayerGroup.Player1, location: named_.location ?? null };
-  const record = what === "text" ? { id, kind: "text", flag, parts: [{ text: "Score: " }, { counter: a2 }], to: "all" } : what === "math" ? { id, kind: "math", flag, op: /random/i.test(query) ? "rand" : /divid/i.test(query) ? "div" : /modul|remainder/i.test(query) ? "mod" : "mul", a: a2, b: /random/i.test(query) ? 100 : 2, to: a2 } : what === "count" ? { id, kind: "count", flag, ...filter, to: a2 } : what === "read" ? { id, kind: "read", flag, ...filter, field: "hp", to: a2 } : what === "setloc" ? { id, kind: "setloc", flag, location: host.locations().find((l) => l.value !== 64)?.value ?? 1, x: 0, y: 0, width: null, height: null, .../\bby\b|shift|offset|slide|scroll/i.test(query) ? { relative: true, x: 32 } : {} } : what === "pick" ? { id, kind: "pick", flag, ...filter, by: /random|lottery|any one/i.test(query) ? "random" : /near|clos|mouse|under/i.test(query) ? "nearest" : /strong|most|great|high/i.test(query) ? "max" : "min", field: /kill/i.test(query) ? "kills" : "hp", near: /near|clos|mouse|under/i.test(query) ? host.locations().find((l) => l.value !== 64)?.value ?? 1 : null, locate: null, to: null, do: /kill/i.test(query) ? { kill: true } : null } : { id, kind: "foreach", flag, ...filter, do: /give to|owner/i.test(query) ? { give: 1 } : /kill/i.test(query) ? { kill: true } : /damage|hurt|take|drain/i.test(query) ? { adjust: /shield/i.test(query) ? "shields" : /energy|mana/i.test(query) ? "energy" : "hp", delta: -20 } : /heal|restore|regen/i.test(query) ? { adjust: /shield/i.test(query) ? "shields" : /energy|mana/i.test(query) ? "energy" : "hp", delta: 20 } : { set: "hp", value: 100 } };
-  return { action: flagAction({ cell: flag }), builds: [...store.sidecar.builds, record] };
-}
-function needsBuild(store, trigger4) {
-  return trigger4.actions.some((a2) => a2.type === ActionType.SetDeaths && a2.modifier === SetModifier.SetTo && hookOf(store, a2) !== null) || trigger4.conditions.some((c2) => conditionRowOf(store, c2) !== null);
-}
-
 // src/model/explain.ts
 var join = (parts, word) => parts.length <= 1 ? parts.join("") : `${parts.slice(0, -1).join(", ")} ${word} ${parts[parts.length - 1]}`;
 var VERBS = /* @__PURE__ */ new Set(["show", "set", "end", "unpause", "run", "remove", "pause", "kill", "create", "center", "wait", "unmute", "play", "ping", "order", "mute", "move", "load", "give", "enable", "display", "disable", "add", "make", "name", "the", "vision", "invincibility", "placed", "copy", "subtract", "compare", "count", "read", "pick", "for", "every", "while"]);
@@ -7645,14 +7780,14 @@ function refsOf(list, index, anchorOf2 = (i) => i) {
     theirs.set(at, acc);
   });
   if (!mine.size) return [];
-  const refs = [...mine.values()].map((x) => ({ ...x, others: [] }));
+  const refs2 = [...mine.values()].map((x) => ({ ...x, others: [] }));
   for (const [at, touch] of [...theirs.entries()].sort((a2, b) => a2[0] - b[0])) {
-    for (const r of refs) {
+    for (const r of refs2) {
       const hit = touch.get(`${r.kind}:${r.id}`);
       if (hit) r.others.push({ index: at, use: hit.use });
     }
   }
-  return refs.filter((r) => r.kind !== "location" || r.others.some((o) => o.use !== "reads") || r.use !== "reads").sort((a2, b) => b.others.length - a2.others.length);
+  return refs2.filter((r) => r.kind !== "location" || r.others.some((o) => o.use !== "reads") || r.use !== "reads").sort((a2, b) => b.others.length - a2.others.length);
 }
 
 // src/ui/words.ts
@@ -7747,7 +7882,23 @@ function renderEditor(deps, root) {
     }
   }
   const perPlayer = store.sidecar.expansions.find((x2) => x2.kind === "forEachPlayer" && x2.anchor.i === store.cleanIndex(index));
-  const problems = check(trigger4, { everyFrame: store.sidecar.settings.everyFrame, locationExists: (n) => host.locationExists(n), stringExists: (i) => host.stringExists(i), wavPresent: (i) => host.wavPresent(i), claimedCells, template: !!perPlayer });
+  const problems = check(trigger4, {
+    everyFrame: store.sidecar.settings.everyFrame,
+    locationExists: (n) => host.locationExists(n),
+    stringExists: (i) => host.stringExists(i),
+    wavPresent: (i) => host.wavPresent(i),
+    claimedCells,
+    template: !!perPlayer,
+    locationName: (n) => namer.location(n),
+    deferredLocation: (a2) => {
+      const hook = hookOf(store, a2);
+      if (!hook) return null;
+      if (hook.kind === "setloc") return hook.location;
+      if (hook.kind === "pick") return hook.locate ?? (hook.do && "locate" in hook.do ? hook.do.locate : null);
+      if (hook.kind === "foreach" && "locate" in hook.do) return hook.do.locate;
+      return null;
+    }
+  });
   const general = problems.filter((p) => !p.at);
   const at = (kind, i) => problems.filter((p) => p.at?.kind === kind && p.at.index === i);
   const replace = (label, next) => store.replace(index, next, label);
@@ -7800,7 +7951,7 @@ function renderEditor(deps, root) {
     if (brow) {
       const sentence = el("span", { className: "mg-sentence" });
       renderConditionRow(api, host, store, brow, sentence, (next) => writeConditions(t("Edit condition"), conditions.map((x2, j) => j === i ? next : x2)));
-      const ownRecord = brow.kind === "chat" || brow.kind === "scan" ? brow.record.id : null;
+      const ownRecord = brow.kind === "scan" && !sharedElsewhere(store.list, brow.record, index) ? brow.record.id : null;
       const remove = api.ui.widgets.button("\u2715", { ghost: true, title: t("Remove"), onClick: () => store.commit(t("Remove condition"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, conditions: conditions.filter((_, k) => k !== i) }), ownRecord ? { sidecar: { builds: store.sidecar.builds.filter((b) => b.id !== ownRecord) } } : {}) });
       condSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove))));
       return;
@@ -7904,7 +8055,7 @@ function renderEditor(deps, root) {
     if (hook) {
       const sentence = el("span", { className: "mg-sentence" });
       renderHook(api, host, store, hook, sentence);
-      const remove = api.ui.widgets.button("\u2715", { ghost: true, title: t("Remove"), onClick: () => store.commit(t("Remove build row"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, actions: actions.filter((_, j2) => j2 !== i) }), { sidecar: { builds: store.sidecar.builds.filter((b) => b.id !== hook.id) } }) });
+      const remove = api.ui.widgets.button("\u2715", { ghost: true, title: t("Remove"), onClick: () => store.commit(t("Remove build row"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, actions: actions.filter((_, j2) => j2 !== i) }), sharedElsewhere(store.list, hook, index) ? {} : { sidecar: { builds: store.sidecar.builds.filter((b) => b.id !== hook.id) } }) });
       actSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove))));
       continue;
     }
@@ -7976,9 +8127,9 @@ function renderEditor(deps, root) {
   const words2 = el("div", { className: "mg-explain" }, ...x.lines.map((line) => el("p", {}, line)));
   const shared = x.refs.filter((r) => r.others.length);
   if (shared.length) {
-    const refs = el("div", { className: "mg-refs" });
-    for (const r of shared) refs.append(refLine(r));
-    words2.append(refs);
+    const refs2 = el("div", { className: "mg-refs" });
+    for (const r of shared) refs2.append(refLine(r));
+    words2.append(refs2);
   } else if (x.refs.length) words2.append(el("div", { className: "mg-refs" }, el("span", {}, t("No other trigger uses the switches, counters or locations this one touches."))));
   fold.body.append(words2);
   root.append(fold);
@@ -8607,7 +8758,9 @@ function run(list, s, world, max, idle = 50, counts = () => true) {
 // src/ui/styles.ts
 var STYLE = `
 .mg { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 8px; font-size: var(--fs-sm, 11.5px); }
-.mg .mg-head { display: flex; align-items: center; gap: 6px; }
+.mg .mg-notice { display: flex; gap: 10px; align-items: center; padding: 8px 10px; margin: 0 8px 6px; border: 1px solid var(--warn, #c9a227); border-radius: 6px; font-size: var(--fs-sm); line-height: 1.35; }
+.mg-notice > span { flex: 1; }
+.mg-head { display: flex; align-items: center; gap: 6px; }
 .mg .mg-head .input { flex: 1; min-width: 80px; }
 .mg .mg-split { display: flex; flex: 1; min-height: 0; gap: 10px; }
 .mg .mg-list { width: 240px; flex: none; display: flex; flex-direction: column; min-height: 0; background: var(--bg-0); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--bevel-sunken); overflow: auto; outline: none; }
@@ -9054,9 +9207,11 @@ var Store = class {
   prints = [];
   writing = false;
   afterCommit;
-  constructor(host, afterCommit) {
+  onBlocked;
+  constructor(host, hooks = {}) {
     this.host = host;
-    this.afterCommit = afterCommit;
+    this.afterCommit = hooks.afterCommit;
+    this.onBlocked = hooks.onBlocked;
     this.sidecar = host.sidecar();
     this.reload();
   }
@@ -9069,15 +9224,17 @@ var Store = class {
   notify() {
     for (const fn of this.listeners) fn();
   }
-  /** Bring the state back from the map. Keeps the selection by fingerprint where it can. */
+  /** Bring the state back from the map. Keeps the selection by fingerprint where it can; forgets the history when anything changed. */
   reload() {
     if (this.writing) return;
     const list = this.host.triggers();
     const prints = list.map(fingerprint);
+    const sidecar = this.host.sidecar();
+    if (sidecar !== this.sidecar || prints.length !== this.prints.length || prints.some((p, i) => p !== this.prints[i])) this.forget();
     const selectedPrint = this.selected !== null ? this.prints[this.selected] : null;
     this.list = list;
     this.prints = prints;
-    this.sidecar = this.host.sidecar();
+    this.sidecar = sidecar;
     this.folders = folderOf(list, this.sidecar);
     this.runs = this.locateRuns(list);
     if (selectedPrint !== null) {
@@ -9086,6 +9243,11 @@ var Store = class {
     }
     if (this.selected !== null && this.selected >= list.length) this.selected = list.length ? list.length - 1 : null;
     this.notify();
+  }
+  /** Drop the undo and redo history: another map is in front, or another editor changed this one. */
+  forget() {
+    this.undoStack = [];
+    this.redoStack = [];
   }
   /** Whether the map's list differs from what we hold. */
   stale() {
@@ -9136,6 +9298,10 @@ var Store = class {
    * (and may intern strings); `folders` the folder-by-index map for it, when it changes.
    */
   commit(label, build, options = {}) {
+    if (this.host.sidecarProblem()) {
+      this.onBlocked?.();
+      return;
+    }
     this.undoStack.push({ list: clone(this.list), sidecar: clone(this.sidecar), label });
     if (this.undoStack.length > 100) this.undoStack.shift();
     this.redoStack = [];
@@ -9254,7 +9420,7 @@ function createPanel(api, hooks = {}) {
     const t = api.i18n.t;
     const w = api.ui.widgets;
     host = new Host(api);
-    store = new Store(host, hooks.afterCommit);
+    store = new Store(host, { afterCommit: hooks.afterCommit, onBlocked: () => api.ui.toast({ kind: "error", title: t("Magenta cannot change this map yet"), detail: t("Its Magenta data could not be read. Start over from the notice at the top of the panel, or update Magenta.") }) });
     const s = store, h = host;
     const sim = createSimulator(api, h, s, () => everyFrame());
     if (pendingIndex !== null) s.selected = s.anchorOf(pendingIndex);
@@ -9266,10 +9432,27 @@ function createPanel(api, hooks = {}) {
     const menuButton = w.button("\u22EF", { ghost: true, title: t("More"), onClick: () => menu(menuButton) });
     const listEl = el("div", { className: "mg-list", tabIndex: 0 });
     const editorEl = el("div", { className: "mg-editor" });
-    const root = el("div", { className: "mg" }, el("style", {}, STYLE), el("div", { className: "mg-head" }, search2, newButton, recipeButton, menuButton), el("div", { className: "mg-split" }, listEl, editorEl));
+    const notice = el("div", { className: "mg-notice", hidden: true });
+    const root = el("div", { className: "mg" }, el("style", {}, STYLE), el("div", { className: "mg-head" }, search2, newButton, recipeButton, menuButton), notice, el("div", { className: "mg-split" }, listEl, editorEl));
     body.append(root);
+    const renderNotice = () => {
+      const problem = h.sidecarProblem();
+      notice.hidden = !problem;
+      notice.replaceChildren();
+      if (!problem) return;
+      const what = problem.kind === "newer" ? t("This map's Magenta data was written by a newer Magenta (version {v}). Its folders, counter names and build rows are hidden, and the triggers cannot be changed here until Magenta is updated or the data is dropped.", { v: problem.version ?? "?" }) : t("This map's Magenta data could not be read ({detail}). Its folders, counter names and build rows are hidden, and the triggers cannot be changed here until the data is dropped.", { detail: problem.detail ?? "" });
+      notice.append(el("span", {}, what), w.button(t("Drop it and start over"), { onClick: () => {
+        void api.ui.confirm(t("Every build row's sentence, every folder and every counter name in it is lost; the triggers themselves stay as they are in the map. Continue?"), { title: t("Drop Magenta's data") }).then((ok) => {
+          if (!ok) return;
+          h.discardSidecar();
+          s.reload();
+          render();
+        });
+      } }));
+    };
     const render = () => {
       root.classList.toggle("narrow", root.clientWidth < 560);
+      renderNotice();
       renderList({ api, host: h, store: s, query: () => search2.value, filter: () => filter, onOpenFolderMenu: folderMenu }, listEl, moveTrigger);
       renderEditor({ api, host: h, store: s }, editorEl);
     };
@@ -9293,7 +9476,10 @@ function createPanel(api, hooks = {}) {
     });
     const offDoc = api.events.on("document", () => {
       if (!api.document.isOpen()) close();
-      else s.reload();
+      else {
+        s.forget();
+        s.reload();
+      }
     });
     const offLang = api.events.on("language", render);
     const resize = new ResizeObserver(() => root.classList.toggle("narrow", root.clientWidth < 560));
@@ -9308,21 +9494,37 @@ function createPanel(api, hooks = {}) {
       s.commit(t("New trigger"), () => [...s.list.slice(0, at), fresh, ...s.list.slice(at)], { folders, select: at });
       setTimeout(() => editorEl.querySelector("input")?.focus(), 0);
     }
-    function insertTriggers(label, make) {
+    function insertTriggers(label, make, sidecar) {
       const at = s.selected === null ? s.list.length : s.selected + 1;
       const folder = s.selected !== null ? s.folders.get(s.selected) : void 0;
       const count = make(() => 0).length;
+      if (!count) return false;
       const folders = /* @__PURE__ */ new Map();
       for (const [i, f] of s.folders) folders.set(i >= at ? i + count : i, f);
       if (folder !== void 0) for (let i = 0; i < count; i++) folders.set(at + i, folder);
-      s.commit(label, (intern) => [...s.list.slice(0, at), ...make(intern), ...s.list.slice(at)], { folders, select: at });
+      s.commit(label, (intern) => [...s.list.slice(0, at), ...make(intern), ...s.list.slice(at)], { folders, select: at, sidecar: sidecar?.() });
+      return true;
     }
     function recipes(anchor) {
-      const items = RECIPES.map((r, i) => ({ value: i, label: r.label, hint: r.everyFrame ? "EUD" : void 0 }));
+      const items = RECIPES.map((r, i) => ({ value: i, label: r.label, hint: r.needsBuild ? "BUILD" : r.everyFrame ? "EUD" : void 0 }));
       pickChoice(api, anchor, items, (i) => {
         const r = RECIPES[i];
         const locations = h.locations().map((l) => l.value).filter((n) => n !== 64);
-        insertTriggers(t("Add recipe"), (intern) => r.build(recipeContext(intern, locations)));
+        let msqc = s.sidecar.msqc;
+        const memo = /* @__PURE__ */ new Map();
+        const input = (what, options = {}) => {
+          const key = `${what}:${options.code ?? ""}:${options.button ?? ""}`;
+          if (memo.has(key)) return memo.get(key);
+          const made = newInput(h, { ...s, sidecar: { ...s.sidecar, msqc } }, what, options);
+          if (made) msqc = made.msqc;
+          memo.set(key, made?.condition ?? null);
+          return made?.condition ?? null;
+        };
+        const ok = insertTriggers(t("Add recipe"), (intern) => r.build(recipeContext(intern, locations, input)), () => msqc !== s.sidecar.msqc ? { msqc } : {});
+        if (!ok) {
+          api.ui.toast({ kind: "error", title: t("No room for synced input"), detail: t("It needs a free counter unit and a free location slot.") });
+          return;
+        }
         api.ui.toast({ kind: "info", title: r.label, detail: r.description + (r.everyFrame && !everyFrame() ? " " + t("Turn on Run triggers every frame in the \u22EF menu for this one.") : "") });
       }, { width: 300, searchable: true, placeholder: t("Recipe\u2026") });
     }
@@ -9342,6 +9544,17 @@ function createPanel(api, hooks = {}) {
       else folders.set(dest, folder);
       s.commit(t("Move trigger"), () => list, { folders, select: dest });
     }
+    function detachAll(triggers) {
+      let builds = s.sidecar.builds, expansions = s.sidecar.expansions, stuck = 0;
+      const out = triggers.map((tr) => {
+        const d = detach(tr, builds, expansions, (taken) => freeCell({ ...s, sidecar: { ...s.sidecar, builds, expansions } }, h, taken));
+        builds = d.builds;
+        expansions = d.expansions;
+        stuck += d.stuck;
+        return d.trigger;
+      });
+      return { triggers: out, sidecar: builds !== s.sidecar.builds || expansions !== s.sidecar.expansions ? { builds, expansions } : {}, stuck };
+    }
     function duplicate() {
       if (s.selected === null) return;
       const i = s.selected;
@@ -9349,14 +9562,17 @@ function createPanel(api, hooks = {}) {
       for (const [k, f2] of s.folders) folders.set(k > i ? k + 1 : k, f2);
       const f = s.folders.get(i);
       if (f !== void 0) folders.set(i + 1, f);
-      s.commit(t("Duplicate trigger"), () => [...s.list.slice(0, i + 1), clone(s.list[i]), ...s.list.slice(i + 1)], { folders, select: i + 1 });
+      const d = detachAll([clone(s.list[i])]);
+      if (d.stuck) api.ui.toast({ kind: "error", title: t("No free counter cell for the copy's build rows"), detail: t("{n, plural, one {# row is} other {# rows are}} shared with the original: editing it in one changes the other.", { n: d.stuck }) });
+      s.commit(t("Duplicate trigger"), () => [...s.list.slice(0, i + 1), ...d.triggers, ...s.list.slice(i + 1)], { folders, select: i + 1, sidecar: d.sidecar });
     }
     function remove() {
       if (s.selected === null) return;
       const i = s.selected;
       const folders = /* @__PURE__ */ new Map();
       for (const [k, f] of s.folders) if (k !== i) folders.set(k > i ? k - 1 : k, f);
-      s.commit(t("Delete trigger"), () => s.list.filter((_, k) => k !== i), { folders, select: Math.min(i, s.list.length - 2) < 0 ? null : Math.min(i, s.list.length - 2) });
+      const builds = prune(s.sidecar.builds, s.list, [i]);
+      s.commit(t("Delete trigger"), () => s.list.filter((_, k) => k !== i), { folders, select: Math.min(i, s.list.length - 2) < 0 ? null : Math.min(i, s.list.length - 2), sidecar: builds.length !== s.sidecar.builds.length ? { builds } : {} });
     }
     function toggleDisabled() {
       if (s.selected === null) return;
@@ -9393,7 +9609,8 @@ function createPanel(api, hooks = {}) {
       const at = s.selected === null ? s.list.length : s.selected + 1;
       const folders = /* @__PURE__ */ new Map();
       for (const [i, f] of s.folders) folders.set(i >= at ? i + parsed.length : i, f);
-      s.commit(t("Paste triggers"), () => [...s.list.slice(0, at), ...parsed.map((p) => p.trigger), ...s.list.slice(at)], { folders, select: at });
+      const d = detachAll(parsed.map((p) => p.trigger));
+      s.commit(t("Paste triggers"), () => [...s.list.slice(0, at), ...d.triggers, ...s.list.slice(at)], { folders, select: at, sidecar: d.sidecar });
     }
     function newFolder() {
       void api.ui.prompt(t("Folder name"), { title: t("New folder") }).then((name) => {

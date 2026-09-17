@@ -49,12 +49,28 @@ export interface Sidecar {
 
 export const emptySidecar = (): Sidecar => ({ version: 1, folders: [], counters: [], settings: {}, expansions: [], builds: [], chat: null, msqc: null });
 
+/** Why a member could not be read: written by a newer Magenta, or not the JSON it should be. */
+export interface SidecarProblem {
+  kind: "newer" | "malformed";
+  /** The version found, for a newer one. */
+  version?: number;
+  detail?: string;
+}
+
+export const SIDECAR_VERSION = 1;
+
 export function decodeSidecar(bytes: Uint8Array | null): Sidecar {
-  if (!bytes) return emptySidecar();
+  return readSidecar(bytes).sidecar;
+}
+
+/** The member decoded, or an empty sidecar with the reason it could not be. */
+export function readSidecar(bytes: Uint8Array | null): { sidecar: Sidecar; problem: SidecarProblem | null } {
+  if (!bytes) return { sidecar: emptySidecar(), problem: null };
   try {
     const parsed = JSON.parse(new TextDecoder().decode(bytes)) as Partial<Sidecar>;
-    if (parsed.version !== 1) return emptySidecar();
-    return {
+    if (!parsed || typeof parsed !== "object" || !Number.isInteger(parsed.version)) return { sidecar: emptySidecar(), problem: { kind: "malformed", detail: "no version" } };
+    if ((parsed.version as number) > SIDECAR_VERSION) return { sidecar: emptySidecar(), problem: { kind: "newer", version: parsed.version } };
+    return { problem: null, sidecar: {
       version: 1,
       folders: Array.isArray(parsed.folders) ? parsed.folders.filter((f) => f && typeof f.id === "string" && typeof f.name === "string").map((f) => ({ ...f, triggers: Array.isArray(f.triggers) ? f.triggers : [] })) : [],
       counters: Array.isArray(parsed.counters) ? parsed.counters.filter((c) => c && typeof c.name === "string" && Number.isInteger(c.player) && Number.isInteger(c.unit)) : [],
@@ -63,9 +79,9 @@ export function decodeSidecar(bytes: Uint8Array | null): Sidecar {
       builds: Array.isArray(parsed.builds) ? parsed.builds.filter((x) => x && typeof x.id === "string" && typeof x.kind === "string") : [],
       chat: parsed.chat && Array.isArray(parsed.chat.cell) ? { cell: [Number(parsed.chat.cell[0]), Number(parsed.chat.cell[1])], args: decodeArgs(parsed.chat.args) } : null,
       msqc: parsed.msqc && typeof parsed.msqc === "object" ? { keys: {}, clicks: {}, mouseIn: {}, select: null, mouseBase: null, qcUnit: 58, qcLoc: 62, qcPlayer: 10, ...(parsed.msqc as Partial<Msqc>) } : null,
-    };
-  } catch {
-    return emptySidecar();
+    } };
+  } catch (e) {
+    return { sidecar: emptySidecar(), problem: { kind: "malformed", detail: String((e as Error).message ?? e) } };
   }
 }
 

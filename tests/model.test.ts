@@ -3,7 +3,7 @@ import { ActionType, ConditionType, Comparison, PlayerGroup, emptyAction, emptyC
 import { allocate, cellKey, playerSlots, usage } from "../src/model/counters";
 import { check } from "../src/model/checks";
 import { search } from "../src/model/search";
-import { decodeSidecar, encodeSidecar, folderOf, withFolders, type Sidecar } from "../src/model/sidecar";
+import { decodeSidecar, encodeSidecar, folderOf, readSidecar, withFolders, type Sidecar } from "../src/model/sidecar";
 import { fingerprint, isTriggerDisabled, setTriggerDisabled, setOwners } from "../src/model/records";
 
 const trig = (owners: number[], conditions: Partial<ReturnType<typeof emptyCondition>>[], actions: Partial<ReturnType<typeof emptyAction>>[]) =>
@@ -117,5 +117,45 @@ describe("sidecar", () => {
     expect([...folderOf(edited, sc)]).toEqual([[1, "f"]]);
     expect(decodeSidecar(new TextEncoder().encode("{not json"))).toEqual({ version: 1, folders: [], counters: [], settings: {}, expansions: [], builds: [], chat: null, msqc: null });
     expect(decodeSidecar(null).folders).toEqual([]);
+  });
+});
+
+describe("deferred rows", () => {
+  it("warns when a native row uses a location a build row above it moves after the pass", () => {
+    const moveFlag = { ...emptyAction(), type: ActionType.SetDeaths, player: 0, unitId: 181, modifier: 7, target: 1 };
+    const create = { ...emptyAction(), type: ActionType.CreateUnit, player: 0, unitId: 0, location: 3, target: 1 };
+    const t = trig([0], [{ type: ConditionType.Always }], [moveFlag, create]);
+    const ctx = { deferredLocation: (a: typeof moveFlag) => (a.type === ActionType.SetDeaths && a.unitId === 181 ? 3 : null), locationName: (n: number) => `Loc ${n}` };
+    const p = check(t, ctx).filter((x) => x.text.includes("after this cycle"));
+    expect(p).toHaveLength(1);
+    expect(p[0].at).toEqual({ kind: "action", index: 1 });
+    expect(p[0].text).toContain("Row 1 moves Loc 3");
+    // A native row above the move, or on another location, is fine.
+    expect(check(trig([0], [{ type: ConditionType.Always }], [create, moveFlag]), ctx).some((x) => x.text.includes("after this cycle"))).toBe(false);
+    expect(check(trig([0], [{ type: ConditionType.Always }], [moveFlag, { ...create, location: 4 }]), ctx).some((x) => x.text.includes("after this cycle"))).toBe(false);
+  });
+});
+
+describe("sidecar problems", () => {
+  const enc = (o: unknown) => new TextEncoder().encode(JSON.stringify(o));
+  it("says when the member is newer or not JSON, instead of an empty sidecar", () => {
+    expect(readSidecar(null).problem).toBeNull();
+    expect(readSidecar(enc({ version: 1 })).problem).toBeNull();
+    expect(readSidecar(enc({ version: 2, builds: [] })).problem).toEqual({ kind: "newer", version: 2 });
+    expect(readSidecar(enc({ folders: [] })).problem).toMatchObject({ kind: "malformed" });
+    expect(readSidecar(new TextEncoder().encode("{not json")).problem).toMatchObject({ kind: "malformed" });
+    expect(readSidecar(enc({ version: 2 })).sidecar.builds).toEqual([]);
+    // The plain decoder is the same reading with the reason dropped.
+    expect(decodeSidecar(enc({ version: 2 })).version).toBe(1);
+  });
+});
+
+describe("search across scripts", () => {
+  it("matches Korean and other non-Latin text instead of dropping it", () => {
+    const items = [{ label: "Create unit", aliases: ["유닛 생성"], value: 1 }, { label: "Kill unit", aliases: ["유닛 제거"], value: 2 }, { label: "Victory", aliases: ["승리"], value: 3 }];
+    expect(search(items, "유닛").map((h) => h.item.value).sort()).toEqual([1, 2]);
+    expect(search(items, "생성")[0].item.value).toBe(1);
+    expect(search(items, "승리")[0].item.value).toBe(3);
+    expect(search(items, "unit")).toHaveLength(2);
   });
 });

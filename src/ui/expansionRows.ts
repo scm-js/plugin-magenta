@@ -119,7 +119,7 @@ export function renderCounterExpansion(api: PluginApi, host: Host, store: Store,
   if (x.kind === "copy") into.append(t("Copy "), from, t(" into "), to, " ", bits);
   else if (x.kind === "add") into.append(t("Add "), from, t(" to "), to, " ", bits);
   else into.append(t("Subtract "), from, t(" from "), to, " ", bits);
-  into.append(api.ui.el("span", { className: "mg-tag", title: t("Done by a run of {n} generated triggers after this one, in the same cycle; they are hidden here and locked in the other editors.", { n: (x.bits ?? 32) + (x.kind === "copy" ? 2 : 1) }) }, "A+"));
+  into.append(api.ui.el("span", { className: "mg-tag", title: t("Done by a run of {n} generated triggers right after this one, in the same cycle: this trigger's own rows run first, the triggers after the run see the result. The run is hidden here and locked in the other editors.", { n: (x.bits ?? 32) + (x.kind === "copy" ? 2 : 1) }) }, "A+"));
 }
 
 /** "[A] is [greater than] [B]" — the sentence of a comparison, with its chips live. */

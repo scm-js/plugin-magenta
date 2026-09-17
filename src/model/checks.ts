@@ -2,7 +2,7 @@
  * What is wrong with a trigger, as lines under its rows: pure functions over the record
  * and a little context (what exists on the map, what the map's settings say).
  */
-import { ActionType, Comparison, ConditionType, TriggerFlag, MAX_ACTIONS, MAX_CONDITIONS, type TriggerRecord } from "../../vendor/triggers";
+import { ActionType, Comparison, ConditionType, TriggerFlag, MAX_ACTIONS, MAX_CONDITIONS, type ActionRecord, type TriggerRecord } from "../../vendor/triggers";
 import { actionDef, conditionDef } from "../../vendor/triggerDefs";
 import { actionSpans, recognizeAction, recognizeCondition, isEud, accessOf } from "./eud";
 import { liveActions, liveConditions, owners, isActionDisabled, isConditionDisabled } from "./records";
@@ -26,7 +26,13 @@ export interface CheckContext {
   claimedCells?: ReadonlySet<number>;
   /** The trigger is a per-player template: it owns no player on purpose. */
   template?: boolean;
+  /** The location a build row moves once this cycle's triggers have all run (a Move location, a pick's box, a pass's centre), or null for any other action. */
+  deferredLocation?(action: ActionRecord): number | null;
+  locationName?(number: number): string;
 }
+
+/** Actions that change nothing shared: what a player sees or hears on their own screen, and the trigger's own bookkeeping. */
+const LOCAL_ACTIONS = new Set<number>([ActionType.Comment, ActionType.PreserveTrigger, ActionType.Wait, ActionType.DisplayText, ActionType.PlayWav, ActionType.CenterView, ActionType.MinimapPing, ActionType.TalkingPortrait, ActionType.Transmission, ActionType.MuteUnitSpeech, ActionType.UnmuteUnitSpeech, ActionType.SetMissionObjectives, ActionType.LeaderboardControl, ActionType.LeaderboardControlAt, ActionType.LeaderboardResources, ActionType.LeaderboardKills, ActionType.LeaderboardPoints, ActionType.LeaderboardGoalControl, ActionType.LeaderboardGoalControlAt, ActionType.LeaderboardGoalResources, ActionType.LeaderboardGoalKills, ActionType.LeaderboardGoalPoints, ActionType.LeaderboardComputerPlayers, ActionType.LeaderboardGreed]);
 
 const LOCATION_ANYWHERE = 64;
 
@@ -63,6 +69,12 @@ export function check(trigger: TriggerRecord, ctx: CheckContext = {}): Problem[]
   const usesSwitch = enabledConditions.some(({ c }) => c.type === ConditionType.Switch) && actions.some((a) => a.type === ActionType.SetSwitch && !isActionDisabled(a));
   if (sharedOwner && perPlayer && usesSwitch) out.push({ level: "warn", text: "Every owner runs this trigger, and its switch is shared: when the Current Player condition is false for one of them, that run can flip the switch for the others. Guard with a death counter of the Current Player instead." });
 
+  // A value each computer has of its own, read by a trigger that changes the game: the computers can disagree and the game drops out of sync.
+  const localRead = enabledConditions.find(({ c }) => c.type === ConditionType.Deaths && isEud(c.player) && recognizeCondition(c)?.entry.local);
+  if (localRead && actions.some((a) => !isActionDisabled(a) && !LOCAL_ACTIONS.has(a.type))) {
+    out.push({ level: "warn", text: `${recognizeCondition(localRead.c)!.entry.name} is each computer's own, and this trigger changes the game for everyone: the players can go out of sync. For a key or a click, use a synced press (search "key press"); a read like this fits only what one screen shows.`, at: { kind: "condition", index: localRead.index } });
+  }
+
   const preserved = (trigger.flags & TriggerFlag.Preserve) !== 0 || actions.some((a) => a.type === ActionType.PreserveTrigger && !isActionDisabled(a));
   // The records of a grouped entry (a unit type's speed, a player's colour) are known as a set, not one by one.
   const groups = actionSpans(actions).filter((s) => s.group);
@@ -71,9 +83,22 @@ export function check(trigger: TriggerRecord, ctx: CheckContext = {}): Problem[]
     const v = s.group!.entry.value;
     if (v?.kind === "string" && s.group!.value !== 0 && ctx.stringExists && !ctx.stringExists(s.group!.value)) out.push({ level: "error", text: `${s.group!.entry.name} names string ${s.group!.value}, which the map does not have.`, at: { kind: "action", index: s.at } });
   }
+  // A build row moves its location after every trigger has run this cycle; a native row below it still sees the location where it was.
+  const movedLater = new Map<number, number>();
   actions.forEach((a, index) => {
     if (isActionDisabled(a) || inGroup.has(index)) return;
     const at = { kind: "action" as const, index };
+    const deferred = ctx.deferredLocation?.(a) ?? null;
+    if (deferred !== null) { if (!movedLater.has(deferred)) movedLater.set(deferred, index); return; }
+    const def0 = actionDef(a.type);
+    for (const arg of def0?.args ?? []) {
+      if (arg.kind !== "location") continue;
+      const value = a[arg.field as keyof typeof a] as number;
+      const row = movedLater.get(value);
+      if (row === undefined) continue;
+      out.push({ level: "warn", text: `Row ${row + 1} moves ${ctx.locationName?.(value) ?? `location ${value}`} only after this cycle's triggers have all run, so this row still sees it where it was. Put this row in a trigger that fires in a later cycle.`, at });
+      break;
+    }
     if (a.type === ActionType.Wait || a.type === ActionType.Transmission) {
       if (preserved) out.push({ level: "warn", text: "A Wait in a preserved trigger holds up every other trigger of its owner while it waits, every cycle.", at });
       if (ctx.everyFrame) out.push({ level: "warn", text: "With triggers running every frame, a Wait blocks the owner's other triggers for its whole length.", at });

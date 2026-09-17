@@ -11,7 +11,11 @@ import { isFrameTrigger } from "./frame";
 import type { Folder } from "../model/sidecar";
 import { setOwners } from "../model/records";
 import { DEFAULT_PLACEHOLDER, HUMAN_PLAYERS } from "../model/sync";
-import { RECIPES, recipeContext } from "../model/recipes";
+import { RECIPES, recipeContext, type RecipeContext } from "../model/recipes";
+import { detach, prune } from "../model/ownership";
+import type { Sidecar } from "../model/sidecar";
+import { newInput } from "./buildRows";
+import { freeCell } from "./expansionRows";
 import type { Starter } from "../model/starters";
 import { openBuildDialog } from "./build";
 import { pickChoice } from "./chips";
@@ -65,7 +69,7 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
     const t = api.i18n.t;
     const w = api.ui.widgets;
     host = new Host(api);
-    store = new Store(host, hooks.afterCommit);
+    store = new Store(host, { afterCommit: hooks.afterCommit, onBlocked: () => api.ui.toast({ kind: "error", title: t("Magenta cannot change this map yet"), detail: t("Its Magenta data could not be read. Start over from the notice at the top of the panel, or update Magenta.") }) });
     const s = store, h = host;
     const sim = createSimulator(api, h, s, () => everyFrame());
     if (pendingIndex !== null) s.selected = s.anchorOf(pendingIndex);
@@ -78,11 +82,32 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
     const menuButton = w.button("⋯", { ghost: true, title: t("More"), onClick: () => menu(menuButton) });
     const listEl = el("div", { className: "mg-list", tabIndex: 0 });
     const editorEl = el("div", { className: "mg-editor" });
-    const root = el("div", { className: "mg" }, el("style", {}, STYLE), el("div", { className: "mg-head" }, search, newButton, recipeButton, menuButton), el("div", { className: "mg-split" }, listEl, editorEl));
+    const notice = el("div", { className: "mg-notice", hidden: true });
+    const root = el("div", { className: "mg" }, el("style", {}, STYLE), el("div", { className: "mg-head" }, search, newButton, recipeButton, menuButton), notice, el("div", { className: "mg-split" }, listEl, editorEl));
     body.append(root);
+
+    /** The member could not be read: say so, and offer to write over it — nothing is written until then. */
+    const renderNotice = () => {
+      const problem = h.sidecarProblem();
+      notice.hidden = !problem;
+      notice.replaceChildren();
+      if (!problem) return;
+      const what = problem.kind === "newer"
+        ? t("This map's Magenta data was written by a newer Magenta (version {v}). Its folders, counter names and build rows are hidden, and the triggers cannot be changed here until Magenta is updated or the data is dropped.", { v: problem.version ?? "?" })
+        : t("This map's Magenta data could not be read ({detail}). Its folders, counter names and build rows are hidden, and the triggers cannot be changed here until the data is dropped.", { detail: problem.detail ?? "" });
+      notice.append(el("span", {}, what), w.button(t("Drop it and start over"), { onClick: () => {
+        void api.ui.confirm(t("Every build row's sentence, every folder and every counter name in it is lost; the triggers themselves stay as they are in the map. Continue?"), { title: t("Drop Magenta's data") }).then((ok) => {
+          if (!ok) return;
+          h.discardSidecar();
+          s.reload();
+          render();
+        });
+      } }));
+    };
 
     const render = () => {
       root.classList.toggle("narrow", root.clientWidth < 560);
+      renderNotice();
       renderList({ api, host: h, store: s, query: () => search.value, filter: () => filter, onOpenFolderMenu: folderMenu }, listEl, moveTrigger);
       renderEditor({ api, host: h, store: s }, editorEl);
     };
@@ -99,7 +124,7 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
     /* ── Changes from elsewhere ── */
     const offTriggers = api.events.on("triggers", () => { if (s.stale()) s.reload(); });
     const offFile = api.events.on("file", () => { if (s.sidecar !== h.sidecar()) s.reload(); });
-    const offDoc = api.events.on("document", () => { if (!api.document.isOpen()) close(); else s.reload(); });
+    const offDoc = api.events.on("document", () => { if (!api.document.isOpen()) close(); else { s.forget(); s.reload(); } });
     const offLang = api.events.on("language", render);
     const resize = new ResizeObserver(() => root.classList.toggle("narrow", root.clientWidth < 560));
     resize.observe(root);
@@ -115,23 +140,37 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
       s.commit(t("New trigger"), () => [...s.list.slice(0, at), fresh, ...s.list.slice(at)], { folders, select: at });
       setTimeout(() => (editorEl.querySelector("input") as HTMLInputElement | null)?.focus(), 0);
     }
-    /** Insert whole triggers after the selection, in its folder, and select the first. */
-    function insertTriggers(label: string, make: (intern: (text: string) => number) => TriggerRecord[]): void {
+    /** Insert whole triggers after the selection, in its folder, and select the first; `sidecar` is asked after `make` has run once. */
+    function insertTriggers(label: string, make: (intern: (text: string) => number) => TriggerRecord[], sidecar?: () => Partial<Sidecar>): boolean {
       const at = s.selected === null ? s.list.length : s.selected + 1;
       const folder = s.selected !== null ? s.folders.get(s.selected) : undefined;
       // How many are coming, so the folders after the insertion point can be shifted first.
       const count = make(() => 0).length;
+      if (!count) return false;
       const folders = new Map<number, string>();
       for (const [i, f] of s.folders) folders.set(i >= at ? i + count : i, f);
       if (folder !== undefined) for (let i = 0; i < count; i++) folders.set(at + i, folder);
-      s.commit(label, (intern) => [...s.list.slice(0, at), ...make(intern), ...s.list.slice(at)], { folders, select: at });
+      s.commit(label, (intern) => [...s.list.slice(0, at), ...make(intern), ...s.list.slice(at)], { folders, select: at, sidecar: sidecar?.() });
+      return true;
     }
     function recipes(anchor: HTMLElement): void {
-      const items = RECIPES.map((r, i) => ({ value: i, label: r.label, hint: r.everyFrame ? "EUD" : undefined }));
+      const items = RECIPES.map((r, i) => ({ value: i, label: r.label, hint: r.needsBuild ? "BUILD" : r.everyFrame ? "EUD" : undefined }));
       pickChoice(api, anchor, items, (i) => {
         const r = RECIPES[i];
         const locations = h.locations().map((l) => l.value).filter((n) => n !== 64);
-        insertTriggers(t("Add recipe"), (intern) => r.build(recipeContext(intern, locations)));
+        // Synced input a recipe asks for is allocated once, whichever call of `build` asks first, and the MSQC bookkeeping goes in with the triggers.
+        let msqc = s.sidecar.msqc;
+        const memo = new Map<string, ReturnType<RecipeContext["input"]>>();
+        const input: RecipeContext["input"] = (what, options = {}) => {
+          const key = `${what}:${options.code ?? ""}:${options.button ?? ""}`;
+          if (memo.has(key)) return memo.get(key)!;
+          const made = newInput(h, { ...s, sidecar: { ...s.sidecar, msqc } } as Store, what, options);
+          if (made) msqc = made.msqc;
+          memo.set(key, made?.condition ?? null);
+          return made?.condition ?? null;
+        };
+        const ok = insertTriggers(t("Add recipe"), (intern) => r.build(recipeContext(intern, locations, input)), () => (msqc !== s.sidecar.msqc ? { msqc } : {}));
+        if (!ok) { api.ui.toast({ kind: "error", title: t("No room for synced input"), detail: t("It needs a free counter unit and a free location slot.") }); return; }
         api.ui.toast({ kind: "info", title: r.label, detail: r.description + (r.everyFrame && !everyFrame() ? " " + t("Turn on Run triggers every frame in the ⋯ menu for this one.") : "") });
       }, { width: 300, searchable: true, placeholder: t("Recipe…") });
     }
@@ -147,6 +186,16 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
       if (folder === null) folders.delete(dest); else folders.set(dest, folder);
       s.commit(t("Move trigger"), () => list, { folders, select: dest });
     }
+    /** The triggers with build rows and counter steps of their own, and the sidecar lists grown by the copies. */
+    function detachAll(triggers: TriggerRecord[]): { triggers: TriggerRecord[]; sidecar: Partial<Sidecar>; stuck: number } {
+      let builds = s.sidecar.builds, expansions = s.sidecar.expansions, stuck = 0;
+      const out = triggers.map((tr) => {
+        const d = detach(tr, builds, expansions, (taken) => freeCell({ ...s, sidecar: { ...s.sidecar, builds, expansions } } as Store, h, taken));
+        builds = d.builds; expansions = d.expansions; stuck += d.stuck;
+        return d.trigger;
+      });
+      return { triggers: out, sidecar: builds !== s.sidecar.builds || expansions !== s.sidecar.expansions ? { builds, expansions } : {}, stuck };
+    }
     function duplicate(): void {
       if (s.selected === null) return;
       const i = s.selected;
@@ -154,14 +203,18 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
       for (const [k, f] of s.folders) folders.set(k > i ? k + 1 : k, f);
       const f = s.folders.get(i);
       if (f !== undefined) folders.set(i + 1, f);
-      s.commit(t("Duplicate trigger"), () => [...s.list.slice(0, i + 1), clone(s.list[i]), ...s.list.slice(i + 1)], { folders, select: i + 1 });
+      const d = detachAll([clone(s.list[i])]);
+      if (d.stuck) api.ui.toast({ kind: "error", title: t("No free counter cell for the copy's build rows"), detail: t("{n, plural, one {# row is} other {# rows are}} shared with the original: editing it in one changes the other.", { n: d.stuck }) });
+      s.commit(t("Duplicate trigger"), () => [...s.list.slice(0, i + 1), ...d.triggers, ...s.list.slice(i + 1)], { folders, select: i + 1, sidecar: d.sidecar });
     }
     function remove(): void {
       if (s.selected === null) return;
       const i = s.selected;
       const folders = new Map<number, string>();
       for (const [k, f] of s.folders) if (k !== i) folders.set(k > i ? k - 1 : k, f);
-      s.commit(t("Delete trigger"), () => s.list.filter((_, k) => k !== i), { folders, select: Math.min(i, s.list.length - 2) < 0 ? null : Math.min(i, s.list.length - 2) });
+      // Its own build rows go with it; the counter steps' sync drops theirs.
+      const builds = prune(s.sidecar.builds, s.list, [i]);
+      s.commit(t("Delete trigger"), () => s.list.filter((_, k) => k !== i), { folders, select: Math.min(i, s.list.length - 2) < 0 ? null : Math.min(i, s.list.length - 2), sidecar: builds.length !== s.sidecar.builds.length ? { builds } : {} });
     }
     function toggleDisabled(): void {
       if (s.selected === null) return;
@@ -188,7 +241,9 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
       const at = s.selected === null ? s.list.length : s.selected + 1;
       const folders = new Map<number, string>();
       for (const [i, f] of s.folders) folders.set(i >= at ? i + parsed.length : i, f);
-      s.commit(t("Paste triggers"), () => [...s.list.slice(0, at), ...parsed.map((p) => p.trigger), ...s.list.slice(at)], { folders, select: at });
+      // Text copied from this map names its build rows' cells: the paste gets rows of its own.
+      const d = detachAll(parsed.map((p) => p.trigger));
+      s.commit(t("Paste triggers"), () => [...s.list.slice(0, at), ...d.triggers, ...s.list.slice(at)], { folders, select: at, sidecar: d.sidecar });
     }
     function newFolder(): void {
       void api.ui.prompt(t("Folder name"), { title: t("New folder") }).then((name) => {

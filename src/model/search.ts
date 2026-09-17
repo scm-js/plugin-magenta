@@ -17,7 +17,8 @@ export interface SearchHit<T> {
   score: number;
 }
 
-const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+/** Lower-cased letters and digits of any script — a Korean alias matches a Korean query — with everything else a space. */
+const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N} ]+/gu, " ").replace(/\s+/g, " ").trim();
 /** "brings" → "bring", "kills" → "kill": a verb typed the way a sentence reads still finds the row. */
 const stem = (w: string) => (w.length > 3 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w);
 const startsWord = (token: string, w: string) => token.startsWith(w) || token.startsWith(stem(w)) || stem(token).startsWith(stem(w));

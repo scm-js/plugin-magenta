@@ -2813,6 +2813,7 @@
     {
       "id": "game.localPlayer",
       "kind": "condition",
+      "local": true,
       "group": "Game",
       "name": "Local player",
       "aliases": [
@@ -2843,6 +2844,7 @@
     {
       "id": "game.mouseX",
       "kind": "condition",
+      "local": true,
       "group": "Game",
       "name": "Mouse X on screen",
       "aliases": [
@@ -2873,6 +2875,7 @@
     {
       "id": "game.mouseY",
       "kind": "condition",
+      "local": true,
       "group": "Game",
       "name": "Mouse Y on screen",
       "sentence": {
@@ -2899,6 +2902,7 @@
     {
       "id": "game.screenX",
       "kind": "condition",
+      "local": true,
       "group": "Game",
       "name": "Screen X on the map",
       "aliases": [
@@ -2928,6 +2932,7 @@
     {
       "id": "game.screenY",
       "kind": "condition",
+      "local": true,
       "group": "Game",
       "name": "Screen Y on the map",
       "sentence": {
@@ -2953,6 +2958,7 @@
     {
       "id": "game.key",
       "kind": "condition",
+      "local": true,
       "group": "Game",
       "name": "Keyboard key state",
       "aliases": [

@@ -78,8 +78,8 @@ function chip(api: PluginApi, label: string, className = "counter"): HTMLButtonE
   return api.ui.el("button", { type: "button", className: `mg-chip ${className}` }, label) as HTMLButtonElement;
 }
 
-const BUILD_NOTE = "Needs a Build (⋯ menu): the game's own triggers cannot do this, so the built map carries the code that does. The source map stays as it is.";
-const INPUT_NOTE = "Needs a Build (⋯ menu). The MSQC plugin in the built map turns each player's input into a game command, so every client sees it in the same cycle; the cell is cleared after the triggers have read it.";
+const BUILD_NOTE = "Needs a Build (⋯ menu): the game's own triggers cannot do this, so the built map carries the code that does. It runs once every trigger has had its turn this cycle — a row below it in this trigger still sees the map as it was; a trigger in the next cycle sees the result. The source map stays as it is.";
+const INPUT_NOTE = "Needs a Build (⋯ menu). The MSQC plugin in the built map turns each player's input into a game command, so every computer sees the same press in the same cycle, before its triggers run; the cell is cleared once they have.";
 const tag = (api: PluginApi, title = BUILD_NOTE): HTMLElement => api.ui.el("span", { className: "mg-tag", title }, "BUILD");
 
 const FIELDS = UNIT_FIELDS.map((f, value) => ({ value, label: f.label, field: f.field, yesNo: f.yesNo === true }));
@@ -303,7 +303,7 @@ function renderPick(api: PluginApi, host: Host, store: Store, hook: PickRecord, 
   }
   into.append(t(": "), ...doChips(api, host, store, hook.do, (d) => update({ do: d }), true));
   const locate = chip(api, hook.locate ? namer.location(hook.locate) : t("no location"), "");
-  locate.title = t("A small box is centred on the unit, so the trigger's other actions — or the next trigger's — can act on it through the location.");
+  locate.title = t("A small box is centred on the unit once this cycle's triggers have all run, so a trigger in the next cycle can act on it through the location. A row below this one in the same trigger still sees the location where it was.");
   locate.addEventListener("click", () => pickLocation(api, host, locate, hook.locate ?? 64, (v) => update({ locate: v > 0 && v < 64 ? v : null })));
   const to = chip(api, hook.to ? cellLabel(hook.to, namer) : t("no counter"));
   to.title = t("The field's value — or the distance, for the nearest — goes into this counter; 0 when nothing matched.");
@@ -363,7 +363,7 @@ export function renderConditionRow(api: PluginApi, host: Host, store: Store, row
     const fi = FIELDS[fieldIndex(s.field)];
     const field = chip(api, fi.label, "");
     field.addEventListener("click", () => pickChoice(api, field, FIELDS, (v) => update(FIELDS[v].yesNo ? { field: FIELDS[v].field, cmp: "=", value: s.cmp === "=" && s.value === 0 ? 0 : 1 } : { field: FIELDS[v].field }), { current: fieldIndex(s.field) }));
-    const note = tag(api, t("Needs a Build (⋯ menu): the built map checks this every cycle and leaves the answer in a cell this condition reads."));
+    const note = tag(api, t("Needs a Build (⋯ menu): the built map checks this every cycle, before the triggers run, and leaves the answer in a cell this condition reads."));
     if (fi.yesNo) {
       const IS = [{ value: 1, label: t("is") }, { value: 0, label: t("is not") }];
       const is = chip(api, s.value === 0 ? IS[1].label : IS[0].label, "");

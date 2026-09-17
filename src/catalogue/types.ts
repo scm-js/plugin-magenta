@@ -88,6 +88,8 @@ export interface Entry {
   bit?: number | { arg: string };
   value?: ValueSpec;
   remastered: { read: boolean; write: boolean };
+  /** The value is each computer's own (the keyboard, the mouse, the local player): a trigger that reads it and changes the game can put the players out of sync. */
+  local?: boolean;
   /** Where the address came from. */
   source: string;
   /** Anything the hover should say — what is unverified, what the number means. */

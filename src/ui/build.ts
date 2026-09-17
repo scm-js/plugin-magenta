@@ -7,6 +7,7 @@
  */
 import type { PluginApi } from "@scm-js/plugin-api";
 import { composePlugins, DEFAULT_OPTIONS, type BuildOptions } from "../model/builds";
+import { orderBuilds } from "../model/ownership";
 import type { Host } from "./host";
 import type { Store } from "./store";
 
@@ -33,7 +34,8 @@ export function openBuildDialog(api: PluginApi, host: Host, store: Store, everyF
   const t = api.i18n.t;
   const el = api.ui.el;
   const w = api.ui.widgets;
-  const builds = store.sidecar.builds;
+  // In list order, so the hooks of a cycle run in the order the rows show.
+  const builds = orderBuilds(store.sidecar.builds, store.list);
   const chats = builds.filter((b) => b.kind === "chat").length;
   const hooks = builds.length - chats;
   const options: BuildOptions = { ...DEFAULT_OPTIONS, ...store.sidecar.settings.build };

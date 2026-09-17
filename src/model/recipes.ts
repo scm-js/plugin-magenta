@@ -6,7 +6,7 @@
  */
 import { ActionFlag, ActionType, Comparison, ConditionType, PlayerGroup, SetModifier, SwitchAction, SwitchState, UnitClass, emptyAction, emptyCondition, emptyTrigger, type ActionRecord, type ConditionRecord, type TriggerRecord } from "../../vendor/triggers";
 import { entry } from "../catalogue";
-import { lowerAction, lowerCondition } from "./eud";
+import { lowerAction } from "./eud";
 import { setOwners } from "./records";
 
 export interface RecipeContext {
@@ -16,6 +16,12 @@ export interface RecipeContext {
   location: number;
   /** A second location (a spawn point) when the map has one. */
   location2: number;
+  /**
+   * A synced key press or click through MSQC: the condition to put in the trigger, with
+   * the map's bookkeeping done by the caller; null when the map has no room for it. A
+   * recipe that needs one and gets null builds nothing.
+   */
+  input(what: "key" | "click", options?: { code?: number; button?: "L" | "R" | "M" }): ConditionRecord | null;
 }
 
 export interface Recipe {
@@ -26,6 +32,8 @@ export interface Recipe {
   description: string;
   /** Needs triggers to run every frame (EUD reads). */
   everyFrame?: boolean;
+  /** Has rows that need a Build (synced input). */
+  needsBuild?: boolean;
   build(ctx: RecipeContext): TriggerRecord[];
 }
 
@@ -107,11 +115,13 @@ export const RECIPES: Recipe[] = [
     build: (ctx) => [trigger(ctx, "Intro", [P.AllPlayers], [always()], [display(ctx, "Welcome. Change this text.")])],
   },
   {
-    id: "key-minerals", label: "A key gives minerals", aliases: ["keyboard", "hotkey", "cheat key", "press"], everyFrame: true,
-    description: "Pressing M gives the player at that computer 100 minerals. An EUD read; needs triggers every frame, and runs only on the computer where the key was pressed. Change the key.",
-    build: (ctx) => [trigger(ctx, "M for minerals", [P.AllPlayers],
-      [lowerCondition({ entry: entry("game.key")!, args: { key: 0x4d }, value: 1, op: Comparison.Exactly })],
-      [act(A.SetResources, { player: P.CurrentPlayer, modifier: SetModifier.Add, target: 100, unitId: 0 }), preserve()])],
+    id: "key-minerals", label: "A key gives minerals", aliases: ["keyboard", "hotkey", "cheat key", "press"], needsBuild: true,
+    description: "Pressing M gives the player who pressed it 100 minerals. A synced key press: every computer sees it, so the game stays in step. Needs a Build. Change the key.",
+    build: (ctx) => {
+      const pressed = ctx.input("key", { code: 0x4d });
+      if (!pressed) return [];
+      return [trigger(ctx, "M for minerals", [P.AllPlayers], [pressed], [act(A.SetResources, { player: P.CurrentPlayer, modifier: SetModifier.Add, target: 100, unitId: 0 }), preserve()])];
+    },
   },
   {
     id: "buff-unit", label: "Change a unit type's stats", aliases: ["balance", "mod", "stats", "hp armor damage"],
@@ -123,7 +133,7 @@ export const RECIPES: Recipe[] = [
 
 export const recipe = (id: string): Recipe | undefined => RECIPES.find((r) => r.id === id);
 
-/** A context over a string table and the map's locations: the first two named locations, else Anywhere. */
-export function recipeContext(intern: (text: string) => number, locations: number[]): RecipeContext {
-  return { intern, location: locations[0] ?? ANYWHERE, location2: locations[1] ?? locations[0] ?? ANYWHERE };
+/** A context over a string table and the map's locations: the first two named locations, else Anywhere; no synced input unless given. */
+export function recipeContext(intern: (text: string) => number, locations: number[], input: RecipeContext["input"] = () => null): RecipeContext {
+  return { intern, location: locations[0] ?? ANYWHERE, location2: locations[1] ?? locations[0] ?? ANYWHERE, input };
 }

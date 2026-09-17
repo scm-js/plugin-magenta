@@ -149,7 +149,7 @@ is types only, so a value imported from it is undefined.
 
 ### 2.2 Data flow
 
-The map's TRIG is the only source of truth. Magenta derives its view model from it and writes back
+The map's TRIG is the only source of truth for native and catalogue rows (a build row's sentence, since 0.2.0, lives only in the sidecar — the map holds its counter action; see 0.7.0's ownership rules). Magenta derives its view model from it and writes back
 through one path:
 
 ```

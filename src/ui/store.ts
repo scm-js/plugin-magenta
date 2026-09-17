@@ -2,7 +2,9 @@
  * The panel's state: the trigger list as the map holds it, the sidecar, what is
  * selected, and an undo stack of its own — triggers sit outside the editor's undo model.
  * Every change goes through `commit`, which writes the map, and `reload` brings the
- * state back from the map when something else changed it.
+ * state back from the map when something else changed it — and drops the undo history
+ * then: a snapshot is the whole list, and undoing over another editor's change would
+ * put the list back as it was before that change too.
  */
 import type { TriggerRecord } from "@scm-js/plugin-api";
 import { markerOf } from "../model/expansions";
@@ -37,10 +39,12 @@ export class Store {
   private prints: string[] = [];
   private writing = false;
   private readonly afterCommit?: () => void;
+  private readonly onBlocked?: () => void;
 
-  constructor(host: Host, afterCommit?: () => void) {
+  constructor(host: Host, hooks: { afterCommit?: () => void; onBlocked?: () => void } = {}) {
     this.host = host;
-    this.afterCommit = afterCommit;
+    this.afterCommit = hooks.afterCommit;
+    this.onBlocked = hooks.onBlocked;
     this.sidecar = host.sidecar();
     this.reload();
   }
@@ -54,15 +58,17 @@ export class Store {
     for (const fn of this.listeners) fn();
   }
 
-  /** Bring the state back from the map. Keeps the selection by fingerprint where it can. */
+  /** Bring the state back from the map. Keeps the selection by fingerprint where it can; forgets the history when anything changed. */
   reload(): void {
     if (this.writing) return;
     const list = this.host.triggers();
     const prints = list.map(fingerprint);
+    const sidecar = this.host.sidecar();
+    if (sidecar !== this.sidecar || prints.length !== this.prints.length || prints.some((p, i) => p !== this.prints[i])) this.forget();
     const selectedPrint = this.selected !== null ? this.prints[this.selected] : null;
     this.list = list;
     this.prints = prints;
-    this.sidecar = this.host.sidecar();
+    this.sidecar = sidecar;
     this.folders = folderOf(list, this.sidecar);
     this.runs = this.locateRuns(list);
     if (selectedPrint !== null) {
@@ -71,6 +77,12 @@ export class Store {
     }
     if (this.selected !== null && this.selected >= list.length) this.selected = list.length ? list.length - 1 : null;
     this.notify();
+  }
+
+  /** Drop the undo and redo history: another map is in front, or another editor changed this one. */
+  forget(): void {
+    this.undoStack = [];
+    this.redoStack = [];
   }
 
   /** Whether the map's list differs from what we hold. */
@@ -128,6 +140,8 @@ export class Store {
    * (and may intern strings); `folders` the folder-by-index map for it, when it changes.
    */
   commit(label: string, build: (intern: (text: string) => number, strings: (string | null)[]) => TriggerRecord[], options: { folders?: Map<number, string>; sidecar?: Partial<Sidecar>; select?: number | null } = {}): void {
+    // A member that could not be read would be written over by the first change.
+    if (this.host.sidecarProblem()) { this.onBlocked?.(); return; }
     this.undoStack.push({ list: clone(this.list), sidecar: clone(this.sidecar), label });
     if (this.undoStack.length > 100) this.undoStack.shift();
     this.redoStack = [];

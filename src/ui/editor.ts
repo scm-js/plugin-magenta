@@ -19,6 +19,7 @@ import { renderGroupRow, renderRow, type RowContext } from "./rows";
 import { compareOf, counterExpansionOf, newCompare, newCounterStep, renderCompare, renderCounterExpansion } from "./expansionRows";
 import { flagAction } from "../model/expansions";
 import { conditionRowOf, hookOf, newChat, newHook, newInput, newScan, renderConditionRow, renderHook } from "./buildRows";
+import { sharedElsewhere } from "../model/ownership";
 import type { Store } from "./store";
 import { explain, type Ref } from "../model/explain";
 import { cellOf } from "../model/counters";
@@ -67,7 +68,18 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
     }
   }
   const perPlayer = store.sidecar.expansions.find((x): x is Extract<typeof x, { kind: "forEachPlayer" }> => x.kind === "forEachPlayer" && x.anchor.i === store.cleanIndex(index));
-  const problems = check(trigger, { everyFrame: store.sidecar.settings.everyFrame, locationExists: (n) => host.locationExists(n), stringExists: (i) => host.stringExists(i), wavPresent: (i) => host.wavPresent(i), claimedCells, template: !!perPlayer });
+  const problems = check(trigger, {
+    everyFrame: store.sidecar.settings.everyFrame, locationExists: (n) => host.locationExists(n), stringExists: (i) => host.stringExists(i), wavPresent: (i) => host.wavPresent(i), claimedCells, template: !!perPlayer,
+    locationName: (n) => namer.location(n),
+    deferredLocation: (a) => {
+      const hook = hookOf(store, a);
+      if (!hook) return null;
+      if (hook.kind === "setloc") return hook.location;
+      if (hook.kind === "pick") return hook.locate ?? (hook.do && "locate" in hook.do ? hook.do.locate : null);
+      if (hook.kind === "foreach" && "locate" in hook.do) return hook.do.locate;
+      return null;
+    },
+  });
   const general = problems.filter((p) => !p.at);
   const at = (kind: "condition" | "action", i: number): Problem[] => problems.filter((p) => p.at?.kind === kind && p.at.index === i);
 
@@ -122,7 +134,8 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
     if (brow) {
       const sentence = el("span", { className: "mg-sentence" });
       renderConditionRow(api, host, store, brow, sentence, (next) => writeConditions(t("Edit condition"), conditions.map((x, j) => (j === i ? next : x))));
-      const ownRecord = brow.kind === "chat" || brow.kind === "scan" ? brow.record.id : null;
+      // A scan is this trigger's own unless another reads its cell; a chat command is shared by every trigger on its message.
+      const ownRecord = brow.kind === "scan" && !sharedElsewhere(store.list, brow.record, index) ? brow.record.id : null;
       const remove = api.ui.widgets.button("✕", { ghost: true, title: t("Remove"), onClick: () => store.commit(t("Remove condition"), () => store.list.map((tr, j) => (j !== index ? tr : { ...tr, conditions: conditions.filter((_, k) => k !== i) })), ownRecord ? { sidecar: { builds: store.sidecar.builds.filter((b) => b.id !== ownRecord) } } : {}) });
       condSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove))));
       return;
@@ -209,7 +222,8 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
     if (hook) {
       const sentence = el("span", { className: "mg-sentence" });
       renderHook(api, host, store, hook, sentence);
-      const remove = api.ui.widgets.button("✕", { ghost: true, title: t("Remove"), onClick: () => store.commit(t("Remove build row"), () => store.list.map((tr, j) => (j !== index ? tr : { ...tr, actions: actions.filter((_, j2) => j2 !== i) })), { sidecar: { builds: store.sidecar.builds.filter((b) => b.id !== hook.id) } }) });
+      // The definition goes only when no other trigger sets the same flag (a shared row left over from before duplicates got their own).
+      const remove = api.ui.widgets.button("✕", { ghost: true, title: t("Remove"), onClick: () => store.commit(t("Remove build row"), () => store.list.map((tr, j) => (j !== index ? tr : { ...tr, actions: actions.filter((_, j2) => j2 !== i) })), sharedElsewhere(store.list, hook, index) ? {} : { sidecar: { builds: store.sidecar.builds.filter((b) => b.id !== hook.id) } }) });
       actSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove))));
       continue;
     }

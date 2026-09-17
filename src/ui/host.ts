@@ -7,7 +7,7 @@ import { PLAYER_GROUP_COUNT } from "../../vendor/triggers";
 import type { Namer } from "../model/names";
 import { addressOf } from "../model/eud";
 import { keyLabel } from "../model/eudSentence";
-import { decodeSidecar, encodeSidecar, MEMBER, type Sidecar } from "../model/sidecar";
+import { encodeSidecar, MEMBER, readSidecar, type Sidecar, type SidecarProblem } from "../model/sidecar";
 import { slotsOf } from "../model/slots";
 import type { ParseNames } from "../model/parse";
 import { usage } from "../model/counters";
@@ -22,7 +22,9 @@ export interface NamedItem {
 
 export class Host {
   readonly api: PluginApi;
-  private sidecarCache: { bytes: Uint8Array | null; value: Sidecar } | null = null;
+  private sidecarCache: { bytes: Uint8Array | null; value: Sidecar; problem: SidecarProblem | null } | null = null;
+  /** The member bytes the user chose to write over, after the panel said they could not be read. */
+  private discarded: Uint8Array | null = null;
 
   constructor(api: PluginApi) {
     this.api = api;
@@ -261,11 +263,26 @@ export class Host {
   /* ── The sidecar ── */
 
   sidecar(): Sidecar {
+    return this.readSidecar().value;
+  }
+
+  /** Why the map's member could not be read, or null; a problem the user discarded is null too. */
+  sidecarProblem(): SidecarProblem | null {
+    const r = this.readSidecar();
+    return r.bytes !== null && r.bytes === this.discarded ? null : r.problem;
+  }
+
+  /** Write over the unreadable member from now on: the next change replaces it. */
+  discardSidecar(): void {
+    this.discarded = this.api.document.extras.get(MEMBER);
+  }
+
+  private readSidecar(): { bytes: Uint8Array | null; value: Sidecar; problem: SidecarProblem | null } {
     const bytes = this.api.document.extras.get(MEMBER);
-    if (this.sidecarCache && this.sidecarCache.bytes === bytes) return this.sidecarCache.value;
-    const value = decodeSidecar(bytes);
-    this.sidecarCache = { bytes, value };
-    return value;
+    if (this.sidecarCache && this.sidecarCache.bytes === bytes) return this.sidecarCache;
+    const { sidecar, problem } = readSidecar(bytes);
+    this.sidecarCache = { bytes, value: sidecar, problem };
+    return this.sidecarCache;
   }
 
   saveSidecar(sidecar: Sidecar): void {
@@ -273,6 +290,6 @@ export class Host {
     if (empty) { this.api.document.extras.remove(MEMBER); this.sidecarCache = null; return; }
     const bytes = encodeSidecar(sidecar);
     this.api.document.extras.set(MEMBER, bytes);
-    this.sidecarCache = { bytes: this.api.document.extras.get(MEMBER), value: sidecar };
+    this.sidecarCache = { bytes: this.api.document.extras.get(MEMBER), value: sidecar, problem: null };
   }
 }

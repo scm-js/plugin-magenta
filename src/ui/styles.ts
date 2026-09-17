@@ -1,7 +1,9 @@
 /** The panel's stylesheet, scoped under `.mg`; colours and sizes are the editor's tokens. */
 export const STYLE = `
 .mg { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 8px; font-size: var(--fs-sm, 11.5px); }
-.mg .mg-head { display: flex; align-items: center; gap: 6px; }
+.mg .mg-notice { display: flex; gap: 10px; align-items: center; padding: 8px 10px; margin: 0 8px 6px; border: 1px solid var(--warn, #c9a227); border-radius: 6px; font-size: var(--fs-sm); line-height: 1.35; }
+.mg-notice > span { flex: 1; }
+.mg-head { display: flex; align-items: center; gap: 6px; }
 .mg .mg-head .input { flex: 1; min-width: 80px; }
 .mg .mg-split { display: flex; flex: 1; min-height: 0; gap: 10px; }
 .mg .mg-list { width: 240px; flex: none; display: flex; flex-direction: column; min-height: 0; background: var(--bg-0); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--bevel-sunken); overflow: auto; outline: none; }

@@ -43,11 +43,14 @@ lock for a run another plugin owns, **!** for a problem.
   trigger in a new one; drag triggers between folders and to reorder; double-click a folder to
   rename or remove it. The order in the game is the list from top to bottom, folders included.
 - Drag a trigger to move it. `Alt+↑` / `Alt+↓` do the same from the keyboard, `Ctrl+D`
-  duplicates, `Delete` deletes, `Ctrl+/` disables or enables every row of it.
+  duplicates — the copy gets build rows and counter steps of its own, so editing one never
+  changes the other — `Delete` deletes, `Ctrl+/` disables or enables every row of it.
 - `Ctrl+C` copies the selected trigger as text in TrigEdit's syntax; `Ctrl+V` pastes text
   from SCMDraft or TrigEdit after the selection.
 - `Ctrl+Z` / `Ctrl+Y` undo and redo inside the panel. Triggers sit outside the editor's own
-  undo, so this history is Magenta's; it is dropped when the panel closes.
+  undo, so this history is Magenta's; it is dropped when the panel closes, and when another
+  editor (Classic, TrigEdit, a plugin) changes the triggers — an undo step is the whole list,
+  and undoing over someone else's change would take that change back too.
 
 ### A trigger
 
@@ -199,7 +202,8 @@ counters, as runs of ordinary triggers it generates:
   another** — actions. The trigger that carries one gets a private flag action, and a run of
   generated triggers follows it in the list, one per bit of the counter (a 16-bit run is half
   the size, for a counter that stays under 65,536). The run fires in the same cycle, right after
-  the trigger, whatever else the trigger does.
+  the trigger, whatever else the trigger does: the trigger's own rows run first, and the
+  triggers after the run see the result.
 - **Compare two counters** — a condition: "A is greater than / at least / equal to / less than
   / at most B". A run before the trigger works out the two differences every cycle, and the
   trigger's conditions read the answer. One comparison per trigger.
@@ -303,9 +307,16 @@ behind its triggers are gone into eudplib's code. The server address is the **Bu
 server** field of that dialog and of **Plugins ▸ Magenta Settings…** (the scmjs.dev one by default; a server of your own is the
 [eud-server](https://github.com/scm-js/eud-server) container).
 
-An action row does its work right after the map's triggers in the cycle its trigger fired;
-a chat command or an input fires once per message, press or click, and a check is fresh
-every cycle. Synced input needs a few things of its own in the map, which Magenta takes:
+An action row does its work once every trigger has had its turn, in the cycle its trigger
+fired — so a row below it in the same trigger still sees the map as it was, and a trigger in
+the next cycle sees the result. A row that moves a location (Move a location, a pick's box,
+a pass's *center a location on it*) followed by a native row on that location gets a warning
+saying so. Two such rows in one trigger, or in two triggers, run in the order the list shows
+them. A chat command or an input fires once per message, press or click, before the triggers
+of that cycle, and a check is fresh every cycle. A key press or a click read the local way — the
+catalogue's *Keyboard key state*, the mouse, the local player — is each computer's own; a
+trigger that reads one and changes the game for everyone gets a warning, since the computers
+can disagree and the game drops out of sync. The synced rows are the ones to use. Synced input needs a few things of its own in the map, which Magenta takes:
 one location slot for MSQC, eight in a row for the players' mice, a player slot nobody
 uses (Player 11) and a unit type that must not appear in the map (the Valkyrie by default).
 A key press arrives once per press, the way Remastered reports it; there is no "while the
@@ -316,9 +327,13 @@ eudplib code; nothing you write in a row is code.
 ### What Magenta keeps with the map
 
 Folders, counter names, the record of each generated run and of each build row live in one
-member of the map archive, `magenta\magenta.json`. The map is a whole map without it: every trigger is in TRIG
-as the game reads it, and only the names, folders and the ability to rebuild the runs are
-lost. Save leaves the member in unless you tick the plugin members out in the Save dialog.
+member of the map archive, `magenta\magenta.json`. Every trigger is in TRIG as the game
+reads it, so the map plays without the member — but a build row's sentence is only in the
+member: without it the trigger keeps a bare counter action, and a Build has nothing to add
+for it. Names and folders and the ability to rebuild the runs go with it too. Save leaves the
+member in unless you tick the plugin members out in the Save dialog. A member Magenta cannot
+read — written by a newer Magenta, or damaged — is not written over: the panel says so at
+the top, keeps the triggers read-only, and offers to drop the data and start over.
 
 ## Test maps
 
