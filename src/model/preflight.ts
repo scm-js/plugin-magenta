@@ -1,5 +1,5 @@
 /**
- * What the Build dialog checks before a map goes to the server, and how it tells whether
+ * What the Build dialog checks before a map is built, and how it tells whether
  * the built map is still the map: a *source revision* — a hash over everything the build
  * consumes — kept with the result in the sidecar, so "built from this revision" and
  * "stale" are answers rather than guesses. The checks are pure over plain data the host
@@ -11,15 +11,10 @@ import { refs } from "./ownership";
 import { fingerprint, liveActions, owners } from "./records";
 import type { Sidecar } from "./sidecar";
 
-/** What /health answers. */
-export interface ServerHealth {
-  ok?: boolean;
-  eudplib?: string;
-  euddraft?: string;
-  plugins?: string[];
-  maxMapBytes?: number;
-  /** The newest Magenta spec the server's plugin reads; missing on a server from before it said. */
-  magentaSpec?: number | null;
+/** What the eudplib library plugin runs the build with, or null when it is not there. */
+export interface Runtime {
+  eudplib: string;
+  euddraft: string;
 }
 
 /** The record of the last build, kept in `sidecar.settings.lastBuild`. */
@@ -29,7 +24,6 @@ export interface LastBuild {
   at: string;
   file: string | null;
   spec: number;
-  server: string;
   eudplib?: string;
   euddraft?: string;
 }
@@ -58,9 +52,8 @@ export interface PreflightInput {
   soundPresent(path: string): boolean;
   /** The plugin sections the build will send. */
   plugins: BuildPlugins;
-  health?: ServerHealth | null;
-  /** The map file's size, when known. */
-  mapBytes?: number;
+  /** The eudplib library plugin's versions, null when the plugin is not installed or is off. */
+  runtime: Runtime | null;
 }
 
 const PLAYER_INACTIVE = 0;
@@ -159,24 +152,14 @@ export function preflight(input: PreflightInput): PreflightProblem[] {
   }
   if (options.bgm && !input.soundPresent(options.bgm.path)) out.push({ level: "error", text: `The background music ${options.bgm.path.split("\\").pop()} is not in the map archive.` });
 
-  /* ── The server ── */
-  const h = input.health;
-  if (h) {
-    const needed = Object.keys(input.plugins);
-    const missing = h.plugins ? needed.filter((n) => !h.plugins!.includes(n)) : [];
-    if (missing.length) out.push({ level: "error", text: `The build server does not have the ${missing.join(", ")} plugin${missing.length > 1 ? "s" : ""} this map needs.` });
-    if (input.plugins.magenta) {
-      if (typeof h.magentaSpec === "number" && h.magentaSpec < MAGENTA_SPEC_VERSION) out.push({ level: "error", text: `The build server's Magenta plugin reads spec ${h.magentaSpec}; this map's rows are written as spec ${MAGENTA_SPEC_VERSION}. Update the server (scm-js/eud-server), or build on scmjs.dev.` });
-      else if (h.magentaSpec === undefined || h.magentaSpec === null) out.push({ level: "info", text: "The build server does not say which Magenta spec it reads; an older one fails the build with a message rather than here." });
-    }
-    if (input.mapBytes !== undefined && h.maxMapBytes && input.mapBytes > h.maxMapBytes) out.push({ level: "error", text: `The map is ${Math.round(input.mapBytes / 1024)} KB and the server takes up to ${Math.round(h.maxMapBytes / 1024)} KB.` });
-  }
+  /* ── The runtime ── */
+  if (!input.runtime) out.push({ level: "error", text: "The eudplib plugin is not running: it is the library that builds EUD maps. Install or turn it on under Plugins ▸ Manage Plugins…" });
 
   const rank = { error: 0, warn: 1, info: 2 };
   return out.sort((a, b) => rank[a.level] - rank[b.level]);
 }
 
 /** A record of a build that just succeeded. */
-export function lastBuildRecord(revision: string, file: string | null, server: string, health: ServerHealth | null | undefined): LastBuild {
-  return { revision, at: new Date().toISOString(), file, spec: MAGENTA_SPEC_VERSION, server, ...(health?.eudplib ? { eudplib: health.eudplib } : {}), ...(health?.euddraft ? { euddraft: health.euddraft } : {}) };
+export function lastBuildRecord(revision: string, file: string | null, runtime: Runtime | null): LastBuild {
+  return { revision, at: new Date().toISOString(), file, spec: MAGENTA_SPEC_VERSION, ...(runtime ? { eudplib: runtime.eudplib, euddraft: runtime.euddraft } : {}) };
 }

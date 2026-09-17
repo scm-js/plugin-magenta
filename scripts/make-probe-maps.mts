@@ -29,13 +29,16 @@
  *      unit under a player's mouse, a location moved by an offset, the type and owner reads,
  *      and the middle mouse button.
  *
- * Maps 6, 7 and 10 need the build server (`--build http://localhost:8085`, the eud-server
- * container with the spec-4 plugin); their built copies end in `-eud.scx`, and those are
- * the ones to play. Maps 5, 8 and 9 play as written.
+ * Maps 6, 7, 10 and 11 need a build (`--build ../plugin-eudplib`, a checkout of the eudplib
+ * plugin, whose `scripts/build-map.mts` runs the same worker the editor does under Node,
+ * with this repository's `python/magenta.py`); their built copies end in `-eud.scx`, and
+ * those are the ones to play. Maps 5, 8 and 9 play as written.
  *
- *   npx tsx scripts/make-probe-maps.mts [--build URL] [../scm-js]
+ *   npx tsx scripts/make-probe-maps.mts [--build ../plugin-eudplib] [../scm-js]
  */
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { SetModifier, Comparison, ActionType, ConditionType, PlayerGroup, ActionFlag, SwitchAction, SwitchState, type TriggerRecord, type ActionRecord, type ConditionRecord } from "../vendor/triggers";
 import { entry } from "../src/catalogue";
@@ -46,7 +49,7 @@ import { encodeSidecar, MEMBER, type Sidecar } from "../src/model/sidecar";
 import type { BuildPlugins } from "../src/model/builds";
 
 const argv = process.argv.slice(2);
-const buildAt = argv.includes("--build") ? argv[argv.indexOf("--build") + 1] : null;
+const buildAt = argv.includes("--build") ? resolve(argv[argv.indexOf("--build") + 1]) : null;
 const EDITOR = resolve(argv.find((a, i) => !a.startsWith("--") && argv[i - 1] !== "--build") ?? join(import.meta.dirname, "..", "..", "scm-js"));
 const ed = (p: string) => import(join(EDITOR, "src", p));
 const { createScenario } = await ed("formats/chk/create.ts");
@@ -791,11 +794,18 @@ const MAPS: ProbeMap[] = [
   },
 ];
 
-async function build(url: string, map: Uint8Array, plugins: BuildPlugins): Promise<{ map: Uint8Array; log: string }> {
-  const res = await fetch(`${url.replace(/\/$/, "")}/build`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ map: Buffer.from(map).toString("base64"), plugins }) });
-  const body = (await res.json()) as { map?: string; log?: string; error?: { code: string; message: string; log?: string } };
-  if (!res.ok || !body.map) throw new Error(`build failed (${res.status}): ${body.error?.message ?? "?"}\n${body.error?.log ?? body.log ?? ""}`);
-  return { map: new Uint8Array(Buffer.from(body.map, "base64")), log: body.log ?? "" };
+async function build(eudplib: string, map: Uint8Array, plugins: BuildPlugins): Promise<{ map: Uint8Array; log: string }> {
+  // The eudplib plugin's own command-line builder: the same worker the editor runs, under Node.
+  const dir = mkdtempSync(join(tmpdir(), "magenta-probe-"));
+  const inPath = join(dir, "in.scx"), outPath = join(dir, "out.scx"), pluginsPath = join(dir, "plugins.json");
+  writeFileSync(inPath, map);
+  writeFileSync(pluginsPath, JSON.stringify(plugins));
+  const magenta = join(import.meta.dirname, "..", "python", "magenta.py");
+  const r = spawnSync("npx", ["tsx", join(eudplib, "scripts", "build-map.mts"), inPath, outPath, pluginsPath, `magenta=${magenta}`], { cwd: eudplib, encoding: "utf8", env: { ...process.env, EUDPLIB_LOG: "1" } });
+  if (r.status !== 0) throw new Error(`build failed: ${r.stderr || r.stdout}`);
+  const out = new Uint8Array(readFileSync(outPath));
+  rmSync(dir, { recursive: true, force: true });
+  return { map: out, log: r.stdout };
 }
 
 for (const m of MAPS) {
@@ -810,7 +820,7 @@ for (const m of MAPS) {
   const back = parseScenario((await loadMap(new Uint8Array(readFileSync(path)))).chk);
   console.log(`${m.file}: ${bytes.length} bytes, ${back.triggers.length} triggers`);
   if (out.plugins) {
-    if (!buildAt) { console.log(`   needs a build (--build URL) to play; the plugins object is in the script`); continue; }
+    if (!buildAt) { console.log(`   needs a build (--build ../plugin-eudplib) to play; the plugins object is in the script`); continue; }
     const built = await build(buildAt, bytes, out.plugins);
     const builtPath = path.replace(/\.scx$/, "-eud.scx");
     writeFileSync(builtPath, built.map);

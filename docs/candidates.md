@@ -1,5 +1,10 @@
 # Candidate conditions and actions
 
+
+> **2026-09-17:** the build server this document describes (scm-js/eud-server) was replaced by the
+> [eudplib plugin](https://github.com/scm-js/plugin-eudplib), which runs eudplib inside the editor; `plugins/magenta.py`
+> moved here as `python/magenta.py`. The history below is kept as written.
+
 What Magenta could add now that a build server with eudplib stands behind it, and the maps
 that decide which of it works. `plan.md` is the plan for what exists; this is the plan for
 what comes next, written on 2026-09-14.

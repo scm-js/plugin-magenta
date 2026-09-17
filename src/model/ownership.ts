@@ -2,7 +2,7 @@
  * Who owns what in the sidecar. A build row (a hook on a flag cell, a scan on a cell) and
  * a counter step (an expansion on a flag cell) are private to the trigger that carries
  * the record on that cell: a second trigger on the same cell would edit the same sentence
- * and, on the server, fire the same hook. So a duplicate — or a paste of this map's own
+ * and, in the built map, fire the same hook. So a duplicate — or a paste of this map's own
  * text — gets rows of its own on fresh cells (`detach`), a row removed from one trigger
  * takes its definition with it only when no other trigger reads it (`refs`), and a
  * deleted trigger takes its private definitions along (`prune`). A chat command, a
@@ -112,7 +112,7 @@ export function prune(builds: readonly BuildRecord[], list: readonly TriggerReco
 /**
  * The build records in the order the map runs them: hooks and scans by where their
  * trigger sits in the list and their row in it, so two hooks in one trigger fire in the
- * order the rows show; records no trigger carries last. The server runs the hooks of a
+ * order the rows show; records no trigger carries last. The build runs the hooks of a
  * cycle in the spec's order, which is this one.
  */
 export function orderBuilds(builds: readonly BuildRecord[], list: readonly TriggerRecord[]): BuildRecord[] {

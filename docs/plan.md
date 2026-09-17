@@ -305,7 +305,7 @@ server makes possible, and the probe maps that decide which ship — is `candida
 ## Tier B, as built (2026-09-12)
 
 Not the payload of §3's Tier B but its shortcut: euddraft runs as its own service on Cloud
-Run (scm-js/eud-server, moved out of ai-server on 2026-09-14), and Magenta rows that need it — chat commands,
+Run (scm-js/eud-server, moved out of ai-server on 2026-09-14; replaced on 2026-09-17 by the eudplib plugin, which runs eudplib in the editor), and Magenta rows that need it — chat commands,
 text with counter values, counter maths, a pass over every unit of a kind — are data in
 the sidecar that the box's Magenta plugin turns into eudplib code at build time. In the map
 each is one private flag cell, so the trigger stays ordinary. ⋯ ▸ Build EUD map… sends the

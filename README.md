@@ -233,7 +233,8 @@ like the catalogue.
 ### Rows that need a Build
 
 Some rows have no record in the game's own trigger set and only work in a map built by
-[euddraft](https://github.com/armoha/euddraft), which the scmjs.dev build server runs for you.
+[euddraft](https://github.com/armoha/euddraft), which the [eudplib plugin](https://github.com/scm-js/plugin-eudplib)
+runs inside the editor for you (Magenta needs that plugin; the editor installs it with Magenta).
 They read like any other row, with a **BUILD** tag, and the trigger that carries one shows
 a BUILD badge in the list.
 
@@ -308,9 +309,11 @@ from the file, otherwise type the seconds); **air units pass through one another
 (noAirCollision); and **lifting the sprite and image limits** (unlimiter).
 
 In the map these are one private counter cell each: the trigger sets it (an action) or reads
-it (a condition), so it stays an ordinary trigger everywhere. **⋯ ▸ Build EUD map…** sends
-the map as it stands to the server, which adds the code behind the rows and hands back a
-built map to save beside the source, `name-eud.scx`. A **Build** button in the panel's head
+it (a condition), so it stays an ordinary trigger everywhere. **⋯ ▸ Build EUD map…** takes
+the map as it stands, adds the code behind the rows, and saves the built map beside the
+source, `name-eud.scx`. The build runs in the editor, through the eudplib plugin: the first
+one downloads that plugin's runtime (about 15 MB, from jsDelivr) after asking you, and later
+builds are a few seconds each. Nothing about the map leaves your machine. A **Build** button in the panel's head
 says where the map stands — how many triggers need a build, and whether the last built map
 is *built* from the map as it is, *stale* because the map changed since, or *not built*;
 the record of the last build (its time, file and the map's revision) is kept with the map.
@@ -318,13 +321,10 @@ The dialog checks the map before sending it and lists what would go wrong, each 
 **Show** link to the trigger: the player slot, unit type and location slots synced input
 keeps for itself must still be free, a row's locations must still exist, a chat message
 must be one the chat plugin takes, the camera's location must have a name, the music must
-be in the archive. It also asks the server what it has — its eudplib and euddraft, and the
-newest Magenta spec its plugin reads — and refuses a build an older server would fail. Nothing about the map is kept on the
-server. Only StarCraft: Remastered plays a built map. Keep the source map: the built one is
-what players get, the way a compiled program is, and while the editor opens it, the rows
-behind its triggers are gone into eudplib's code. The server address is the **Build
-server** field of that dialog and of **Plugins ▸ Magenta Settings…** (the scmjs.dev one by default; a server of your own is the
-[eud-server](https://github.com/scm-js/eud-server) container).
+be in the archive, and the eudplib plugin must be installed and on. Only StarCraft:
+Remastered plays a built map. Keep the source map: the built one is what players get, the
+way a compiled program is, and while the editor opens it, the rows behind its triggers are
+gone into eudplib's code.
 
 An action row does its work once every trigger has had its turn, in the cycle its trigger
 fired — so a row below it in the same trigger still sees the map as it was, and a trigger in
@@ -339,9 +339,9 @@ can disagree and the game drops out of sync. The synced rows are the ones to use
 one location slot for MSQC, eight in a row for the players' mice, a player slot nobody
 uses (Player 11) and a unit type that must not appear in the map (the Valkyrie by default).
 A key press arrives once per press, the way Remastered reports it; there is no "while the
-key is held", so a map that moves a unit while a key is down works from repeated presses. The code behind them is the Magenta plugin of the
-build server, `plugins/magenta.py` in the eud-server repository, which turns the rows into
-eudplib code; nothing you write in a row is code.
+key is held", so a map that moves a unit while a key is down works from repeated presses. The code behind them is Magenta's own
+euddraft plugin, `python/magenta.py` in this repository, which the build hands to eudplib
+along with the map; it turns the rows into eudplib code, and nothing you write in a row is code.
 
 ### What Magenta keeps with the map
 
@@ -370,13 +370,14 @@ EUD maps. Each says on screen what to look for. All four were played on 2026-09-
 
 Five more, the **probe maps**, test the candidates in `docs/candidates.md` — one key per
 candidate, and each map says on screen what to press and what to look for. `npx tsx
-scripts/make-probe-maps.mts --build URL` writes them; 6 and 7 need the build server (a local
-eud-server container with the spec-3 plugin), and their `-eud.scx` copies are the ones to play.
+scripts/make-probe-maps.mts --build ../plugin-eudplib` writes them; 6, 7, 10 and 11 need a build
+(the eudplib plugin's own command-line builder, run from a checkout of that repository), and
+their `-eud.scx` copies are the ones to play.
 
 | Map | What it probes |
 | --- | --- |
 | `magenta-probe-5-tables.scx` | Fixed-address writes and reads, no build: flingy speed, upgrade and tech costs, units.dat flags, the unit's name from the map's strings, player colour (two routes), supply, game speed, the frame counter, slot types. |
-| `magenta-probe-6-units-eud.scx` | The per-unit verbs and reads of the build server's plugin: orders (two routes), spell timers, cooldown lock, resource amounts, cloak, no-clip, position, the weakest and nearest unit, and scans for attacking, under attack, target, burrowed, moving. |
+| `magenta-probe-6-units-eud.scx` | The per-unit verbs and reads of Magenta's euddraft plugin: orders (two routes), spell timers, cooldown lock, resource amounts, cloak, no-clip, position, the weakest and nearest unit, and scans for attacking, under attack, target, burrowed, moving. |
 | `magenta-probe-7-input-eud.scx` | Held keys and the mouse through MSQC, chat commands with a number in them. |
 | `magenta-probe-8-catalogue.scx` | The 0.3 entries as the catalogue itself writes them (speed as four records, colour as two, the name from a string, the looks through units.dat, the flags, supply by race, upgrade and technology costs), the reads probe 5 left unreported (the frame counter, the clock, slot type and race), and the entries no map had touched: sight range, weapon range and cooldown, build time, gas, an upgrade's level, alliance, a placed unit's energy, shields, position and cloak, the screen. |
 | `magenta-probe-9-rest.scx` | What 8 left unverified: size class by a vulture's shots, the flags with an effect and the rest read back, unit costs and supply, sight, weapon swaps, a weapon's cooldown, factor, bonus and minimum range, vision and alliance both ways, the hallucination flag, and the slot, race, supply-used, cloak, position and screen reads. |

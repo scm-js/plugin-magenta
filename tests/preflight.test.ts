@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ActionType, emptyAction, emptyTrigger, type TriggerRecord } from "../vendor/triggers";
-import { DEFAULT_MSQC, DEFAULT_OPTIONS, MAGENTA_SPEC_VERSION, type BuildRecord } from "../src/model/builds";
+import { DEFAULT_MSQC, DEFAULT_OPTIONS, type BuildRecord } from "../src/model/builds";
 import { flagAction } from "../src/model/expansions";
 import { buildFreshness, lastBuildRecord, preflight, sourceRevision, type PreflightInput } from "../src/model/preflight";
 import { setOwners } from "../src/model/records";
@@ -17,7 +17,7 @@ function input(patch: Partial<PreflightInput> = {}, sidecar: Partial<Sidecar> = 
   return {
     list: [trig([0], [flagAction({ cell: heal.flag })])], sidecar: sc, options: DEFAULT_OPTIONS, plugins: { magenta: { spec: "{}" } },
     playerTypes: Array.from({ length: 12 }, (_, i) => (i < 2 ? 6 : 0)), playerTypeName: (s) => `type ${s}`, playerName: (s) => `Player ${s + 1}`, unitName: (id) => `unit ${id}`,
-    placedUnitIds: new Set([0]), placedOwners: new Set([0, 1]), locations, soundPresent: () => true, health: null,
+    placedUnitIds: new Set([0]), placedOwners: new Set([0, 1]), locations, soundPresent: () => true, runtime: { eudplib: "0.81.0", euddraft: "a00aef1" },
     ...patch,
   };
 }
@@ -28,15 +28,15 @@ describe("source revision", () => {
     const list = [trig([0], [flagAction({ cell: heal.flag })])];
     const a = sourceRevision(list, sc, ["locs"]);
     expect(sourceRevision(list, sc, ["locs"])).toBe(a);
-    expect(sourceRevision(list, { ...sc, settings: { lastBuild: lastBuildRecord(a, "x-eud.scx", "https://eud", null) } }, ["locs"])).toBe(a);
+    expect(sourceRevision(list, { ...sc, settings: { lastBuild: lastBuildRecord(a, "x-eud.scx", null) } }, ["locs"])).toBe(a);
     expect(sourceRevision(list, sc, ["locs2"])).not.toBe(a);
     expect(sourceRevision([trig([1], list[0].actions)], sc, ["locs"])).not.toBe(a);
     expect(sourceRevision(list, { ...sc, builds: [{ ...heal, do: { adjust: "hp", delta: 30 } }] }, ["locs"])).not.toBe(a);
     expect(sourceRevision(list, { ...sc, settings: { build: { unlimiter: true } } }, ["locs"])).not.toBe(a);
     expect(buildFreshness(null, a)).toBe("never");
-    expect(buildFreshness(lastBuildRecord(a, null, "s", null), a)).toBe("fresh");
-    expect(buildFreshness(lastBuildRecord("other", null, "s", null), a)).toBe("stale");
-    expect(lastBuildRecord(a, null, "s", { eudplib: "0.81" }).eudplib).toBe("0.81");
+    expect(buildFreshness(lastBuildRecord(a, null, null), a)).toBe("fresh");
+    expect(buildFreshness(lastBuildRecord("other", null, null), a)).toBe("stale");
+    expect(lastBuildRecord(a, null, { eudplib: "0.81", euddraft: "a00aef1" }).eudplib).toBe("0.81");
   });
 });
 
@@ -71,16 +71,13 @@ describe("preflight", () => {
     const orphan = preflight(input({ list: [trig([0], [])] }));
     expect(orphan).toMatchObject([{ level: "info" }]);
   });
-  it("checks the map-wide options and what the server reports", () => {
+  it("checks the map-wide options and that the eudplib plugin is there", () => {
     const locs = slots(); locs[1] = { empty: false, named: true }; locs[4] = { empty: false, named: false };
     expect(preflight(input({ locations: locs, options: { ...DEFAULT_OPTIONS, camera: { location: 5, name: "x", inertia: 5, maxspeed: 48 } } }))[0].text).toContain("by name");
     expect(preflight(input({ options: { ...DEFAULT_OPTIONS, bgm: { path: "staredit\\wav\\a.wav", length: 3 } }, soundPresent: () => false }))[0].text).toContain("a.wav");
-    const old = preflight(input({ health: { plugins: ["magenta"], magentaSpec: MAGENTA_SPEC_VERSION - 1 } }));
-    expect(old).toMatchObject([{ level: "error" }]);
-    expect(old[0].text).toContain(`spec ${MAGENTA_SPEC_VERSION - 1}`);
-    expect(preflight(input({ health: { plugins: ["eudTurbo"], magentaSpec: MAGENTA_SPEC_VERSION } }))[0].text).toContain("magenta plugin");
-    expect(preflight(input({ health: { plugins: ["magenta"] } }))).toMatchObject([{ level: "info" }]);
-    expect(preflight(input({ health: { plugins: ["magenta"], magentaSpec: MAGENTA_SPEC_VERSION, maxMapBytes: 1000 }, mapBytes: 2048 }))[0].text).toContain("2 KB");
-    expect(preflight(input({ health: { plugins: ["magenta"], magentaSpec: MAGENTA_SPEC_VERSION } }))).toEqual([]);
+    const gone = preflight(input({ runtime: null }));
+    expect(gone).toMatchObject([{ level: "error" }]);
+    expect(gone[0].text).toContain("eudplib plugin");
+    expect(preflight(input({}))).toEqual([]);
   });
 });

@@ -6719,6 +6719,9 @@ function needsBuild(store, trigger4) {
   return trigger4.actions.some((a2) => a2.type === ActionType.SetDeaths && a2.modifier === SetModifier.SetTo && hookOf(store, a2) !== null) || trigger4.conditions.some((c2) => conditionRowOf(store, c2) !== null);
 }
 
+// src/generated/magentaPy.ts
+var MAGENTA_PY = '"""\n[magenta]\nspec : {"version": 3, "everyFrame": false, "chat": {"cell": [p, u], "args": {...} | null} | null, "hooks": [...], "scans": [...], "msqc": {...} | null}\n\nThe Magenta plugin: the rows the scmJS Magenta editor adds that only a euddraft build can\ndo, described as data and turned into eudplib code here. A cell is a death counter,\n`[player, unit]`. A hook watches one private cell \u2014 a "flag" a map trigger sets to 1 with\nan ordinary Set Deaths action \u2014 and, after the map\'s triggers have run in that cycle,\ndoes its work and clears the flag:\n\n  text     {"flag", "parts": [{"text": "Score: "}, {"counter": [p, u]}], "to": "all" | slot}\n  math     {"flag", "op": "mul" | "div" | "mod" | "rand", "a": cell, "b": cell | number, "to": cell}\n  foreach  {"flag", "unit": id | null, "owner": slot | null, "location": number | null, "do": ...}\n           do: {"set": "hp" | "shields" | "energy" | "kills" | "resources" | "buildTime" | "rank" | "topSpeed" | "acceleration" | "movementType", "value": n} | {"kill": true} | {"remove": true}\n               | {"invincible": bool} | {"hallucination": bool} | {"speed": bool} | {"give": slot} | {"locate": location}\n               | {"order": "move" | "patrol" | "attack", "location": dest, "scratch": location}   \u2014 the game\'s own Order, one unit at a time through a scratch location\n               | {"orderRaw": orders.dat id, "location": dest}                                    \u2014 the order id and target written into the unit (an experiment)\n               | {"timer": "stim" | "ensnare" | "plague" | "lockdown" | "stasis" | "maelstrom" | "irradiate" | "matrix", "value": frames}\n               | {"cooldown": frames}                                                              \u2014 ground, air and spell cooldowns at once\n               | {"status": "cloak" | "noclip" | "cooldownUpgrade", "on": bool}\n               | {"nudge": {"dx": px, "dy": px}}                                                   \u2014 the position written directly (an experiment)\n               | {"adjust": "hp" | "shields" | "energy", "delta": \xB1n}                              \u2014 since version 5: damage or heal, floored at 0 (hit points at 0 kill) and capped at the type\'s maximum\n  pick     {"flag", <filter>, "by": "min" | "max" | "nearest" | "random", "field": ..., "near": location | {"mouse": slot} | null, "radius": px | null, "locate": location | null, "to": cell | null}\n           \u2014 the one matching unit with the least / greatest field, nearest the centre of `near` (since version 5 also a player\'s mouse, the\n             location MSQC keeps it in, and no farther than `radius`), or since version 5 one at random: centre `locate` on it, its field (or distance) into `to`\n  count    {"flag", <filter>, "to": cell}          \u2014 how many units match\n  read     {"flag", <filter>, "field": ..., "to": cell} \u2014 the first match\'s field, 0 for none\n  setloc   {"flag", "location": number, "x": px, "y": px, "width": px | null, "height": px | null}\n           since version 5 also {"flag", "location": number, "relative": true, "x": dx, "y": dy} \u2014 moved by an offset from where it is\n  terrain  {"flag", "location": number, "tile": MTXM id}   \u2014 since version 4: every tile under the location becomes that tile, in the array the game draws from (walkability does not follow)\n\nSince version 4 the foreach / pick verbs also take {"tint": "normal" | "cloaked" | "hallucination" | "flash"}:\nthe draw function of every image of the unit\'s sprite is rewritten \u2014 0 plain, 6 the see-through\nof a visible cloaked unit, 16 the blue of a hallucination, 17 the white warp flash.\n\nBoth version-4 additions FAILED in Remastered (probe 10, 2026-09-15) and the editor does not offer\nthem: `terrain` changed nothing on screen (the EUD layer does not reach the buffer the renderer\ndraws from), and the first `tint` write ended the game with "EUD not supported", as `nudge` does.\n\nText parts are {"text": "..."} (with the editor\'s <HH> escapes for the game\'s colour and\neffect codes), {"counter": cell}, {"player": slot} for the player\'s name, {"color": slot}\nfor the switch to that player\'s colour.\n\nA scan runs every cycle and leaves 1 or 0 in its cell for a condition to read:\n\n  scan     {"cell", <filter>, "field": ..., "cmp": "<" | ">" | "=", "value": n}\n\nFields, for read / scan / pick: hp, shields, energy, kills, x, y, and since version 3 order\n(the orders.dat id of the unit\'s main order), hasTarget (1 with an order target unit),\nunderAttack (the attack-notify timer, > 0 for ~ a second after a hit), burrowed, inTransport,\nbuildTime (remaining, for an incomplete building), resources (a mineral field\'s or geyser\'s\namount), cooldown (the ground weapon\'s, in frames), speed (the current speed, px/frame \xD7 256);\nsince version 5 hpPct, shieldsPct, energyPct (0 to 100, against the type\'s maximum from units.dat,\n250 for energy), unitType and owner.\n\n`chat.args`, since version 3, is {"ptr": cell, "len": cell, "pattern": cell, "number": cell}: the\nchat plugin\'s __ptrAddr__ / __lenAddr__ / __patternAddr__ cells; before the map\'s triggers run,\nwhen `pattern` is set, the first number in the message (after its first space) is parsed into\n`number`, so "-set 250" leaves 250 there. `pattern` is cleared after the triggers like `cell`.\n\n`msqc.held`, since version 3, is [{"down": unit, "up": unit, "state": unit}]: MSQC lands a\nKeyDown in `down` and a KeyUp in `up` (per player), and before the triggers run the hook turns\nthose into `state` \u2014 a countdown refreshed by every down (auto-repeat keeps it alive while the\nkey is held) and ended by an up \u2014 so a condition can say "while W is held" as `state \u2265 1`.\n\nKept but not offered by the editor after the 2026-09-14 play-through in Remastered: `orderRaw`\n(the game\'s Order works), `nudge` (the game ends with "EUD not supported"), `status cloak` and\n`cooldownUpgrade` (no visible effect), `set topSpeed / acceleration / movementType` (a unit\'s\nown copy changes nothing; only the flingy table, for units made afterwards), and `msqc.held`\n(Remastered reports one down per press and nothing while a key is held).\n\n`chat` names the cell the chatEvent plugin writes a message\'s number into; it is cleared\nafter the map\'s triggers have seen it, so a chat command fires once. `msqc` follows the\nMSQC plugin: `clear` are the event units (one per key or click) whose per-player cells\nare cleared each cycle, `mouseIn` compares each player\'s mouse location (MSQC moves one\nlocation per human, from `mouseBase`) against a location and leaves 1 or 0 in that\nplayer\'s cell of `unit`, and `select` reads the unit pointer MSQC delivered into\n`ptr`\'s cells and leaves the unit\'s type + 1 in `type`\'s. Nothing in the spec is code.\n"""\nimport json\nimport re\n\nfrom eudplib import *\n\nDEATHS = 0x58A364\nMRGN = 0x58DC60\nHUMANS = 8\n# The map\'s size in tiles (a word each), and the pointer to the MTXM tile array the game draws from (eud-book).\nMAP_SIZE = 0x57F1D4\nMTXM_PTR = 0x5993C4\n\n# The newest spec this plugin reads; the server reports it on /health so the editor can tell before it uploads a map.\nSPEC_VERSION = 5\n\nspec = json.loads(settings["spec"])\nif not isinstance(spec.get("version"), int) or spec["version"] < 1 or spec["version"] > SPEC_VERSION:\n    raise RuntimeError("magenta: spec version %r is not 1 to %d; this server\'s Magenta plugin is older than the map\'s rows need" % (spec.get("version"), SPEC_VERSION))\n\n# units.dat: max hit points (dword \xD7 256) and max shields (word, in points) by unit type; a unit\'s energy tops out at 250 with its upgrade.\nUNITS_MAX_HP = 0x662350\nUNITS_MAX_SHIELDS = 0x660E00\nMAX_ENERGY = 250\n\n\ndef cell_addr(cell):\n    p, u = int(cell[0]), int(cell[1])\n    if not (0 <= p < 12 and 0 <= u < 228):\n        raise RuntimeError("magenta: bad cell %r" % (cell,))\n    return DEATHS + p * 4 + u * 48\n\n\ndef cell_epd(cell):\n    return EPD(cell_addr(cell))\n\n\ndef loc_epd(number):\n    """EPD of a 1-based location\'s record: left, top, right, bottom, then the flags."""\n    return EPD(MRGN + (int(number) - 1) * 20)\n\n\ndef loc_bounds(number):\n    base = loc_epd(number)\n    return [f_dwread_epd(base + i) for i in range(4)]\n\n\ndef box_on(cu, number, half=2):\n    """Centre a 1-based location on the unit as a small box, not a point: the game\'s Order and\n    counted Kill did nothing with a zero-size location in the probes, while a heal at it worked."""\n    base = loc_epd(number)\n    x, y = cu.posX, cu.posY\n    f_dwwrite_epd(base, x - half)\n    f_dwwrite_epd(base + 1, y - half)\n    f_dwwrite_epd(base + 2, x + half)\n    f_dwwrite_epd(base + 3, y + half)\n\n\n# \u2500\u2500 units \u2500\u2500\n\ndef unit_matches(cu, h, bounds):\n    conds = []\n    if h.get("unit") is not None:\n        conds.append(cu.eqattr("unitType", int(h["unit"])))\n    if h.get("owner") is not None:\n        conds.append(cu.eqattr("owner", int(h["owner"])))\n    if bounds:\n        left, top, right, bottom = bounds\n        x, y = cu.posX, cu.posY\n        conds.extend([x >= left, x <= right, y >= top, y <= bottom])\n    return conds if conds else [Always()]\n\n\ndef unit_field(cu, field):\n    if field == "hp":\n        return f_div(cu.hp, 256)[0]\n    if field == "shields":\n        return f_div(cu.shield, 256)[0]\n    if field == "energy":\n        return f_div(cu.energy, 256)[0]\n    if field == "kills":\n        return cu.killCount\n    if field == "x":\n        return cu.posX\n    if field == "y":\n        return cu.posY\n    if field == "order":\n        return cu.orderID\n    if field == "hasTarget":\n        v = EUDVariable()\n        v << 0\n        if EUDIf()(cu.orderTargetUnit >= 1):\n            v << 1\n        EUDEndIf()\n        return v\n    if field == "underAttack":\n        return cu.attackNotifyTimer\n    if field == "burrowed":\n        return flag_value(cu, 0x10)\n    if field == "inTransport":\n        return flag_value(cu, 0x40)\n    if field == "buildTime":\n        return cu.remainingBuildTime\n    if field == "resources":\n        return cu.resourceAmount\n    if field == "cooldown":\n        return cu.groundWeaponCooldown\n    if field == "speed":\n        return cu.currentSpeed1\n    if field == "hpPct":\n        return f_div(f_mul(cu.hp, 100), unit_max_hp(cu))[0]\n    if field == "shieldsPct":\n        return f_div(f_mul(cu.shield, 100), unit_max_shields(cu))[0]\n    if field == "energyPct":\n        return f_div(f_mul(cu.energy, 100), MAX_ENERGY * 256)[0]\n    if field == "unitType":\n        return cu.unitType\n    if field == "owner":\n        return cu.owner\n    if field in TIMERS:\n        return getattr(cu, TIMERS[field])\n    raise RuntimeError("magenta: unknown field %r" % field)\n\n\ndef unit_max_hp(cu):\n    """The type\'s max hit points \xD7 256, never 0 (a division needs it)."""\n    v = f_dwread(f_mul(cu.unitType, 4) + UNITS_MAX_HP)\n    if EUDIf()(v == 0):\n        v << 256\n    EUDEndIf()\n    return v\n\n\ndef unit_max_shields(cu):\n    """The type\'s max shields \xD7 256, never 0."""\n    v = f_mul(f_wread(f_mul(cu.unitType, 2) + UNITS_MAX_SHIELDS), 256)\n    if EUDIf()(v == 0):\n        v << 256\n    EUDEndIf()\n    return v\n\n\ndef flag_value(cu, mask):\n    """1 when the status flag is set, else 0."""\n    v = EUDVariable()\n    v << 0\n    if EUDIf()(cu.check_status_flag(mask)):\n        v << 1\n    EUDEndIf()\n    return v\n\n\ndef each_matching(h):\n    """Yield the CUnit of every matching unit, inside an EUDIf the caller must not close."""\n    bounds = loc_bounds(h["location"]) if h.get("location") else None\n    for ptr, epd in EUDLoopUnit2():\n        cu = CUnit(epd, ptr=ptr)\n        if EUDIf()(unit_matches(cu, h, bounds)):\n            yield cu\n        EUDEndIf()\n\n\n# \u2500\u2500 hooks \u2500\u2500\n\nESCAPE = re.compile(r"<([0-9A-Fa-f]{2})>")\n\n\ndef unescape(text):\n    """The editor writes a control byte as <HH>; the game wants the byte."""\n    return ESCAPE.sub(lambda m: chr(int(m.group(1), 16)), text)\n\n\ndef hook_text(h):\n    to = h.get("to", "all")\n    parts = []\n    for part in h["parts"]:\n        if "text" in part:\n            parts.append(unescape(str(part["text"])))\n        elif "player" in part:\n            parts.append(PName(int(part["player"])))\n        elif "color" in part:\n            parts.append(PColor(int(part["color"])))\n        else:\n            parts.append(f_dwread_epd(cell_epd(part["counter"])))\n    if to == "all":\n        for p in range(HUMANS):\n            f_setcurpl(p)\n            f_simpleprint(*parts, spaced=False)\n    else:\n        f_setcurpl(int(to))\n        f_simpleprint(*parts, spaced=False)\n\n\ndef hook_math(h):\n    a = f_dwread_epd(cell_epd(h["a"]))\n    b = h["b"]\n    bv = int(b) if isinstance(b, (int, float)) else f_dwread_epd(cell_epd(b))\n    op = h["op"]\n    if op == "mul":\n        r = f_mul(a, bv)\n    elif op == "div":\n        r, _ = f_div(a, bv)\n    elif op == "mod":\n        _, r = f_div(a, bv)\n    elif op == "rand":\n        _, r = f_div(f_rand(), bv)\n    else:\n        raise RuntimeError("magenta: unknown op %r" % op)\n    f_dwwrite_epd(cell_epd(h["to"]), r)\n\n\nORDERS = {"move": Move, "patrol": Patrol, "attack": Attack}\nTIMERS = {"stim": "stimTimer", "ensnare": "ensnareTimer", "plague": "plagueTimer", "lockdown": "lockdownTimer", "stasis": "stasisTimer", "maelstrom": "maelstromTimer", "irradiate": "irradiateTimer"}\n# Status flags (eud-book\'s CUnit table): cloak is "requires detection" + "cloaked" together.\nSTATUS = {"cloak": 0x300, "cooldownUpgrade": 0x20000000}\n\n\ndef hook_foreach(h):\n    for cu in each_matching(h):\n        foreach_do(cu, h["do"], h)\n\n\ndef foreach_do(cu, do, h):\n    """One verb on one unit."""\n    if "set" in do:\n        field, value = do["set"], int(do["value"])\n        if field == "hp":\n            cu.hp = value * 256\n        elif field == "shields":\n            cu.shield = value * 256\n        elif field == "energy":\n            cu.energy = value * 256\n        elif field == "kills":\n            cu.killCount = value\n        elif field == "resources":\n            cu.resourceAmount = value\n        elif field == "buildTime":\n            cu.remainingBuildTime = value\n        elif field == "rank":\n            cu.rankIncrease = value\n        elif field == "topSpeed":\n            # The unit\'s own copy of flingy.dat: a table write reaches only units made afterwards.\n            cu.topSpeed = value\n        elif field == "acceleration":\n            cu.acceleration = value\n        elif field == "movementType":\n            # 0 = flingy.dat control (speed from topSpeed / acceleration), 2 = iscript control (most ground units; speed comes from the animation).\n            cu.flingyMovementType = value\n    elif "order" in do:\n        # The game\'s own Order action, aimed at this one unit: a scratch location is\n        # centred on it first, so the order reaches nothing else (a unit standing on the\n        # same pixel would come along).\n        order = ORDERS[do["order"]]\n        scratch = int(do["scratch"])\n        box_on(cu, scratch)\n        unit = int(h["unit"]) if h.get("unit") is not None else cu.unitType\n        owner = int(h["owner"]) if h.get("owner") is not None else cu.owner\n        DoActions(Order(unit, owner, scratch, order, int(do["location"])))\n    elif "orderRaw" in do:\n        dest = loc_epd(do["location"])\n        left, top, right, bottom = [f_dwread_epd(dest + i) for i in range(4)]\n        cu.orderTargetX = f_div(left + right, 2)[0]\n        cu.orderTargetY = f_div(top + bottom, 2)[0]\n        cu.orderTargetUnit = 0\n        cu.orderID = int(do["orderRaw"])\n        cu.orderState = 0\n    elif "timer" in do:\n        name, value = do["timer"], int(do["value"])\n        if name == "matrix":\n            cu.defensiveMatrixHp = 250 * 256\n            cu.defensiveMatrixTimer = value\n        else:\n            setattr(cu, TIMERS[name], value)\n    elif "cooldown" in do:\n        value = int(do["cooldown"])\n        cu.groundWeaponCooldown = value\n        cu.airWeaponCooldown = value\n        cu.spellCooldown = value\n    elif "status" in do:\n        name, on = do["status"], bool(do["on"])\n        if name == "noclip":\n            cu.set_noclip() if on else cu.clear_noclip()\n        else:\n            mask = STATUS[name]\n            cu.set_status_flag(mask) if on else cu.clear_status_flag(mask)\n    elif "nudge" in do:\n        dx, dy = int(do["nudge"]["dx"]), int(do["nudge"]["dy"])\n        x = cu.posX + dx\n        y = cu.posY + dy\n        cu.posX = x\n        cu.posY = y\n        sprite = cu.sprite\n        if EUDIf()(sprite >= 1):\n            sp = CSprite.from_ptr(sprite)\n            sp.posX = x\n            sp.posY = y\n        EUDEndIf()\n    elif do.get("kill"):\n        cu.die()\n    elif do.get("remove"):\n        cu.remove()\n    elif "invincible" in do:\n        cu.set_invincible() if do["invincible"] else cu.clear_invincible()\n    elif "hallucination" in do:\n        cu.set_hallucination() if do["hallucination"] else cu.clear_hallucination()\n    elif "speed" in do:\n        cu.set_speed_upgrade() if do["speed"] else cu.clear_speed_upgrade()\n    elif "give" in do:\n        cu.cgive(int(do["give"]))\n    elif "locate" in do:\n        box_on(cu, int(do["locate"]))\n    elif "tint" in do:\n        tint(cu, do["tint"])\n    elif "adjust" in do:\n        adjust(cu, do["adjust"], int(do["delta"]))\n\n\ndef adjust(cu, field, delta):\n    """Damage or heal: the field moved by `delta` points, floored at 0 and capped at the type\'s maximum; hit points at 0 kill the unit."""\n    if field == "hp":\n        cur, top = cu.hp, unit_max_hp(cu)\n    elif field == "shields":\n        cur, top = cu.shield, unit_max_shields(cu)\n    else:\n        cur, top = cu.energy, MAX_ENERGY * 256\n    step = abs(delta) * 256\n    new = EUDVariable()\n    if delta < 0:\n        if EUDIf()(cur <= step):\n            new << 0\n        if EUDElse()():\n            new << cur - step\n        EUDEndIf()\n    else:\n        new << cur + step\n        if EUDIf()(new > top):\n            new << top\n        EUDEndIf()\n    if field == "hp":\n        if EUDIf()(new == 0):\n            cu.die()\n        if EUDElse()():\n            cu.hp = new\n        EUDEndIf()\n    elif field == "shields":\n        cu.shield = new\n    else:\n        cu.energy = new\n\n\n# Draw functions of an image (images.dat\'s column, CImage + 0x0A): what the renderer does with it.\nDRAWFUNCS = {"normal": 0, "cloaked": 6, "hallucination": 16, "flash": 17}\n# CImage: + 0x04 next image in the sprite\'s list, + 0x0A the draw function; CSprite + 0x1C the list\'s head.\nIMAGE_NEXT = 0x04\nIMAGE_DRAWFUNC = 0x0A\nSPRITE_IMAGE_HEAD = 0x1C\nMAX_IMAGES = 16\n\n\ndef tint(cu, mode):\n    """Rewrite the draw function of every image of the unit\'s sprite: a look without the state behind it."""\n    drawfunc = DRAWFUNCS[mode]\n    sprite = cu.sprite\n    if EUDIf()(sprite >= 1):\n        img = EUDVariable()\n        n = EUDVariable()\n        img << f_dwread(sprite + SPRITE_IMAGE_HEAD)\n        n << 0\n        if EUDWhile()([img >= 1, n < MAX_IMAGES]):\n            f_bwrite(img + IMAGE_DRAWFUNC, drawfunc)\n            img << f_dwread(img + IMAGE_NEXT)\n            n += 1\n        EUDEndWhile()\n    EUDEndIf()\n\n\ndef hook_terrain(h):\n    """Every tile under the location becomes `tile`, in the MTXM array the game draws from. The\n    walkability and height of the ground come from the tileset\'s own tables and do not follow."""\n    tile = int(h["tile"])\n    left, top, right, bottom = loc_bounds(h["location"])\n    width = f_wread(MAP_SIZE)\n    base = f_dwread(MTXM_PTR)\n    x0 = f_div(left, 32)[0]\n    y0 = f_div(top, 32)[0]\n    x1 = f_div(right + 31, 32)[0]\n    y1 = f_div(bottom + 31, 32)[0]\n    y = EUDVariable()\n    y << y0\n    if EUDWhile()(y < y1):\n        row = base + f_mul(y, width) * 2\n        x = EUDVariable()\n        x << x0\n        if EUDWhile()(x < x1):\n            f_wwrite(row + x * 2, tile)\n            x += 1\n        EUDEndWhile()\n        y += 1\n    EUDEndWhile()\n\n\ndef hook_count(h):\n    n = EUDVariable()\n    n << 0\n    for _cu in each_matching(h):\n        n += 1\n    f_dwwrite_epd(cell_epd(h["to"]), n)\n\n\ndef hook_read(h):\n    v = EUDVariable()\n    done = EUDVariable()\n    v << 0\n    done << 0\n    for cu in each_matching(h):\n        if EUDIf()(done == 0):\n            v << unit_field(cu, h["field"])\n            done << 1\n        EUDEndIf()\n    f_dwwrite_epd(cell_epd(h["to"]), v)\n\n\ndef hook_pick(h):\n    """The one matching unit with the least / greatest field, or the nearest to a location\'s centre; `locate`, `to` and `do` act on it."""\n    by = h["by"]\n    best = EUDVariable()\n    best_ptr = EUDVariable()\n    best_ptr << 0\n    if by == "random":\n        # Count the matches, draw one, take the drawn one on a second pass.\n        n = EUDVariable()\n        n << 0\n        for _cu in each_matching(h):\n            n += 1\n        drawn = EUDVariable()\n        i = EUDVariable()\n        drawn << 0\n        i << 0\n        if EUDIf()(n >= 1):\n            _, r = f_div(f_rand(), n)\n            drawn << r\n        EUDEndIf()\n        for cu in each_matching(h):\n            if EUDIf()([n >= 1, i == drawn]):\n                best_ptr << cu.ptr\n            EUDEndIf()\n            i += 1\n        best << 0\n    elif by == "nearest":\n        near_spec = h["near"]\n        if isinstance(near_spec, dict):\n            # A player\'s mouse: MSQC keeps it in location mouseBase + slot (the setting is 1-based).\n            near = loc_epd(int(spec["msqc"]["mouseBase"]) + int(near_spec["mouse"]))\n        else:\n            near = loc_epd(near_spec)\n        left, top, right, bottom = [f_dwread_epd(near + i) for i in range(4)]\n        cx = f_div(left + right, 2)[0]\n        cy = f_div(top + bottom, 2)[0]\n        best << 0xFFFFFFFF\n    elif by == "min":\n        best << 0xFFFFFFFF\n    else:\n        best << 0\n    for cu in ([] if by == "random" else each_matching(h)):\n        if by == "nearest":\n            # Manhattan distance is enough to pick the nearest, and it never overflows.\n            dx = EUDVariable()\n            dy = EUDVariable()\n            if EUDIf()(cu.posX >= cx):\n                dx << cu.posX - cx\n            if EUDElse()():\n                dx << cx - cu.posX\n            EUDEndIf()\n            if EUDIf()(cu.posY >= cy):\n                dy << cu.posY - cy\n            if EUDElse()():\n                dy << cy - cu.posY\n            EUDEndIf()\n            v = dx + dy\n            better = v < best\n        else:\n            v = unit_field(cu, h["field"])\n            better = v < best if by == "min" else v > best\n        if EUDIf()(better):\n            best << v\n            best_ptr << cu.ptr\n        EUDEndIf()\n    if by == "nearest" and h.get("radius") is not None:\n        # Nothing counts past the radius: the pick answers "no unit" instead of the far one.\n        if EUDIf()(best > int(h["radius"])):\n            best_ptr << 0\n        EUDEndIf()\n    if EUDIf()(best_ptr >= 1):\n        found = CUnit.from_ptr(best_ptr)\n        if h.get("locate"):\n            box_on(found, int(h["locate"]))\n        if h.get("to"):\n            f_dwwrite_epd(cell_epd(h["to"]), best)\n        if h.get("do"):\n            foreach_do(found, h["do"], h)\n    if EUDElse()():\n        if h.get("to"):\n            f_dwwrite_epd(cell_epd(h["to"]), 0)\n    EUDEndIf()\n\n\ndef scan(h):\n    hit = EUDVariable()\n    hit << 0\n    value = int(h["value"])\n    for cu in each_matching(h):\n        f = unit_field(cu, h["field"])\n        cmp = h["cmp"]\n        if cmp == "<":\n            cond = f < value\n        elif cmp == ">":\n            cond = f > value\n        else:\n            cond = f == value\n        if EUDIf()(cond):\n            hit << 1\n        EUDEndIf()\n    f_dwwrite_epd(cell_epd(h["cell"]), hit)\n\n\ndef hook_setloc(h):\n    base = loc_epd(h["location"])\n    if h.get("relative"):\n        dx, dy = int(h["x"]), int(h["y"])\n        for i in (0, 2):\n            f_dwwrite_epd(base + i, f_dwread_epd(base + i) + dx)\n        for i in (1, 3):\n            f_dwwrite_epd(base + i, f_dwread_epd(base + i) + dy)\n        return\n    x, y = int(h["x"]), int(h["y"])\n    if h.get("width") is None or h.get("height") is None:\n        width = f_dwread_epd(base + 2) - f_dwread_epd(base)\n        height = f_dwread_epd(base + 3) - f_dwread_epd(base + 1)\n    else:\n        width, height = int(h["width"]), int(h["height"])\n    f_dwwrite_epd(base, x)\n    f_dwwrite_epd(base + 1, y)\n    f_dwwrite_epd(base + 2, x + width)\n    f_dwwrite_epd(base + 3, y + height)\n\n\nHOOKS = {"text": hook_text, "math": hook_math, "foreach": hook_foreach, "count": hook_count, "read": hook_read, "setloc": hook_setloc, "pick": hook_pick, "terrain": hook_terrain}\n\n\ndef inside(px, py, number):\n    left, top, right, bottom = loc_bounds(number)\n    return [px >= left, px <= right, py >= top, py <= bottom]\n\n\ndef msqc_follow(m):\n    base = m.get("mouseBase")\n    for entry in m.get("mouseIn", []):\n        if base is None:\n            break\n        for p in range(HUMANS):\n            # MSQC keeps player p\'s mouse as a point in location number base + p \u2014 the `Mouse : base`\n            # setting counts from 1, like a trigger\'s location (probe 7 found the +1 that was here).\n            mloc = loc_epd(base + p)\n            mx = f_dwread_epd(mloc)\n            my = f_dwread_epd(mloc + 1)\n            cell = [p, entry["unit"]]\n            if EUDIf()(inside(mx, my, entry["location"])):\n                f_dwwrite_epd(cell_epd(cell), 1)\n            if EUDElse()():\n                f_dwwrite_epd(cell_epd(cell), 0)\n            EUDEndIf()\n    sel = m.get("select")\n    if sel:\n        for p in range(HUMANS):\n            ptr = f_dwread_epd(cell_epd([p, sel["ptr"]]))\n            if EUDIf()(ptr >= 1):\n                cu = CUnit.from_ptr(ptr)\n                f_dwwrite_epd(cell_epd([p, sel["type"]]), cu.unitType + 1)\n            if EUDElse()():\n                f_dwwrite_epd(cell_epd([p, sel["type"]]), 0)\n            EUDEndIf()\n\n\ndef chat_args(args):\n    """The first number in a matched chat pattern \u2014 the digits after the message\'s first space \u2014 into the number cell."""\n    pattern = cell_epd(args["pattern"])\n    if EUDIf()(MemoryEPD(pattern, AtLeast, 1)):\n        ptr = f_dwread_epd(cell_epd(args["ptr"]))\n        length = f_dwread_epd(cell_epd(args["len"]))\n        n = EUDVariable()\n        i = EUDVariable()\n        seen = EUDVariable()\n        n << 0\n        i << 0\n        seen << 0\n        if EUDWhile()(i < length):\n            ch = f_bread(ptr + i)\n            i += 1\n            if EUDIf()(seen == 0):\n                if EUDIf()(ch == 32):\n                    seen << 1\n                EUDEndIf()\n                EUDContinue()\n            EUDEndIf()\n            EUDBreakIf(ch < 48)\n            EUDBreakIf(ch > 57)\n            n << n * 10 + (ch - 48)\n        EUDEndWhile()\n        f_dwwrite_epd(cell_epd(args["number"]), n)\n    EUDEndIf()\n\n\nHOLD_CYCLES = 24\n\n\ndef held_keys(held):\n    """A KeyDown / KeyUp pair into a held state per player. Remastered\'s key byte pulses to 1 for\n    one frame on a press and reads 0 otherwise, so MSQC\'s KeyUp has nothing to fall out of and never\n    arrives; what a held key does produce is Windows\' auto-repeat, a press every few frames. So the\n    state is a countdown: a down sets it to HOLD_CYCLES (a second at fastest, longer than the repeat\n    delay), each cycle counts it down, and an up \u2014 should one come \u2014 ends it. A condition reads \u2265 1."""\n    for entry in held:\n        for p in range(HUMANS):\n            down = cell_epd([p, entry["down"]])\n            up = cell_epd([p, entry["up"]])\n            state = cell_epd([p, entry["state"]])\n            if EUDIf()(MemoryEPD(down, AtLeast, 1)):\n                DoActions(SetMemoryEPD(state, SetTo, HOLD_CYCLES))\n            if EUDElseIf()(MemoryEPD(up, AtLeast, 1)):\n                DoActions(SetMemoryEPD(state, SetTo, 0))\n            if EUDElseIf()(MemoryEPD(state, AtLeast, 1)):\n                DoActions(SetMemoryEPD(state, Subtract, 1))\n            EUDEndIf()\n\n\ndef beforeTriggerExec():\n    chat = spec.get("chat")\n    if chat and chat.get("args"):\n        chat_args(chat["args"])\n    m = spec.get("msqc")\n    if m and m.get("held"):\n        held_keys(m["held"])\n    for h in spec.get("scans", []):\n        scan(h)\n    if m:\n        msqc_follow(m)\n\n\ndef afterTriggerExec():\n    hooks = spec.get("hooks", [])\n    # Several hooks may watch one flag; it is cleared after the last of them has run.\n    last = {}\n    for i, h in enumerate(hooks):\n        last[tuple(h["flag"])] = i\n    for i, h in enumerate(hooks):\n        flag = cell_epd(h["flag"])\n        if EUDIf()(MemoryEPD(flag, Exactly, 1)):\n            HOOKS[h["kind"]](h)\n            if last[tuple(h["flag"])] == i:\n                DoActions(SetMemoryEPD(flag, SetTo, 0))\n        EUDEndIf()\n    chat = spec.get("chat")\n    if chat:\n        DoActions(SetMemoryEPD(cell_epd(chat["cell"]), SetTo, 0))\n        if chat.get("args"):\n            DoActions(SetMemoryEPD(cell_epd(chat["args"]["pattern"]), SetTo, 0))\n    m = spec.get("msqc")\n    if m:\n        for unit in m.get("clear", []):\n            for p in range(HUMANS):\n                DoActions(SetMemoryEPD(cell_epd([p, unit]), SetTo, 0))\n';
+
 // src/model/preflight.ts
 var PLAYER_INACTIVE = 0;
 var hex = (h) => (h >>> 0).toString(16).padStart(8, "0");
@@ -6806,53 +6809,27 @@ function preflight(input) {
     else if (!l.named) out.push({ level: "error", text: `The camera finds its location by name, and location ${options.camera.location} has none of its own.` });
   }
   if (options.bgm && !input.soundPresent(options.bgm.path)) out.push({ level: "error", text: `The background music ${options.bgm.path.split("\\").pop()} is not in the map archive.` });
-  const h = input.health;
-  if (h) {
-    const needed = Object.keys(input.plugins);
-    const missing = h.plugins ? needed.filter((n) => !h.plugins.includes(n)) : [];
-    if (missing.length) out.push({ level: "error", text: `The build server does not have the ${missing.join(", ")} plugin${missing.length > 1 ? "s" : ""} this map needs.` });
-    if (input.plugins.magenta) {
-      if (typeof h.magentaSpec === "number" && h.magentaSpec < MAGENTA_SPEC_VERSION) out.push({ level: "error", text: `The build server's Magenta plugin reads spec ${h.magentaSpec}; this map's rows are written as spec ${MAGENTA_SPEC_VERSION}. Update the server (scm-js/eud-server), or build on scmjs.dev.` });
-      else if (h.magentaSpec === void 0 || h.magentaSpec === null) out.push({ level: "info", text: "The build server does not say which Magenta spec it reads; an older one fails the build with a message rather than here." });
-    }
-    if (input.mapBytes !== void 0 && h.maxMapBytes && input.mapBytes > h.maxMapBytes) out.push({ level: "error", text: `The map is ${Math.round(input.mapBytes / 1024)} KB and the server takes up to ${Math.round(h.maxMapBytes / 1024)} KB.` });
-  }
+  if (!input.runtime) out.push({ level: "error", text: "The eudplib plugin is not running: it is the library that builds EUD maps. Install or turn it on under Plugins \u25B8 Manage Plugins\u2026" });
   const rank = { error: 0, warn: 1, info: 2 };
   return out.sort((a2, b) => rank[a2.level] - rank[b.level]);
 }
-function lastBuildRecord(revision, file, server, health) {
-  return { revision, at: (/* @__PURE__ */ new Date()).toISOString(), file, spec: MAGENTA_SPEC_VERSION, server, ...health?.eudplib ? { eudplib: health.eudplib } : {}, ...health?.euddraft ? { euddraft: health.euddraft } : {} };
+function lastBuildRecord(revision, file, runtime) {
+  return { revision, at: (/* @__PURE__ */ new Date()).toISOString(), file, spec: MAGENTA_SPEC_VERSION, ...runtime ? { eudplib: runtime.eudplib, euddraft: runtime.euddraft } : {} };
 }
+
+// vendor/eudplib.ts
+var EUDPLIB_SERVICE = "eudplib.build";
 
 // src/ui/build.ts
 var CAMMOVE_LOC = "cammoveLoc";
 var CAMMOVE_SWITCH = "cammove";
-var DEFAULT_SERVER = "https://eud.scmjs.dev";
-var SERVER_KEY = "server";
-var serverUrl = (api) => api.storage.get(SERVER_KEY, DEFAULT_SERVER).replace(/\/+$/, "");
-var setServerUrl = (api, url) => {
-  api.storage.set(SERVER_KEY, url.trim().replace(/\/+$/, "") || DEFAULT_SERVER);
-};
-var toBase64 = (bytes) => {
-  let s = "";
-  for (let i = 0; i < bytes.length; i += 32768) s += String.fromCharCode(...bytes.subarray(i, i + 32768));
-  return btoa(s);
-};
-var fromBase64 = (b64) => Uint8Array.from(atob(b64), (c2) => c2.charCodeAt(0));
+var eudplib = (api) => api.services.get(EUDPLIB_SERVICE);
+var runtimeOf = (svc) => svc ? { eudplib: svc.versions.eudplib, euddraft: svc.versions.euddraft } : null;
 function buildStatus(host, store) {
   const triggers = store.list.filter((t) => needsBuild(store, t)).length;
   const revision = sourceRevision(store.list, store.sidecar, host.revisionExtra());
   const last = store.sidecar.settings.lastBuild ?? null;
   return { triggers, freshness: buildFreshness(last, revision), last, revision };
-}
-async function fetchHealth(url, ms = 6e3) {
-  try {
-    const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(ms) });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
 }
 var timeOf = (iso) => {
   const d = new Date(iso);
@@ -6905,7 +6882,6 @@ function openBuildDialog(api, host, store, everyFrame) {
   };
   const info = api.document.info();
   const stem2 = (info?.fileName ?? "map").replace(/\.(scx|scm|chk)$/i, "");
-  const server = w.text({ value: serverUrl(api), placeholder: DEFAULT_SERVER });
   const status = w.statusLine();
   const log = el("textarea", { className: "textarea", rows: 10, readOnly: true, spellcheck: false, style: "font-family: var(--font-mono); font-size: var(--fs-xs); display: none" });
   const summary = el(
@@ -6918,9 +6894,8 @@ function openBuildDialog(api, host, store, everyFrame) {
   );
   const nothing = !Object.keys(plugins()).length;
   const fresh = el("div", { className: "mg-build-fresh" });
-  const serverLine = el("div", { className: "hint" }, t("Asking the build server what it has\u2026"));
+  const runtimeLine = el("div", { className: "hint" });
   const problemsEl = el("ul", { className: "mg-preflight" });
-  let health;
   let handle = null;
   const renderFresh = () => {
     const st = buildStatus(host, store);
@@ -6936,7 +6911,7 @@ function openBuildDialog(api, host, store, everyFrame) {
       sidecar: store.sidecar,
       options,
       plugins: plugins(),
-      health,
+      runtime: runtimeOf(eudplib(api)),
       playerTypes: host.playerTypes(),
       playerTypeName: (s) => host.playerTypeName(s),
       playerName: (s) => api.names.playerGroup(s),
@@ -6964,25 +6939,19 @@ function openBuildDialog(api, host, store, everyFrame) {
     }
     return list;
   };
-  const renderServer = () => {
-    if (health === void 0) return;
-    if (!health) {
-      serverLine.textContent = t("The build server at {url} did not answer; the map stays as it is, build again when it is back.", { url: serverUrl(api) });
+  const renderRuntime = () => {
+    const svc = eudplib(api);
+    if (!svc) {
+      runtimeLine.textContent = "";
       return;
     }
-    const spec = typeof health.magentaSpec === "number" ? t("Magenta spec {n}", { n: health.magentaSpec }) : t("Magenta spec not reported");
-    serverLine.textContent = t("Server: eudplib {eudplib}, euddraft {euddraft}, {spec}; this map is written as spec {ours}.", { eudplib: health.eudplib ?? "?", euddraft: health.euddraft ?? "?", spec, ours: MAGENTA_SPEC_VERSION });
+    const state = svc.state();
+    const where = state === "ready" ? t("ready in this editor") : state === "installing" ? t("being downloaded") : t("downloaded on the first build, {mb} MB", { mb: Math.round(svc.downloadBytes / 1e5) / 10 });
+    runtimeLine.textContent = t("Builds run with eudplib {eudplib} and euddraft {euddraft}, {where}.", { eudplib: svc.versions.eudplib, euddraft: svc.versions.euddraft, where });
   };
-  const askServer = async () => {
-    health = void 0;
-    serverLine.textContent = t("Asking the build server what it has\u2026");
-    health = await fetchHealth(serverUrl(api));
-    renderServer();
+  const watching = api.services.watch(EUDPLIB_SERVICE, () => {
+    renderRuntime();
     renderProblems();
-  };
-  server.addEventListener("change", () => {
-    setServerUrl(api, server.value);
-    void askServer();
   });
   for (const box of [cameraOn, bgmOn]) box.input.addEventListener("change", () => renderProblems());
   cameraLoc.addEventListener("change", () => renderProblems());
@@ -6992,10 +6961,10 @@ function openBuildDialog(api, host, store, everyFrame) {
     size: "md",
     mount(body) {
       renderFresh();
+      renderRuntime();
       renderProblems();
-      void askServer();
       body.append(
-        w.hint(t("The map goes to the build server as it stands, euddraft adds the code for the rows below, and the built map comes back as a file to save. The server keeps nothing. Only StarCraft: Remastered plays the result. Keep this map as the source: the built one is the compiled output, the way a program is.")),
+        w.hint(t("euddraft adds the code for the rows below to the map as it stands, here in the editor, and the built map is saved as a file. Nothing leaves this machine. Only StarCraft: Remastered plays the result. Keep this map as the source: the built one is the compiled output, the way a program is.")),
         summary,
         fresh,
         problemsEl,
@@ -7007,16 +6976,15 @@ function openBuildDialog(api, host, store, everyFrame) {
           unlimiter,
           w.hint(t("The camera follows a location by its name, so only named locations are offered. It follows while a switch named cammove is set, so a trigger can turn it on and off; the switch and a helper location named cammoveLoc are made in this map at build time. A looped sound needs its length; a plain WAV's is read from the file."))
         ),
-        w.form([{ label: t("Build server"), field: server }]),
-        serverLine,
+        runtimeLine,
         status,
         log
       );
       if (nothing && !locations.length) status.set(t("Nothing in this map needs a build; a plain save is all it takes."), "warn");
+      return () => watching.dispose();
     },
     buttons: [
       { label: t("Build\u2026"), primary: true, closes: false, run: async () => {
-        setServerUrl(api, server.value);
         readAll();
         const errors = renderProblems().filter((p) => p.level === "error").length;
         if (errors) {
@@ -7054,36 +7022,37 @@ function openBuildDialog(api, host, store, everyFrame) {
           status.set(t("No map is open."), "error");
           return;
         }
+        const svc = eudplib(api);
+        if (!svc) {
+          status.set(t("The eudplib plugin is not running; install or turn it on under Plugins \u25B8 Manage Plugins\u2026"), "error");
+          return;
+        }
+        const ready = await svc.ensure({ reason: t("Magenta needs it to build this map.") });
+        renderRuntime();
+        if (!ready) {
+          status.set(t("Not built: the build runtime was not installed."), "warn");
+          return;
+        }
         status.busy(t("Building\u2026"));
         log.style.display = "none";
+        log.value = "";
         try {
           const bytes = new Uint8Array(await file.arrayBuffer());
-          if (health?.maxMapBytes && bytes.length > health.maxMapBytes) {
-            status.set(t("The map is {kb} KB and the server takes up to {max} KB.", { kb: Math.round(bytes.length / 1024), max: Math.round(health.maxMapBytes / 1024) }), "error");
-            return;
-          }
-          const res = await fetch(`${serverUrl(api)}/build`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ map: toBase64(bytes), plugins: plugins2 }) });
-          const answer = await res.json().catch(() => null);
-          if (!res.ok || !answer?.map) {
-            const e = answer?.error;
-            status.set(e?.message ?? t("The server answered {status}.", { status: res.status }), "error");
-            if (e?.log) {
-              log.value = e.log;
-              log.style.display = "";
-            }
-            return;
-          }
-          const out = fromBase64(answer.map);
+          const result = await svc.build({ map: bytes, plugins: plugins2, sources: { magenta: MAGENTA_PY } }, { onLog: (line) => {
+            log.value += line + "\n";
+          } });
+          const out = result.map;
           const saved = await api.ui.saveFile(out, `${stem2}-eud.scx`);
-          status.set(saved ? t("Built: {name}, {kb} KB.", { name: saved.fileName, kb: Math.round(out.length / 1024) }) : t("Built, but not saved."), saved ? "ok" : "warn");
-          if (answer.log) {
-            log.value = answer.log;
+          status.set(saved ? t("Built: {name}, {kb} KB in {s} s.", { name: saved.fileName, kb: Math.round(out.length / 1024), s: Math.round(result.ms / 100) / 10 }) : t("Built, but not saved."), saved ? "ok" : "warn");
+          if (result.log) {
+            log.value = result.log;
             log.style.display = "";
           }
-          store.updateSidecar(t("Build"), { settings: { ...store.sidecar.settings, lastBuild: lastBuildRecord(revision, saved?.fileName ?? null, serverUrl(api), health) } });
+          store.updateSidecar(t("Build"), { settings: { ...store.sidecar.settings, lastBuild: lastBuildRecord(revision, saved?.fileName ?? null, runtimeOf(svc)) } });
           renderFresh();
         } catch (err) {
-          status.set(t("Could not reach the build server: {why}. The map is unchanged; build again when it is back.", { why: String(err.message ?? err) }), "error");
+          status.set(t("The build failed: {why}. The map is unchanged.", { why: String(err.message ?? err) }), "error");
+          if (log.value) log.style.display = "";
         }
       } },
       { label: t("Close") }
@@ -8582,7 +8551,6 @@ function renderList(deps, root, onMove) {
 function openSettingsDialog(api, onLayoutChange) {
   const t = api.i18n.t;
   const w = api.ui.widgets;
-  const server = w.text({ value: serverUrl(api), placeholder: DEFAULT_SERVER });
   const dock = w.select([{ value: "float", label: t("Floating over the map") }, { value: "right", label: t("Docked on the right") }], { value: layout(api).dock });
   api.ui.dialog({
     title: t("Magenta Settings"),
@@ -8590,14 +8558,11 @@ function openSettingsDialog(api, onLayoutChange) {
     mount(body) {
       body.append(
         w.form([{ label: t("Panel"), field: dock }]),
-        w.hint(t("A floating panel is dragged about and resized from its corner; a docked one sits in the right dock with the Layers and Properties panels and stacks the list over the trigger.")),
-        w.form([{ label: t("Build server"), field: server }]),
-        w.hint(t("The server that builds EUD maps (\u22EF \u25B8 Build EUD map\u2026). Leave it empty for the scmjs.dev one; a server of your own is the eud-server container."))
+        w.hint(t("A floating panel is dragged about and resized from its corner; a docked one sits in the right dock with the Layers and Properties panels and stacks the list over the trigger."))
       );
     },
     buttons: [
       { label: t("OK"), primary: true, run: () => {
-        setServerUrl(api, server.value);
         const next = dock.value === "right" ? "right" : "float";
         if (next !== layout(api).dock) {
           setLayout(api, { dock: next });
