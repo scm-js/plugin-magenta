@@ -10,6 +10,8 @@ export interface EudplibBuildRequest {
   plugins: Record<string, Record<string, string | number>>;
   /** Extra euddraft plugins the caller brings as Python source, module name → code; a name here may also appear in `plugins` with its settings. */
   sources?: Record<string, string>;
+  /** Data files the caller brings, file name → text, written to `/work/files/<name>` for a plugin setting to name (library 0.2). */
+  files?: Record<string, string>;
   options?: { shufflePayload?: boolean; sectorSize?: number };
 }
 export interface EudplibBuildResult { map: Uint8Array; log: string; chkBytes: number; ms: number }
