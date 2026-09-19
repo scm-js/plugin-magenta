@@ -151,7 +151,7 @@ var ScoreType = {
   KillsAndRazings: 6,
   Custom: 7
 };
-var UnitClass = { Any: 228, Men: 229, Buildings: 230, Factories: 231 };
+var UnitClass = { Any: 229, Men: 230, Buildings: 231, Factories: 232 };
 var ConditionFlag = {
   /** Game bookkeeping. */
   Unknown: 1,

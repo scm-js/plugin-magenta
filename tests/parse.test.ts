@@ -7,7 +7,7 @@ import { lowerAction, recognizeAction } from "../src/model/eud";
 import { fillAction, fillCondition, fillEud, parseQuery, type ParseNames } from "../src/model/parse";
 
 const names: ParseNames = {
-  units: UNIT_NAMES.map((label, value) => ({ value, label })).concat([{ value: 228, label: "Any unit" }]),
+  units: UNIT_NAMES.map((label, value) => ({ value, label })).concat([{ value: 229, label: "Any unit" }]),
   locations: [{ value: 1, label: "Beacon" }, { value: 2, label: "Spawn Point" }, { value: 64, label: "Anywhere" }],
   players: PLAYER_GROUP_CHOICES.map((c) => ({ value: c.value, label: c.label, aliases: c.aliases })),
   weapons: [{ value: 0, label: "Gauss Rifle" }, { value: 3, label: "Fusion Cutter" }],
