@@ -47,8 +47,8 @@ lock for a run another plugin owns, **!** for a problem.
   changes the other — `Delete` deletes, `Ctrl+/` disables or enables every row of it.
 - `Ctrl+C` copies the selected trigger as text in TrigEdit's syntax; `Ctrl+V` pastes text
   from SCMDraft or TrigEdit after the selection.
-- The panel floats over the map by default; **⋯ ▸ Dock on the right** (or Plugins ▸ Magenta
-  Settings…) puts it in the right dock instead, where the list stacks over the trigger. The
+- The panel floats over the map by default; **⋯ ▸ Dock on the right** (or Magenta's page in
+  Edit ▸ Preferences, under Plugins) puts it in the right dock instead, where the list stacks over the trigger. The
   divider between the list and the trigger drags; double-click it, or the **☰** button, to
   hide the list and give the trigger the whole width. Size, dock and list width are remembered.
 - `Ctrl+Z` / `Ctrl+Y` undo and redo inside the panel. Triggers sit outside the editor's own

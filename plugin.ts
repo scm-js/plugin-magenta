@@ -21,7 +21,7 @@ import { actionsText, conditionText } from "./src/ui/describe";
 import { installClaims } from "./src/claims";
 import { Host } from "./src/ui/host";
 import { createPanel } from "./src/ui/panel";
-import { openSettingsDialog } from "./src/ui/settings";
+import { openSettings, registerPreferencesPage } from "./src/ui/settings";
 import { starters, type StarterSubject } from "./src/model/starters";
 
 export function activate(api: PluginApi): () => void {
@@ -47,9 +47,9 @@ export function activate(api: PluginApi): () => void {
       };
     },
   });
-  api.commands.register({ id: "settings", title: "Magenta Settings", run: () => openSettingsDialog(api, () => panel.relayout()) });
+  registerPreferencesPage(api, () => panel.relayout());
+  api.commands.register({ id: "settings", title: "Magenta Settings", run: () => openSettings(api) });
   api.menu.add("Triggers", { label: t("Magenta…"), shortcut: "Ctrl+Shift+M", icon: "plugin", after: "Text Trigger Editor…", enabled: () => api.document.isOpen(), command: "open" });
-  api.menu.add("Plugins", { label: t("Magenta Settings…"), icon: "plugin", command: "settings" });
   api.hotkeys.add("Ctrl+Shift+M", { command: "open" });
   claims = installClaims(api, (index) => panel.open({ index }));
 

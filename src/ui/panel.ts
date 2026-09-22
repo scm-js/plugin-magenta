@@ -23,7 +23,7 @@ import { pickChoice } from "./chips";
 import { renderEditor } from "./editor";
 import { Host } from "./host";
 import { renderList } from "./list";
-import { openSettingsDialog } from "./settings";
+import { openSettings } from "./settings";
 import { createSimulator } from "./simulate";
 import { closePopover, openPopover } from "./popover";
 import { Store } from "./store";
@@ -378,7 +378,7 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
         item(t("Dry run…"), () => sim.open()),
         item(t("Build EUD map…"), () => openBuildDialog(api, h, s, everyFrame())),
         item(t("Dock on the right"), () => { setLayout(api, { dock: layout(api).dock === "right" ? "float" : "right" }); relayout(); }, { checked: layout(api).dock === "right" }),
-        item(t("Settings…"), () => openSettingsDialog(api, relayout)),
+        item(t("Settings…"), () => openSettings(api)),
         sep(),
         item(t("Show every trigger"), () => { filter = "all"; render(); }, { checked: filter === "all" }),
         item(t("Show only triggers with a problem"), () => { filter = "problems"; render(); }, { checked: filter === "problems" }),

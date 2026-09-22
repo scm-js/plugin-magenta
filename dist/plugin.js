@@ -8548,30 +8548,37 @@ function renderList(deps, root, onMove) {
 }
 
 // src/ui/settings.ts
-function openSettingsDialog(api, onLayoutChange) {
+var PREFERENCES_PAGE = "plugin:magenta";
+function registerPreferencesPage(api, onLayoutChange) {
   const t = api.i18n.t;
   const w = api.ui.widgets;
-  const dock = w.select([{ value: "float", label: t("Floating over the map") }, { value: "right", label: t("Docked on the right") }], { value: layout(api).dock });
-  api.ui.dialog({
-    title: t("Magenta Settings"),
-    size: "sm",
+  let dock = null;
+  api.ui.preferencesPage({
     mount(body) {
+      dock = w.select([{ value: "float", label: t("Floating over the map") }, { value: "right", label: t("Docked on the right") }], { value: layout(api).dock });
       body.append(
         w.form([{ label: t("Panel"), field: dock }]),
         w.hint(t("A floating panel is dragged about and resized from its corner; a docked one sits in the right dock with the Layers and Properties panels and stacks the list over the trigger."))
       );
+      return () => {
+        dock = null;
+      };
     },
-    buttons: [
-      { label: t("OK"), primary: true, run: () => {
-        const next = dock.value === "right" ? "right" : "float";
-        if (next !== layout(api).dock) {
-          setLayout(api, { dock: next });
-          onLayoutChange?.();
-        }
-      } },
-      { label: t("Cancel") }
-    ]
+    apply() {
+      if (!dock) return;
+      const next = dock.value === "right" ? "right" : "float";
+      if (next !== layout(api).dock) {
+        setLayout(api, { dock: next });
+        onLayoutChange?.();
+      }
+    },
+    reset() {
+      if (dock) dock.value = "float";
+    }
   });
+}
+function openSettings(api) {
+  api.ui.open("preferences", { page: PREFERENCES_PAGE });
 }
 
 // src/model/simulate.ts
@@ -10043,7 +10050,7 @@ function createPanel(api, hooks = {}) {
           setLayout(api, { dock: layout(api).dock === "right" ? "float" : "right" });
           relayout();
         }, { checked: layout(api).dock === "right" }),
-        item(t("Settings\u2026"), () => openSettingsDialog(api, relayout)),
+        item(t("Settings\u2026"), () => openSettings(api)),
         sep(),
         item(t("Show every trigger"), () => {
           filter = "all";
@@ -10270,9 +10277,9 @@ function activate(api) {
       };
     }
   });
-  api.commands.register({ id: "settings", title: "Magenta Settings", run: () => openSettingsDialog(api, () => panel.relayout()) });
+  registerPreferencesPage(api, () => panel.relayout());
+  api.commands.register({ id: "settings", title: "Magenta Settings", run: () => openSettings(api) });
   api.menu.add("Triggers", { label: t("Magenta\u2026"), shortcut: "Ctrl+Shift+M", icon: "plugin", after: "Text Trigger Editor\u2026", enabled: () => api.document.isOpen(), command: "open" });
-  api.menu.add("Plugins", { label: t("Magenta Settings\u2026"), icon: "plugin", command: "settings" });
   api.hotkeys.add("Ctrl+Shift+M", { command: "open" });
   claims = installClaims(api, (index) => panel.open({ index }));
   const under = (ctx) => {
