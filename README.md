@@ -1,6 +1,6 @@
 # Magenta
 
-A plugin for [scmJS](https://github.com/jeany55/scm-js), the browser-based StarCraft 1 /
+A plugin for [scmJS](https://github.com/scm-js/scm-js), the browser-based StarCraft 1 /
 Brood War map editor. Magenta is a **trigger editor for map makers**: every trigger reads as a
 sentence with its parameters as chips, one search box adds any condition or action, and the map
 is the picker. It carries a catalogue of StarCraft: Remastered **EUD** conditions and actions
