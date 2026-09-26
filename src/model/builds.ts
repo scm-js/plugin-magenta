@@ -12,6 +12,7 @@
  * game commands so every client agrees, and lands in per-player cells.
  */
 import type { Cell } from "./counters";
+import { msg, t } from "../i18n";
 
 /** A piece of a text hook: words, a counter's value, a player's name, or the switch to a player's colour. */
 export type TextPart = { text: string } | { counter: Cell } | { player: number } | { color: number };
@@ -21,20 +22,20 @@ export type UnitField = "hp" | "shields" | "energy" | "kills" | "x" | "y" | "ord
 
 /** The fields as the chips show them; `yesNo` fields read 1 or 0 and take an "is / is not" chip instead of a comparison. */
 export const UNIT_FIELDS: readonly { field: UnitField; label: string; yesNo?: boolean }[] = [
-  { field: "hp", label: "hit points" }, { field: "shields", label: "shields" }, { field: "energy", label: "energy" }, { field: "kills", label: "kills" },
-  { field: "x", label: "x" }, { field: "y", label: "y" },
-  { field: "order", label: "order id" }, { field: "hasTarget", label: "targeting something", yesNo: true }, { field: "underAttack", label: "under attack", yesNo: true },
-  { field: "burrowed", label: "burrowed", yesNo: true }, { field: "inTransport", label: "in a transport", yesNo: true }, { field: "speed", label: "moving", yesNo: true },
-  { field: "buildTime", label: "remaining build time" }, { field: "resources", label: "resources" }, { field: "cooldown", label: "weapon cooldown" },
-  { field: "hpPct", label: "hit points %" }, { field: "shieldsPct", label: "shields %" }, { field: "energyPct", label: "energy %" },
-  { field: "unitType", label: "unit type id" }, { field: "owner", label: "owner" },
+  { field: "hp", label: msg("hit points") }, { field: "shields", label: msg("shields") }, { field: "energy", label: msg("energy") }, { field: "kills", label: msg("kills") },
+  { field: "x", label: msg("x") }, { field: "y", label: msg("y") },
+  { field: "order", label: msg("order id") }, { field: "hasTarget", label: msg("targeting something"), yesNo: true }, { field: "underAttack", label: msg("under attack"), yesNo: true },
+  { field: "burrowed", label: msg("burrowed"), yesNo: true }, { field: "inTransport", label: msg("in a transport"), yesNo: true }, { field: "speed", label: msg("moving"), yesNo: true },
+  { field: "buildTime", label: msg("remaining build time") }, { field: "resources", label: msg("resources") }, { field: "cooldown", label: msg("weapon cooldown") },
+  { field: "hpPct", label: msg("hit points %") }, { field: "shieldsPct", label: msg("shields %") }, { field: "energyPct", label: msg("energy %") },
+  { field: "unitType", label: msg("unit type id") }, { field: "owner", label: msg("owner") },
 ];
 
 /** The spell timers a pass can set. The game counts them down about once per eight frames, so a second at fastest is three ticks. */
 export type TimerName = "stim" | "ensnare" | "plague" | "lockdown" | "stasis" | "maelstrom" | "irradiate" | "matrix";
 export const TIMERS: readonly { timer: TimerName; label: string }[] = [
-  { timer: "stim", label: "stim" }, { timer: "ensnare", label: "ensnare" }, { timer: "plague", label: "plague" }, { timer: "lockdown", label: "lockdown" },
-  { timer: "stasis", label: "stasis" }, { timer: "maelstrom", label: "maelstrom" }, { timer: "irradiate", label: "irradiate" }, { timer: "matrix", label: "a defensive matrix" },
+  { timer: "stim", label: msg("stim") }, { timer: "ensnare", label: msg("ensnare") }, { timer: "plague", label: msg("plague") }, { timer: "lockdown", label: msg("lockdown") },
+  { timer: "stasis", label: msg("stasis") }, { timer: "maelstrom", label: msg("maelstrom") }, { timer: "irradiate", label: msg("irradiate") }, { timer: "matrix", label: msg("a defensive matrix") },
 ];
 export const TIMER_TICKS_PER_SECOND = 3;
 /** The cooldown a "hold fire" pass writes each cycle: longer than any weapon's, so the unit never gets to fire. */
@@ -241,13 +242,13 @@ export function nextChatValue(builds: BuildRecord[]): number {
 
 /** A chat message the chat plugin accepts: up to 78 bytes, no newline, no `:` or `=`, and a `^…$` pattern with one or two `.*` in it. */
 export function checkChatMessage(text: string): string | null {
-  if (!text.trim()) return "Type the message players will send.";
-  if (/[\r\n]/.test(text)) return "One line.";
-  if (new TextEncoder().encode(text).length > 78) return "Up to 78 bytes, which is what the game lets a player type.";
-  if (/[:=]/.test(text)) return "A message cannot contain : or =.";
+  if (!text.trim()) return t("Type the message players will send.");
+  if (/[\r\n]/.test(text)) return t("One line.");
+  if (new TextEncoder().encode(text).length > 78) return t("Up to 78 bytes, which is what the game lets a player type.");
+  if (/[:=]/.test(text)) return t("A message cannot contain : or =.");
   if (text.startsWith("^") && text.endsWith("$")) {
     const n = text.slice(1, -1).split(".*").length - 1;
-    if (n < 1 || n > 2) return "A pattern is ^start.*end$ or ^start.*middle.*end$.";
+    if (n < 1 || n > 2) return t("A pattern is ^start.*end$ or ^start.*middle.*end$.");
   }
   return null;
 }

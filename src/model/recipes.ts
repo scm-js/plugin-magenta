@@ -8,6 +8,7 @@ import { ActionFlag, ActionType, Comparison, ConditionType, PlayerGroup, SetModi
 import { entry } from "../catalogue";
 import { lowerAction } from "./eud";
 import { setOwners } from "./records";
+import { msg } from "../i18n";
 
 export interface RecipeContext {
   /** Intern a string and answer its index. */
@@ -55,37 +56,37 @@ const trigger = (ctx: RecipeContext, title: string, owners: number[], conditions
 
 export const RECIPES: Recipe[] = [
   {
-    id: "beacon-give", label: "Give units at a beacon", aliases: ["shop", "buy", "hero pick", "capture"],
-    description: "A player who brings a unit to the location is given the units standing on it. Change the location, the unit and its owner.",
+    id: "beacon-give", label: msg("Give units at a beacon"), aliases: ["shop", "buy", "hero pick", "capture"],
+    description: msg("A player who brings a unit to the location is given the units standing on it. Change the location, the unit and its owner."),
     build: (ctx) => [trigger(ctx, "Give units at the beacon", [P.AllPlayers],
       [bring(P.CurrentPlayer, UnitClass.Any, ctx.location, Comparison.AtLeast, 1)],
       [act(A.GiveUnits, { player: P.Player8, target: P.CurrentPlayer, unitId: UnitClass.Any, modifier: 0, location: ctx.location }), preserve()])],
   },
   {
-    id: "countdown-end", label: "Countdown that ends the game", aliases: ["timer", "time limit", "survive"],
-    description: "A ten-minute countdown, then victory for everyone still in. Change the seconds, or Victory to Defeat.",
+    id: "countdown-end", label: msg("Countdown that ends the game"), aliases: ["timer", "time limit", "survive"],
+    description: msg("A ten-minute countdown, then victory for everyone still in. Change the seconds, or Victory to Defeat."),
     build: (ctx) => [
       trigger(ctx, "Start the countdown", [P.AllPlayers], [always()], [act(A.SetCountdownTimer, { modifier: SetModifier.SetTo, time: 600 })]),
       trigger(ctx, "Countdown over", [P.AllPlayers], [cond(C.CountdownTimer, { comparison: Comparison.AtMost, amount: 0 })], [act(A.Victory)]),
     ],
   },
   {
-    id: "respawn", label: "Respawn a unit when it dies", aliases: ["hero", "revive", "resurrect"],
-    description: "When the player's unit dies, wait five seconds and create it again at the location. Change the unit and the location.",
+    id: "respawn", label: msg("Respawn a unit when it dies"), aliases: ["hero", "revive", "resurrect"],
+    description: msg("When the player's unit dies, wait five seconds and create it again at the location. Change the unit and the location."),
     build: (ctx) => [trigger(ctx, "Respawn", [P.AllPlayers],
       [deaths(P.CurrentPlayer, MARINE, Comparison.AtLeast, 1)],
       [act(A.Wait, { time: 5000 }), act(A.CreateUnit, { player: P.CurrentPlayer, unitId: MARINE, modifier: 1, location: ctx.location2 }), setDeaths(P.CurrentPlayer, MARINE, SetModifier.SetTo, 0), preserve()])],
   },
   {
-    id: "cash-for-kills", label: "Minerals for each kill", aliases: ["bounty", "reward", "money per kill"],
-    description: "Every enemy unit that dies pays the players 50 minerals. Change the enemy player and the unit, or the amount.",
+    id: "cash-for-kills", label: msg("Minerals for each kill"), aliases: ["bounty", "reward", "money per kill"],
+    description: msg("Every enemy unit that dies pays the players 50 minerals. Change the enemy player and the unit, or the amount."),
     build: (ctx) => [trigger(ctx, "Bounty", [P.AllPlayers],
       [deaths(P.Player8, UnitClass.Any, Comparison.AtLeast, 1)],
       [act(A.SetResources, { player: P.CurrentPlayer, modifier: SetModifier.Add, target: 50, unitId: 0 }), setDeaths(P.Player8, UnitClass.Any, SetModifier.Subtract, 1), preserve()])],
   },
   {
-    id: "waves", label: "Reinforcements every minute", aliases: ["spawn", "waves", "periodic", "timer spawn"],
-    description: "Every sixty seconds four Marines appear at the location for Player 8. Change the unit, the count, the player and the location.",
+    id: "waves", label: msg("Reinforcements every minute"), aliases: ["spawn", "waves", "periodic", "timer spawn"],
+    description: msg("Every sixty seconds four Marines appear at the location for Player 8. Change the unit, the count, the player and the location."),
     build: (ctx) => [
       trigger(ctx, "Wave timer", [P.AllPlayers], [always()], [act(A.SetCountdownTimer, { modifier: SetModifier.SetTo, time: 60 })]),
       trigger(ctx, "Wave", [P.AllPlayers], [cond(C.CountdownTimer, { comparison: Comparison.AtMost, amount: 0 })],
@@ -93,8 +94,8 @@ export const RECIPES: Recipe[] = [
     ],
   },
   {
-    id: "hold-to-win", label: "Win by holding a location", aliases: ["king of the hill", "capture point", "control"],
-    description: "A player with a unit at the location for thirty seconds wins. Uses a switch as the clock; change the location and the seconds.",
+    id: "hold-to-win", label: msg("Win by holding a location"), aliases: ["king of the hill", "capture point", "control"],
+    description: msg("A player with a unit at the location for thirty seconds wins. Uses a switch as the clock; change the location and the seconds."),
     build: (ctx) => [
       trigger(ctx, "Holding: start the clock", [P.AllPlayers], [bring(P.CurrentPlayer, UnitClass.Any, ctx.location, Comparison.AtLeast, 1), cond(C.Switch, { resource: 0, comparison: SwitchState.Cleared })],
         [act(A.SetCountdownTimer, { modifier: SetModifier.SetTo, time: 30 }), act(A.SetSwitch, { target: 0, modifier: SwitchAction.Set }), preserve()]),
@@ -105,18 +106,18 @@ export const RECIPES: Recipe[] = [
     ],
   },
   {
-    id: "defeat-when-dead", label: "Defeat when nothing is left", aliases: ["lose", "elimination", "game over"],
-    description: "A player with no units and no buildings left is defeated.",
+    id: "defeat-when-dead", label: msg("Defeat when nothing is left"), aliases: ["lose", "elimination", "game over"],
+    description: msg("A player with no units and no buildings left is defeated."),
     build: (ctx) => [trigger(ctx, "Eliminated", [P.AllPlayers], [cond(C.Command, { player: P.CurrentPlayer, unitId: UnitClass.Any, comparison: Comparison.AtMost, amount: 0 })], [act(A.Defeat)])],
   },
   {
-    id: "intro", label: "Message at the start", aliases: ["welcome", "intro", "instructions", "text"],
-    description: "One message to everyone when the game begins. Change the text.",
+    id: "intro", label: msg("Message at the start"), aliases: ["welcome", "intro", "instructions", "text"],
+    description: msg("One message to everyone when the game begins. Change the text."),
     build: (ctx) => [trigger(ctx, "Intro", [P.AllPlayers], [always()], [display(ctx, "Welcome. Change this text.")])],
   },
   {
-    id: "key-minerals", label: "A key gives minerals", aliases: ["keyboard", "hotkey", "cheat key", "press"], needsBuild: true,
-    description: "Pressing M gives the player who pressed it 100 minerals. A synced key press: every computer sees it, so the game stays in step. Needs a Build. Change the key.",
+    id: "key-minerals", label: msg("A key gives minerals"), aliases: ["keyboard", "hotkey", "cheat key", "press"], needsBuild: true,
+    description: msg("Pressing M gives the player who pressed it 100 minerals. A synced key press: every computer sees it, so the game stays in step. Needs a Build. Change the key."),
     build: (ctx) => {
       const pressed = ctx.input("key", { code: 0x4d });
       if (!pressed) return [];
@@ -124,8 +125,8 @@ export const RECIPES: Recipe[] = [
     },
   },
   {
-    id: "buff-unit", label: "Change a unit type's stats", aliases: ["balance", "mod", "stats", "hp armor damage"],
-    description: "At the start, set the Marine's max hit points to 80 and its armor to 2. EUD writes; add rows for other stats.",
+    id: "buff-unit", label: msg("Change a unit type's stats"), aliases: ["balance", "mod", "stats", "hp armor damage"],
+    description: msg("At the start, set the Marine's max hit points to 80 and its armor to 2. EUD writes; add rows for other stats."),
     build: (ctx) => [trigger(ctx, "Unit stats", [P.AllPlayers], [always()],
       [lowerAction({ entry: entry("unit.maxHp")!, args: { unit: MARINE }, value: 80, op: SetModifier.SetTo }), lowerAction({ entry: entry("unit.armor")!, args: { unit: MARINE }, value: 2, op: SetModifier.SetTo })])],
   },

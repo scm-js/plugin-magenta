@@ -23,8 +23,13 @@ import { Host } from "./src/ui/host";
 import { createPanel } from "./src/ui/panel";
 import { openSettings, registerPreferencesPage } from "./src/ui/settings";
 import { starters, type StarterSubject } from "./src/model/starters";
+import { msg, setTranslator } from "./src/i18n";
+import { KO } from "./ko";
 
 export function activate(api: PluginApi): () => void {
+  const catalogue = api.i18n.register({ ko: KO });
+  // The model's words (sentences, checks, the explanation) go through the same translator.
+  setTranslator({ t: (text, params) => api.i18n.t(text, params), tc: (context, text, params) => api.i18n.tc(context, text, params) });
   let claims: ReturnType<typeof installClaims> | null = null;
   const panel = createPanel(api, { afterCommit: () => claims?.refresh() });
   const t = api.i18n.t;
@@ -35,7 +40,7 @@ export function activate(api: PluginApi): () => void {
   const onData = api.events.on("gameData", lookup);
   api.commands.register({ id: "open", title: "Magenta", enabled: () => api.document.isOpen(), run: (options) => panel.open(options && typeof options === "object" && typeof (options as { index?: unknown }).index === "number" ? { index: (options as { index: number }).index } : {}) });
   api.commands.register({
-    id: "describe", title: "Magenta: describe a trigger",
+    id: "describe", title: msg("Magenta: describe a trigger"),
     run: (trigger) => {
       const tr = trigger as TriggerRecord;
       const host = new Host(api);
@@ -48,8 +53,9 @@ export function activate(api: PluginApi): () => void {
     },
   });
   registerPreferencesPage(api, () => panel.relayout());
-  api.commands.register({ id: "settings", title: "Magenta Settings", run: () => openSettings(api) });
-  api.menu.add("Triggers", { label: t("Magenta…"), shortcut: "Ctrl+Shift+M", icon: "plugin", after: "Text Trigger Editor…", enabled: () => api.document.isOpen(), command: "open" });
+  api.commands.register({ id: "settings", title: msg("Magenta Settings"), run: () => openSettings(api) });
+  // Menu labels and command titles go over in English; the editor shows them through this plugin's catalogue.
+  api.menu.add("Triggers", { label: msg("Magenta…"), shortcut: "Ctrl+Shift+M", icon: "plugin", after: "Text Trigger Editor…", enabled: () => api.document.isOpen(), command: "open" });
   api.hotkeys.add("Ctrl+Shift+M", { command: "open" });
   claims = installClaims(api, (index) => panel.open({ index }));
 
@@ -93,5 +99,5 @@ export function activate(api: PluginApi): () => void {
     visible: (ctx) => api.document.isOpen() && !!under(ctx).location,
     run: (ctx) => { const s = under(ctx); panel.start(starters({ location: s.location })); },
   });
-  return () => { claims?.dispose(); panel.close(); onData.dispose(); unitItem.dispose(); locationItem.dispose(); setGameLookup(null); };
+  return () => { claims?.dispose(); panel.close(); onData.dispose(); unitItem.dispose(); locationItem.dispose(); setGameLookup(null); setTranslator(null); catalogue.dispose(); };
 }

@@ -5,6 +5,7 @@
  * things, and the fingerprint finds a moved trigger again. A map without the member is a
  * whole map; only names and folders are missing.
  */
+import { t } from "../i18n";
 import type { TriggerRecord } from "../../vendor/triggers";
 import { fingerprint } from "./records";
 import type { ExpansionRecord } from "./sync";
@@ -69,7 +70,7 @@ export function readSidecar(bytes: Uint8Array | null): { sidecar: Sidecar; probl
   if (!bytes) return { sidecar: emptySidecar(), problem: null };
   try {
     const parsed = JSON.parse(new TextDecoder().decode(bytes)) as Partial<Sidecar>;
-    if (!parsed || typeof parsed !== "object" || !Number.isInteger(parsed.version)) return { sidecar: emptySidecar(), problem: { kind: "malformed", detail: "no version" } };
+    if (!parsed || typeof parsed !== "object" || !Number.isInteger(parsed.version)) return { sidecar: emptySidecar(), problem: { kind: "malformed", detail: t("no version") } };
     if ((parsed.version as number) > SIDECAR_VERSION) return { sidecar: emptySidecar(), problem: { kind: "newer", version: parsed.version } };
     return { problem: null, sidecar: {
       version: 1,

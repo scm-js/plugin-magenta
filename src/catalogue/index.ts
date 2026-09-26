@@ -4,6 +4,7 @@
  */
 import raw from "./eud.json";
 import type { AddressJson, Entry, EntryAddress, EntryJson, EntryKind } from "./types";
+import { msg } from "../i18n";
 
 export type { Entry, EntryArg, EntryArgKind, EntryKind, EntryPart, Lookup, ValueSpec } from "./types";
 
@@ -41,4 +42,4 @@ export function kindLabel(kind: EntryKind): string {
 }
 
 /** The three races the supply tables are kept by. */
-export const RACES: { value: number; label: string }[] = [{ value: 0, label: "Zerg" }, { value: 1, label: "Terran" }, { value: 2, label: "Protoss" }];
+export const RACES: { value: number; label: string }[] = [{ value: 0, label: msg("Zerg") }, { value: 1, label: msg("Terran") }, { value: 2, label: msg("Protoss") }];

@@ -10,6 +10,7 @@ import { actionDef, conditionDef } from "../../vendor/triggerDefs";
 import { isEud } from "./eud";
 import { cellKey, playerSlots } from "./counters";
 import { isActionDisabled, isConditionDisabled, liveActions, liveConditions, owners } from "./records";
+import { t } from "../i18n";
 
 export interface ExplainInput {
   /** The live conditions as sentences, in order (disabled ones included; they are skipped by their flag). */
@@ -41,7 +42,8 @@ export interface Explanation {
   refs: Ref[];
 }
 
-const join = (parts: string[], word: string): string => (parts.length <= 1 ? parts.join("") : `${parts.slice(0, -1).join(", ")} ${word} ${parts[parts.length - 1]}`);
+/** "a, b and c". */
+const join = (parts: string[]): string => (parts.length <= 1 ? parts.join("") : t("{list} and {last}", { list: parts.slice(0, -1).join(", "), last: parts[parts.length - 1] }));
 
 /** A sentence after "when" or "then": its leading verb in lower case; a name stays as it is. */
 const VERBS = new Set(["show", "set", "end", "unpause", "run", "remove", "pause", "kill", "create", "center", "wait", "unmute", "play", "ping", "order", "mute", "move", "load", "give", "enable", "display", "disable", "add", "make", "name", "the", "vision", "invincibility", "placed", "copy", "subtract", "compare", "count", "read", "pick", "for", "every", "while"]);
@@ -72,11 +74,11 @@ export function explain(trigger: TriggerRecord, index: number, list: readonly Tr
   const own = owners(trigger);
 
   /* Who */
-  if (input.perPlayer) lines.push(`Runs once for each of ${join(input.perPlayer.players.map(input.player), "and")}, with ${input.player(input.perPlayer.placeholder)} standing for the player in every condition and action.`);
-  else if (own.length === 0) lines.push("No player owns this trigger, so it never runs.");
-  else if (own.length === 1 && own[0] === PlayerGroup.AllPlayers) lines.push("Every player runs this trigger, each on their own.");
-  else if (own.length === 1) lines.push(`${input.player(own[0])} runs this trigger.`);
-  else lines.push(`${join(own.map(input.player), "and")} each run this trigger on their own.`);
+  if (input.perPlayer) lines.push(t("Runs once for each of {players}, with {group} standing for the player in every condition and action.", { players: join(input.perPlayer.players.map(input.player)), group: input.player(input.perPlayer.placeholder) }));
+  else if (own.length === 0) lines.push(t("No player owns this trigger, so it never runs."));
+  else if (own.length === 1 && own[0] === PlayerGroup.AllPlayers) lines.push(t("Every player runs this trigger, each on their own."));
+  else if (own.length === 1) lines.push(t("{player} runs this trigger.", { player: input.player(own[0]) }));
+  else lines.push(t("{players} each run this trigger on their own.", { players: join(own.map(input.player)) }));
 
   /* When */
   const conditions = liveConditions(trigger);
@@ -87,26 +89,28 @@ export function explain(trigger: TriggerRecord, index: number, list: readonly Tr
   const actions = liveActions(trigger);
   const does = actions.map((a, i) => ({ a, text: input.actions[i] ?? "" })).filter(({ a, text }) => !isActionDisabled(a) && a.type !== ActionType.Comment && a.type !== ActionType.PreserveTrigger && text);
 
-  if (never) lines.push("A Never condition means it never fires.");
+  if (never) lines.push(t("A Never condition means it never fires."));
   else {
-    if (always) lines.push("It fires on the first cycle.");
+    if (always) lines.push(t("It fires on the first cycle."));
     else {
       const when = live.filter(({ c }) => c.type !== ConditionType.Always).map((x) => lower(x.text));
-      lines.push(`It fires when ${join(when, "and")}${when.length === 2 ? " both hold" : when.length > 2 ? " all hold" : ""}.`);
+      lines.push(t("{n, plural, one {It fires when {when}.} =2 {It fires when {when} both hold.} other {It fires when {when} all hold.}}", { n: when.length, when: join(when) }));
     }
-    lines.push(does.length ? `Then: ${does.map((d) => lower(d.text)).join("; ")}.` : "It does nothing when it fires.");
+    lines.push(does.length ? t("Then: {actions}.", { actions: does.map((d) => lower(d.text)).join("; ") }) : t("It does nothing when it fires."));
   }
-  if (skipped) lines.push(skipped === 1 ? "One disabled condition is ignored." : `${skipped} disabled conditions are ignored.`);
+  if (skipped) lines.push(t("{n, plural, one {One disabled condition is ignored.} other {# disabled conditions are ignored.}}", { n: skipped }));
 
   /* How often */
-  const clock = input.everyFrame ? "every frame" : "every two seconds";
+  const clock = input.everyFrame ? t("every frame") : t("every two seconds");
   if (!never && own.length) {
-    if (isPreserved(trigger)) lines.push(always ? `It is preserved, so it runs again every cycle (${clock}).` : `It is preserved, so it fires again on every cycle (${clock}) its conditions hold.`);
-    else lines.push(own.length > 1 || own[0] === PlayerGroup.AllPlayers || input.perPlayer ? "It fires once for each owner and then stops." : "It fires once and then stops.");
+    if (isPreserved(trigger)) lines.push(always ? t("It is preserved, so it runs again every cycle ({clock}).", { clock }) : t("It is preserved, so it fires again on every cycle ({clock}) its conditions hold.", { clock }));
+    else lines.push(own.length > 1 || own[0] === PlayerGroup.AllPlayers || input.perPlayer ? t("It fires once for each owner and then stops.") : t("It fires once and then stops."));
   }
   const wait = waitSeconds(trigger);
-  if (wait > 0) lines.push(`Its Waits hold the owner's other triggers for ${wait} second${wait === 1 ? "" : "s"} in all${isPreserved(trigger) ? ", every time it fires" : ""}.`);
-  if (usesCurrentPlayer(trigger) && (own.length > 1 || own[0] >= 12 || input.perPlayer)) lines.push("Current Player is whichever owner is running it.");
+  if (wait > 0) lines.push(isPreserved(trigger)
+    ? t("{n, plural, one {Its Waits hold the owner's other triggers for # second in all, every time it fires.} other {Its Waits hold the owner's other triggers for # seconds in all, every time it fires.}}", { n: wait })
+    : t("{n, plural, one {Its Waits hold the owner's other triggers for # second in all.} other {Its Waits hold the owner's other triggers for # seconds in all.}}", { n: wait }));
+  if (usesCurrentPlayer(trigger) && (own.length > 1 || own[0] >= 12 || input.perPlayer)) lines.push(t("Current Player is whichever owner is running it."));
 
   return { lines, refs: refsOf(list, index, input.anchorOf) };
 }

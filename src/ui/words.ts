@@ -8,7 +8,7 @@ import type { PluginApi, TriggerRecord } from "@scm-js/plugin-api";
 import { ActionType } from "../../vendor/triggers";
 import { commentIndex, liveActions, liveConditions } from "../model/records";
 import { actionsText, conditionText } from "./describe";
-import { cellLabel, compareOf, counterExpansionOf, RELATION_WORDS } from "./expansionRows";
+import { cellLabel, compareOf, compareText, counterExpansionOf, stepText } from "./expansionRows";
 import { conditionRowOf, hookOf, renderConditionRow, renderHook } from "./buildRows";
 import type { Host } from "./host";
 import type { Store } from "./store";
@@ -28,7 +28,7 @@ export function conditionWords(api: PluginApi, host: Host, store: Store, index: 
   const extra = host.extra();
   const cmp = compareOf(store, index, trigger);
   return liveConditions(trigger).map((c, i) => {
-    if (cmp && cmp.rows.includes(i)) return i === cmp.rows[0] ? `${cellLabel(cmp.x.a, namer)} is ${RELATION_WORDS[cmp.relation]} ${cellLabel(cmp.x.b, namer)}` : "";
+    if (cmp && cmp.rows.includes(i)) return i === cmp.rows[0] ? compareText(cellLabel(cmp.x.a, namer), cmp.relation, cellLabel(cmp.x.b, namer)) : "";
     const brow = conditionRowOf(store, c);
     if (brow) return rowWords(api, (into) => renderConditionRow(api, host, store, brow, into, () => {}));
     return conditionText(c, namer, extra);
@@ -48,7 +48,7 @@ export function actionWords(api: PluginApi, host: Host, store: Store, trigger: T
     const hook = s.group ? null : hookOf(store, a);
     if (hook) { out[s.at] = rowWords(api, (into) => renderHook(api, host, store, hook, into)); continue; }
     const x = s.group ? null : counterExpansionOf(store, a);
-    if (x) { out[s.at] = x.kind === "copy" ? `Copy ${cellLabel(x.from, namer)} into ${cellLabel(x.to, namer)}` : x.kind === "add" ? `Add ${cellLabel(x.from, namer)} to ${cellLabel(x.to, namer)}` : `Subtract ${cellLabel(x.from, namer)} from ${cellLabel(x.to, namer)}`; continue; }
+    if (x) { out[s.at] = stepText(x.kind, cellLabel(x.from, namer), cellLabel(x.to, namer)); continue; }
     out[s.at] = s.text;
   }
   return out;

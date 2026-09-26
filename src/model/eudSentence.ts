@@ -9,6 +9,7 @@ import type { EntryArg } from "../catalogue/types";
 import type { EudRow } from "./eud";
 import type { Namer } from "./names";
 import { opLabel, type Segment } from "./sentences";
+import { josa, t, translate } from "../i18n";
 
 export type EudSlot = "value" | "op" | { arg: EntryArg };
 
@@ -30,8 +31,8 @@ export function eudArgLabel(arg: EntryArg, value: number, namer: Namer, extra: {
     case "upgrade": return extra.upgrade(value);
     case "tech": return extra.tech(value);
     case "key": return extra.key(value);
-    case "unitIndex": return extra.slot ? extra.slot(value) : `slot ${value}`;
-    case "race": return RACES.find((r) => r.value === value)?.label ?? String(value);
+    case "unitIndex": return extra.slot ? extra.slot(value) : t("slot {n}", { n: value });
+    case "race": { const race = RACES.find((r) => r.value === value); return race ? translate(race.label) : String(value); }
     default: return String(value);
   }
 }
@@ -39,24 +40,27 @@ export function eudArgLabel(arg: EntryArg, value: number, namer: Namer, extra: {
 /** The words for the value: a choice's label, an id's name, a string of the map's, or the number with its unit. */
 export function eudValueLabel(row: EudRow, namer: Namer, extra: { weapon(id: number): string }): string {
   const v = row.entry.value;
-  if (v?.choices) return v.choices.find((c) => c.value === row.value)?.label ?? String(row.value);
+  if (v?.choices) { const choice = v.choices.find((c) => c.value === row.value); return choice ? translate(choice.label) : String(row.value); }
   if (v?.kind === "unit") return namer.unit(row.value);
   if (v?.kind === "player") return namer.player(row.value);
   if (v?.kind === "weapon") return extra.weapon(row.value);
-  if (v?.kind === "string") { const s = namer.string(row.value); return s === null ? (row.value === 0 ? "(no text)" : `string ${row.value}`) : s; }
+  if (v?.kind === "string") { const s = namer.string(row.value); return s === null ? (row.value === 0 ? t("(no text)") : t("string {n}", { n: row.value })) : s; }
   const n = Number.isInteger(row.value) ? String(row.value) : row.value.toFixed(2).replace(/\.?0+$/, "");
-  return v?.unit ? `${n} ${v.unit}` : n;
+  return v?.unit ? `${n} ${translate(v.unit)}` : n;
 }
 
 export function describeEud(row: EudRow, kind: "condition" | "action", namer: Namer, extra: { weapon(id: number): string; upgrade(id: number): string; tech(id: number): string; key(code: number): string; slot?(n: number): string }): EudSegment[] {
-  const template = (kind === "condition" ? row.entry.sentence.condition : row.entry.sentence.action) ?? row.entry.name;
+  // The catalogue's English, through the plugin's catalogue (`tests/ko.test.ts` reads the keys out of `eud.json`).
+  const template = translate((kind === "condition" ? row.entry.sentence.condition : row.entry.sentence.action) ?? row.entry.name);
   const out: EudSegment[] = [];
-  const re = /\{([^}]+)\}/g;
+  // `{unit|을}`: a translation's particle, chosen by the chip's words.
+  const re = /\{([^}|]+)(?:\|([^}]+))?\}/g;
   let last = 0;
   let m: RegExpExecArray | null;
   while ((m = re.exec(template))) {
     if (m.index > last) out.push({ kind: "text", text: template.slice(last, m.index) });
     const name = m[1];
+    const before = out.length;
     if (name === "value") out.push({ kind: "echip", slot: "value", value: row.value, label: eudValueLabel(row, namer, extra) });
     else if (name === "cmp" || name === "mod") {
       if (!enumerated(row.entry)) out.push({ kind: "echip", slot: "op", value: row.op, label: opLabel(kind === "condition" ? "comparison" : "modifier", row.op, namer) });
@@ -64,6 +68,8 @@ export function describeEud(row: EudRow, kind: "condition" | "action", namer: Na
       const arg = row.entry.args.find((a) => a.name === name);
       if (arg) out.push({ kind: "echip", slot: { arg }, value: row.args[arg.name] ?? 0, label: eudArgLabel(arg, row.args[arg.name] ?? 0, namer, extra) });
     }
+    const chip = out.length > before ? out[out.length - 1] : null;
+    if (m[2] && chip && chip.kind === "echip") out.push({ kind: "text", text: josa(chip.label, m[2]).slice(chip.label.length) });
     last = re.lastIndex;
   }
   if (last < template.length) out.push({ kind: "text", text: template.slice(last) });
@@ -81,4 +87,4 @@ export const KEYS: { code: number; label: string }[] = [
   { code: 0x08, label: "Backspace" }, { code: 0x2e, label: "Delete" }, { code: 0x2d, label: "Insert" }, { code: 0x24, label: "Home" }, { code: 0x23, label: "End" }, { code: 0x21, label: "Page Up" }, { code: 0x22, label: "Page Down" },
 ];
 
-export const keyLabel = (code: number): string => KEYS.find((k) => k.code === code)?.label ?? `key 0x${code.toString(16).toUpperCase()}`;
+export const keyLabel = (code: number): string => KEYS.find((k) => k.code === code)?.label ?? t("key 0x{hex}", { hex: code.toString(16).toUpperCase() });

@@ -189,8 +189,8 @@ export class Store {
   }
 
   /** Replace one trigger. */
-  replace(index: number, trigger: TriggerRecord, label = "Edit trigger"): void {
-    this.commit(label, () => this.list.map((t, i) => (i === index ? trigger : t)));
+  replace(index: number, trigger: TriggerRecord, label?: string): void {
+    this.commit(label ?? this.host.api.i18n.t("Edit trigger"), () => this.list.map((t, i) => (i === index ? trigger : t)));
   }
 
   /** Change the sidecar only (a counter name, a folder rename, a setting). */

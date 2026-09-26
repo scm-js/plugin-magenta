@@ -5,6 +5,7 @@
  * "stale" are answers rather than guesses. The checks are pure over plain data the host
  * hands in; each names the trigger it is about so the dialog can jump there.
  */
+import { t } from "../i18n";
 import { ActionType, type TriggerRecord } from "../../vendor/triggers";
 import { checkChatMessage, MAGENTA_SPEC_VERSION, usesMsqc, type BuildOptions, type BuildPlugins } from "./builds";
 import { refs } from "./ownership";
@@ -100,18 +101,18 @@ export function preflight(input: PreflightInput): PreflightProblem[] {
   const m = sidecar.msqc;
   if (usesMsqc(m)) {
     const p = m.qcPlayer;
-    if ((input.playerTypes[p] ?? PLAYER_INACTIVE) !== PLAYER_INACTIVE) out.push({ level: "error", text: `Synced input needs ${input.playerName(p)} for itself, and the slot is set to ${input.playerTypeName(p)}. Make it inactive in Scenario ▸ Players, or free another slot and remove the input rows to let Magenta pick again.` });
-    if (input.placedOwners.has(p)) out.push({ level: "error", text: `Synced input needs ${input.playerName(p)} for itself, and units on the map belong to it.` });
-    list.forEach((t, i) => { if (owners(t).includes(p)) out.push({ level: "warn", text: `Synced input owns ${input.playerName(p)}; this trigger runs for it too.`, trigger: i }); });
-    if (input.placedUnitIds.has(m.qcUnit)) out.push({ level: "error", text: `Synced input uses the ${input.unitName(m.qcUnit)} type for its own command units, and the map has some placed. Remove them, or pick another unit type in the map's settings.` });
-    list.forEach((t, i) => {
-      if (liveActions(t).some((a) => (a.type === ActionType.CreateUnit || a.type === ActionType.CreateUnitWithProperties) && a.unitId === m.qcUnit)) out.push({ level: "error", text: `This trigger creates a ${input.unitName(m.qcUnit)}, the type synced input keeps for itself.`, trigger: i });
+    if ((input.playerTypes[p] ?? PLAYER_INACTIVE) !== PLAYER_INACTIVE) out.push({ level: "error", text: t("Synced input needs {player} for itself, and the slot is set to {type}. Make it inactive in Scenario ▸ Players, or free another slot and remove the input rows to let Magenta pick again.", { player: input.playerName(p), type: input.playerTypeName(p) }) });
+    if (input.placedOwners.has(p)) out.push({ level: "error", text: t("Synced input needs {player} for itself, and units on the map belong to it.", { player: input.playerName(p) }) });
+    list.forEach((tr, i) => { if (owners(tr).includes(p)) out.push({ level: "warn", text: t("Synced input owns {player}; this trigger runs for it too.", { player: input.playerName(p) }), trigger: i }); });
+    if (input.placedUnitIds.has(m.qcUnit)) out.push({ level: "error", text: t("Synced input uses the {unit} type for its own command units, and the map has some placed. Remove them, or pick another unit type in the map's settings.", { unit: input.unitName(m.qcUnit) }) });
+    list.forEach((tr, i) => {
+      if (liveActions(tr).some((a) => (a.type === ActionType.CreateUnit || a.type === ActionType.CreateUnitWithProperties) && a.unitId === m.qcUnit)) out.push({ level: "error", text: t("This trigger creates a {unit}, the type synced input keeps for itself.", { unit: input.unitName(m.qcUnit) }), trigger: i });
     });
-    if (!free(m.qcLoc)) out.push({ level: "error", text: `Synced input's own location slot (${m.qcLoc + 1}) is no longer empty: a location was made there. Free it, or remove the input rows and add them again to pick another.` });
+    if (!free(m.qcLoc)) out.push({ level: "error", text: t("Synced input's own location slot ({n}) is no longer empty: a location was made there. Free it, or remove the input rows and add them again to pick another.", { n: m.qcLoc + 1 }) });
     if (m.mouseBase !== null) {
       const taken: number[] = [];
       for (let k = 0; k < 8; k++) if (!free(m.mouseBase - 1 + k)) taken.push(m.mouseBase + k);
-      if (taken.length) out.push({ level: "error", text: `The eight location slots the players' mice use (${m.mouseBase}–${m.mouseBase + 7}) must stay empty; ${taken.length === 1 ? "slot" : "slots"} ${taken.join(", ")} ${taken.length === 1 ? "is" : "are"} in use.` });
+      if (taken.length) out.push({ level: "error", text: t("{n, plural, one {The eight location slots the players' mice use ({from}–{to}) must stay empty; slot {taken} is in use.} other {The eight location slots the players' mice use ({from}–{to}) must stay empty; slots {taken} are in use.}}", { n: taken.length, from: m.mouseBase, to: m.mouseBase + 7, taken: taken.join(", ") }) });
     }
   }
 
@@ -122,38 +123,38 @@ export function preflight(input: PreflightInput): PreflightProblem[] {
     const at = carriers[0];
     if (b.kind === "chat") {
       const bad = checkChatMessage(b.message);
-      if (bad) out.push({ level: "error", text: `The chat command "${b.message}": ${bad}` });
+      if (bad) out.push({ level: "error", text: t("The chat command \"{message}\": {problem}", { message: b.message, problem: bad }) });
       const key = b.message.toLowerCase();
-      if (seenChat.has(key)) out.push({ level: "warn", text: `Two chat commands say "${b.message}"; the second never fires on its own.` });
+      if (seenChat.has(key)) out.push({ level: "warn", text: t("Two chat commands say \"{message}\"; the second never fires on its own.", { message: b.message }) });
       seenChat.set(key, 1);
       continue;
     }
-    if (!carriers.length) { out.push({ level: "info", text: `A ${b.kind === "scan" ? "unit check" : "build row"} no trigger uses is still in the map's Magenta data; it is sent, and never fires.` }); continue; }
-    if ("location" in b && b.location !== null && !locExists(b.location)) out.push({ level: "error", text: `A build row names location ${b.location}, which the map no longer has.`, trigger: at });
+    if (!carriers.length) { out.push({ level: "info", text: b.kind === "scan" ? t("A unit check no trigger uses is still in the map's Magenta data; it is sent, and never fires.") : t("A build row no trigger uses is still in the map's Magenta data; it is sent, and never fires.") }); continue; }
+    if ("location" in b && b.location !== null && !locExists(b.location)) out.push({ level: "error", text: t("A build row names location {n}, which the map no longer has.", { n: b.location }), trigger: at });
     if (b.kind === "foreach" || b.kind === "pick") {
       const d = b.do;
       if (d && "order" in d) {
-        if (!locExists(d.scratch)) out.push({ level: "error", text: `The order row's scratch location (${d.scratch}) is gone; pick the order again to make one.`, trigger: at });
-        if (!locExists(d.location)) out.push({ level: "error", text: `The order row's target location (${d.location}) is gone.`, trigger: at });
+        if (!locExists(d.scratch)) out.push({ level: "error", text: t("The order row's scratch location ({n}) is gone; pick the order again to make one.", { n: d.scratch }), trigger: at });
+        if (!locExists(d.location)) out.push({ level: "error", text: t("The order row's target location ({n}) is gone.", { n: d.location }), trigger: at });
       }
-      if (d && "locate" in d && !locExists(d.locate)) out.push({ level: "error", text: `The row centres location ${d.locate} on the unit, and the map no longer has it.`, trigger: at });
+      if (d && "locate" in d && !locExists(d.locate)) out.push({ level: "error", text: t("The row centres location {n} on the unit, and the map no longer has it.", { n: d.locate }), trigger: at });
     }
     if (b.kind === "pick") {
-      if (b.locate !== null && !locExists(b.locate)) out.push({ level: "error", text: `The pick row centres location ${b.locate} on the unit, and the map no longer has it.`, trigger: at });
-      if (typeof b.near === "number" && !locExists(b.near)) out.push({ level: "error", text: `The pick row measures from location ${b.near}, which the map no longer has.`, trigger: at });
+      if (b.locate !== null && !locExists(b.locate)) out.push({ level: "error", text: t("The pick row centres location {n} on the unit, and the map no longer has it.", { n: b.locate }), trigger: at });
+      if (typeof b.near === "number" && !locExists(b.near)) out.push({ level: "error", text: t("The pick row measures from location {n}, which the map no longer has.", { n: b.near }), trigger: at });
     }
   }
 
   /* ── The map-wide options ── */
   if (options.camera) {
     const l = input.locations[options.camera.location - 1];
-    if (!l || l.empty) out.push({ level: "error", text: `The camera follows location ${options.camera.location}, which the map no longer has.` });
-    else if (!l.named) out.push({ level: "error", text: `The camera finds its location by name, and location ${options.camera.location} has none of its own.` });
+    if (!l || l.empty) out.push({ level: "error", text: t("The camera follows location {n}, which the map no longer has.", { n: options.camera.location }) });
+    else if (!l.named) out.push({ level: "error", text: t("The camera finds its location by name, and location {n} has none of its own.", { n: options.camera.location }) });
   }
-  if (options.bgm && !input.soundPresent(options.bgm.path)) out.push({ level: "error", text: `The background music ${options.bgm.path.split("\\").pop()} is not in the map archive.` });
+  if (options.bgm && !input.soundPresent(options.bgm.path)) out.push({ level: "error", text: t("The background music {file} is not in the map archive.", { file: options.bgm.path.split("\\").pop() ?? "" }) });
 
   /* ── The runtime ── */
-  if (!input.runtime) out.push({ level: "error", text: "The eudplib plugin is not running: it is the library that builds EUD maps. Install or turn it on under Plugins ▸ Manage Plugins…" });
+  if (!input.runtime) out.push({ level: "error", text: t("The eudplib plugin is not running: it is the library that builds EUD maps. Install or turn it on under Plugins ▸ Manage Plugins…") });
 
   const rank = { error: 0, warn: 1, info: 2 };
   return out.sort((a, b) => rank[a.level] - rank[b.level]);

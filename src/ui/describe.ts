@@ -6,6 +6,7 @@ import { describeEud } from "../model/eudSentence";
 import type { Namer } from "../model/names";
 import { describeAction, describeCondition, sentenceText } from "../model/sentences";
 import type { Host } from "./host";
+import { t } from "../i18n";
 
 export type Extra = ReturnType<Host["extra"]>;
 
@@ -30,9 +31,9 @@ export function actionsText(actions: readonly ActionRecord[], namer: Namer, extr
 /** A memory cell of the dry run's state as words: the catalogue's name for it with its value, or the address. */
 export function memoryCellText(flatIndex: number, raw: number, namer: Namer, extra: Extra): string {
   const row = recognize("action", flatIndex, 0, 0, 0, raw, SetModifier.SetTo);
-  if (!row) return `memory 0x${(0x58a364 + flatIndex * 4).toString(16).toUpperCase()} = ${raw}`;
+  if (!row) return t("memory 0x{hex} = {value}", { hex: (0x58a364 + flatIndex * 4).toString(16).toUpperCase(), value: raw });
   const segs = describeEud(row, "action", namer, extra);
   const value = segs.find((s) => s.kind === "echip" && s.slot === "value");
-  const words = segs.filter((s) => !(s.kind === "echip" && (s.slot === "value" || s.slot === "op"))).map((s) => (s.kind === "text" ? s.text : s.label)).join("").replace(/\s+/g, " ").trim().replace(/^(Set|Make|Name) /, "");
+  const words = segs.filter((s) => !(s.kind === "echip" && (s.slot === "value" || s.slot === "op"))).map((s) => (s.kind === "text" ? s.text : s.label)).join("").replace(/\s+/g, " ").trim().replace(/^(Set|Make|Name) /, "").replace(/[\s:]+$/, "");
   return `${words} = ${value && value.kind === "echip" ? value.label : raw}`;
 }

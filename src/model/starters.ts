@@ -7,6 +7,7 @@ import { ActionFlag, ActionType, Comparison, ConditionType, PlayerGroup, SetModi
 import { entry } from "../catalogue";
 import { lowerAction } from "./eud";
 import { setOwners } from "./records";
+import { t } from "../i18n";
 
 export interface Starter {
   id: string;
@@ -42,34 +43,34 @@ export function starters(subject: StarterSubject): Starter[] {
   if (u) {
     const owner = ownerOf(u.owner);
     out.push({
-      id: "unit-dies", label: `When this ${u.name} dies`, hint: `${u.ownerName}'s deaths of ${u.name} reach 1 (any ${u.name} of theirs, not only this one)`,
+      id: "unit-dies", label: t("When this {unit} dies", { unit: u.name }), hint: t("{owner}'s deaths of {unit} reach 1 (any {unit} of theirs, not only this one)", { owner: u.ownerName, unit: u.name }),
       build: (intern) => [trigger(intern, `When the ${u.name} dies`, [owner], [cond(C.Deaths, { player: u.owner < 12 ? u.owner : P.CurrentPlayer, unitId: u.unitId, comparison: Comparison.AtLeast, amount: 1 })], [display(intern, `The ${u.name} is gone.`)])],
     });
     if (l) out.push({
-      id: "unit-brought", label: `When this ${u.name} is at ${l.name}`, hint: `${u.ownerName} brings at least 1 ${u.name} to ${l.name}`,
+      id: "unit-brought", label: t("When this {unit} is at {location}", { unit: u.name, location: l.name }), hint: t("{owner} brings at least 1 {unit} to {location}", { owner: u.ownerName, unit: u.name, location: l.name }),
       build: (intern) => [trigger(intern, `${u.name} at ${l.name}`, [owner], [cond(C.Bring, { player: u.owner < 12 ? u.owner : P.CurrentPlayer, unitId: u.unitId, location: l.number, comparison: Comparison.AtLeast, amount: 1 })], [display(intern, `The ${u.name} is at ${l.name}.`), act(A.PreserveTrigger)])],
     });
     out.push({
-      id: "unit-give", label: `Give this ${u.name} to the player who comes`, hint: l ? `Whoever brings a unit to ${l.name} gets the ${u.name}` : "Needs a location under the unit",
+      id: "unit-give", label: t("Give this {unit} to the player who comes", { unit: u.name }), hint: l ? t("Whoever brings a unit to {location} gets the {unit}", { location: l.name, unit: u.name }) : t("Needs a location under the unit"),
       build: (intern) => [trigger(intern, `Give the ${u.name}`, [P.AllPlayers], [cond(C.Bring, { player: P.CurrentPlayer, unitId: UnitClass.Any, location: l?.number ?? 0, comparison: Comparison.AtLeast, amount: 1 })], [act(A.GiveUnits, { player: u.owner < 12 ? u.owner : P.NeutralPlayers, target: P.CurrentPlayer, unitId: u.unitId, modifier: 1, location: l?.number ?? 0 }), act(A.PreserveTrigger)])],
     });
     const hp = entry("cunit.hp");
     if (hp) out.push({
-      id: "unit-hp", label: `Set this ${u.name}'s hit points (EUD)`, hint: `Placed unit slot ${u.slot}: the game fills the slots in map order, so the number stays right while no unit is added before it`,
+      id: "unit-hp", label: t("Set this {unit}'s hit points (EUD)", { unit: u.name }), hint: t("Placed unit slot {n}: the game fills the slots in map order, so the number stays right while no unit is added before it", { n: u.slot }),
       build: (intern) => [trigger(intern, `${u.name}'s hit points`, [P.Player1], [cond(C.Always)], [lowerAction({ entry: hp, args: { index: u.slot }, value: 100, op: SetModifier.SetTo })])],
     });
   }
   if (l) {
     out.push({
-      id: "loc-comes", label: `When a unit comes to ${l.name}`, hint: "Any player, any unit; fires again each time",
+      id: "loc-comes", label: t("When a unit comes to {location}", { location: l.name }), hint: t("Any player, any unit; fires again each time"),
       build: (intern) => [trigger(intern, `A unit at ${l.name}`, [P.AllPlayers], [cond(C.Bring, { player: P.CurrentPlayer, unitId: UnitClass.Any, location: l.number, comparison: Comparison.AtLeast, amount: 1 })], [display(intern, `Something is at ${l.name}.`), act(A.PreserveTrigger)])],
     });
     out.push({
-      id: "loc-create", label: `Create units at ${l.name}`, hint: "One Marine for Player 1 at the start; change the unit, the count and the player",
+      id: "loc-create", label: t("Create units at {location}", { location: l.name }), hint: t("One Marine for Player 1 at the start; change the unit, the count and the player"),
       build: (intern) => [trigger(intern, `Units at ${l.name}`, [P.Player1], [cond(C.Always)], [act(A.CreateUnit, { player: P.Player1, unitId: MARINE, modifier: 1, location: l.number })])],
     });
     out.push({
-      id: "loc-clear", label: `Kill everything at ${l.name}`, hint: "Every player's units in the location, on the first cycle",
+      id: "loc-clear", label: t("Kill everything at {location}", { location: l.name }), hint: t("Every player's units in the location, on the first cycle"),
       build: (intern) => [trigger(intern, `Clear ${l.name}`, [P.Player1], [cond(C.Always)], [act(A.KillUnitAt, { player: P.AllPlayers, unitId: UnitClass.Any, modifier: 0, location: l.number })])],
     });
   }

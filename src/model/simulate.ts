@@ -16,6 +16,7 @@
  */
 import { ActionType, AllianceStatus, Comparison, ConditionType, PlayerGroup, ResourceType, ScoreType, SetModifier, SwitchAction, SwitchState, TriggerFlag, UnitClass, type ActionRecord, type ConditionRecord, type TriggerRecord } from "../../vendor/triggers";
 import { MASK_MARKER, isEud } from "./eud";
+import { t } from "../i18n";
 import { liveActions, liveConditions, isActionDisabled, isConditionDisabled } from "./records";
 
 export interface SimUnit { id: number; owner: number; unitId: number; x: number; y: number }
@@ -330,7 +331,7 @@ function runAction(a: ActionRecord, i: number, current: number, s: SimState, wor
         else if (a.modifier === SetModifier.Add) next = ((field + a.target) >>> 0) & mask;
         else next = Math.max(0, field - a.target) & mask;
         s.deaths.set(cell, ((old & ~mask) | next) >>> 0);
-        if (world.hookCells.has(cell)) note("A build row runs here in the game; the dry run skips it.");
+        if (world.hookCells.has(cell)) note(t("A build row runs here in the game; the dry run skips it."));
       }
       return {};
     }
@@ -393,10 +394,10 @@ function runAction(a: ActionRecord, i: number, current: number, s: SimState, wor
       for (const p of slots(a.player)) if (p !== current) s.allied[current][p] = a.unitId !== AllianceStatus.Enemy;
       return {};
     }
-    case ActionType.RunAiScript: case ActionType.RunAiScriptAt: note("An AI script runs here in the game; the dry run does not have one."); return {};
-    case ActionType.Order: note("An order is given here; the dry run does not move units."); return {};
-    case ActionType.SetNextScenario: note(`The next scenario is set to "${text(a.text)}".`); return {};
-    case ActionType.PlayWav: note("A sound plays here."); return {};
+    case ActionType.RunAiScript: case ActionType.RunAiScriptAt: note(t("An AI script runs here in the game; the dry run does not have one.")); return {};
+    case ActionType.Order: note(t("An order is given here; the dry run does not move units.")); return {};
+    case ActionType.SetNextScenario: note(t("The next scenario is set to \"{name}\".", { name: text(a.text) })); return {};
+    case ActionType.PlayWav: note(t("A sound plays here.")); return {};
     default: return {};
   }
 }

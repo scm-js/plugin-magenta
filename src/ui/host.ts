@@ -43,7 +43,7 @@ export class Host {
 
   /** Scenario ▸ Map Revision ▸ Remastered 1.21+, with the string table moved to STRx as the dialog does by default. */
   setRemastered(): void {
-    this.api.document.update("Map revision", (tx) => { tx.setVersion("remastered"); });
+    this.api.document.update(this.api.i18n.t("Map revision"), (tx) => { tx.setVersion("remastered"); });
   }
 
   triggers(): TriggerRecord[] {
@@ -62,15 +62,16 @@ export class Host {
   namer(sidecar: Sidecar): Namer {
     const names = this.api.triggers.names();
     const players = this.api.settings.players();
+    const t = this.api.i18n.t;
     return {
       unit: (id) => names.unit(id),
-      location: (n) => (n === 0 ? "no location" : names.location(n)),
+      location: (n) => (n === 0 ? t("no location") : names.location(n)),
       switch: (i) => names.switch(i),
       string: (i) => names.string(i),
-      player: (v) => (v >= PLAYER_GROUP_COUNT ? `memory at 0x${addressOf(v).toString(16).toUpperCase()}` : this.api.names.playerGroup(v)),
+      player: (v) => (v >= PLAYER_GROUP_COUNT ? t("memory at 0x{addr}", { addr: addressOf(v).toString(16).toUpperCase() }) : this.api.names.playerGroup(v)),
       playerColor: (v) => (v < 12 ? players[v]?.colorHex ?? null : null),
       aiScript: (code) => this.api.names.aiScript(code),
-      wav: (i) => (i === 0 ? "no sound" : (names.string(i) ?? `sound ${i}`).split("\\").pop() ?? `sound ${i}`),
+      wav: (i) => (i === 0 ? t("no sound") : (names.string(i) ?? t("sound {n}", { n: i })).split("\\").pop() ?? t("sound {n}", { n: i })),
       choice: (kind, value) => this.api.triggers.defs.choiceLabel(kind as never, value),
       counter: (player, unit) => sidecar.counters.find((c) => c.player === player && c.unit === unit)?.name ?? null,
     };
@@ -79,11 +80,12 @@ export class Host {
   extra() {
     const w = new Map(this.api.names.weapons().map((n) => [n.value, n.label]));
     const u = new Map(this.api.names.upgrades().map((n) => [n.value, n.label]));
-    const t = new Map(this.api.names.techs().map((n) => [n.value, n.label]));
+    const techs = new Map(this.api.names.techs().map((n) => [n.value, n.label]));
+    const t = this.api.i18n.t;
     return {
-      weapon: (id: number) => (id === 130 ? "no weapon" : w.get(id) ?? `weapon ${id}`),
-      upgrade: (id: number) => u.get(id) ?? `upgrade ${id}`,
-      tech: (id: number) => t.get(id) ?? `technology ${id}`,
+      weapon: (id: number) => (id === 130 ? t("no weapon") : w.get(id) ?? t("weapon {n}", { n: id })),
+      upgrade: (id: number) => u.get(id) ?? t("upgrade {n}", { n: id }),
+      tech: (id: number) => techs.get(id) ?? t("technology {n}", { n: id }),
       key: keyLabel,
     };
   }
@@ -146,7 +148,7 @@ export class Host {
   }
 
   sounds(): NamedItem[] {
-    return this.api.settings.sounds().map((s) => ({ value: s.stringIndex, label: s.path.split("\\").pop() ?? s.path, hint: s.present ? undefined : "missing" }));
+    return this.api.settings.sounds().map((s) => ({ value: s.stringIndex, label: s.path.split("\\").pop() ?? s.path, hint: s.present ? undefined : this.api.i18n.t("missing") }));
   }
 
   /** Seconds of a PCM WAV in the archive, from its header; null when it is not there or not plain PCM. */
@@ -173,7 +175,7 @@ export class Host {
     const names = this.api.triggers.names();
     for (let i = 0; i < 63; i++) if (names.location(i + 1) === name && this.locationExists(i + 1)) return i + 1;
     let made = -1;
-    this.api.document.edit(`Add ${name}`, (tx) => { made = tx.addLocation({ left: 0, top: 0, right: 64, bottom: 64 }, name); });
+    this.api.document.edit(this.api.i18n.t("Add {name}", { name }), (tx) => { made = tx.addLocation({ left: 0, top: 0, right: 64, bottom: 64 }, name); });
     return made >= 0 ? made + 1 : null;
   }
 
@@ -186,7 +188,7 @@ export class Host {
     let free = -1;
     for (let i = 0; i < 256; i++) { const n = names[i] ?? ""; if (!used.has(i) && (n === "" || /^Switch \d+$/.test(n))) { free = i; break; } }
     if (free < 0) return null;
-    this.api.document.update(`Name switch ${name}`, (tx) => { tx.switches.setName(free, name); });
+    this.api.document.update(this.api.i18n.t("Name switch {name}", { name }), (tx) => { tx.switches.setName(free, name); });
     return free;
   }
 
@@ -302,7 +304,7 @@ export class Host {
   }
 
   renameSwitch(index: number, name: string): void {
-    this.api.document.update("Rename switch", (tx) => { tx.switches.setName(index, name); });
+    this.api.document.update(this.api.i18n.t("Rename switch"), (tx) => { tx.switches.setName(index, name); });
   }
 
   /* ── The sidecar ── */

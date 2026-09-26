@@ -13,13 +13,25 @@ import type { ExpansionRecord } from "../model/sync";
 import { pickChoice } from "./chips";
 import type { Host } from "./host";
 import type { Store } from "./store";
+import { compose, msg, t as tr, translate } from "../i18n";
 
 export type Relation = ">" | ">=" | "==" | "<" | "<=";
 const RELATIONS: { value: number; label: string; rel: Relation }[] = [
-  { value: 0, label: "greater than", rel: ">" }, { value: 1, label: "at least", rel: ">=" }, { value: 2, label: "equal to", rel: "==" }, { value: 3, label: "less than", rel: "<" }, { value: 4, label: "at most", rel: "<=" },
+  { value: 0, label: msg("greater than"), rel: ">" }, { value: 1, label: msg("at least"), rel: ">=" }, { value: 2, label: msg("equal to"), rel: "==" }, { value: 3, label: msg("less than"), rel: "<" }, { value: 4, label: msg("at most"), rel: "<=" },
 ];
 
+/** In English; shown through `translate`. */
 export const RELATION_WORDS: Record<Relation, string> = Object.fromEntries(RELATIONS.map((r) => [r.rel, r.label])) as Record<Relation, string>;
+
+/** "A is at least B", as plain words. */
+export const compareText = (a: string, relation: Relation, b: string): string => tr("{a} is {relation} {b}", { a, relation: translate(RELATION_WORDS[relation]), b });
+
+/** A counter step as plain words: "Copy A into B". */
+export function stepText(kind: "copy" | "add" | "subtract", from: string, to: string): string {
+  return kind === "copy" ? tr("Copy {from} into {to}", { from, to }) : kind === "add" ? tr("Add {from} to {to}", { from, to }) : tr("Subtract {from} from {to}", { from, to });
+}
+
+const sentence = (template: string, parts: Record<string, Node | string>): (Node | string)[] => compose<Node>(template, parts, (n) => n.textContent ?? "");
 
 export const counterExpansionOf = (store: Store, a: ActionRecord) =>
   store.sidecar.expansions.find((x): x is Extract<ExpansionRecord, { kind: "copy" | "add" | "subtract" }> => (x.kind === "copy" || x.kind === "add" || x.kind === "subtract") && isFlagAction(a, { cell: x.flag })) ?? null;
@@ -41,7 +53,7 @@ export function compareOf(store: Store, index: number, trigger: TriggerRecord): 
 }
 
 export function cellLabel(cell: Cell, namer: Namer): string {
-  return namer.counter?.(cell[0], cell[1]) ?? `${namer.player(cell[0])}'s ${namer.unit(cell[1]).replace(/ \(Unused\)$/, "")} deaths`;
+  return namer.counter?.(cell[0], cell[1]) ?? tr("{player}'s {unit} deaths", { player: namer.player(cell[0]), unit: namer.unit(cell[1]).replace(/ \(Unused\)$/, "") });
 }
 
 /** A free cell for a flag or scratch: nothing in the map, the sidecar's counters, or other expansions uses it. */
@@ -113,12 +125,11 @@ export function renderCounterExpansion(api: PluginApi, host: Host, store: Store,
   from.addEventListener("click", () => pickCell(api, host, store, from, x.from, (cell) => update({ from: cell })));
   const to = chip(api, cellLabel(x.to, namer));
   to.addEventListener("click", () => pickCell(api, host, store, to, x.to, (cell) => update({ to: cell })));
-  const bits = chip(api, `${x.bits ?? 32}-bit`, "");
+  const bits = chip(api, t("{n}-bit", { n: x.bits ?? 32 }), "");
   bits.title = t("How many bits of the counter to carry: 16 is half the triggers for a counter that stays under 65536");
   bits.addEventListener("click", () => pickChoice(api, bits, [{ value: 16, label: t("16-bit (up to 65,535)") }, { value: 32, label: t("32-bit (any count)") }], (v) => update({ bits: v }), { current: x.bits ?? 32 }));
-  if (x.kind === "copy") into.append(t("Copy "), from, t(" into "), to, " ", bits);
-  else if (x.kind === "add") into.append(t("Add "), from, t(" to "), to, " ", bits);
-  else into.append(t("Subtract "), from, t(" from "), to, " ", bits);
+  const template = x.kind === "copy" ? t("Copy {from} into {to}") : x.kind === "add" ? t("Add {from} to {to}") : t("Subtract {from} from {to}");
+  into.append(...sentence(template, { from, to }), " ", bits);
   into.append(api.ui.el("span", { className: "mg-tag", title: t("Done by a run of {n} generated triggers right after this one, in the same cycle: this trigger's own rows run first, the triggers after the run see the result. The run is hidden here and locked in the other editors.", { n: (x.bits ?? 32) + (x.kind === "copy" ? 2 : 1) }) }, "A+"));
 }
 
@@ -132,14 +143,15 @@ export function renderCompare(api: PluginApi, host: Host, store: Store, index: n
   a.addEventListener("click", () => pickCell(api, host, store, a, x.a, (cell) => update({ a: cell })));
   const b = chip(api, cellLabel(x.b, namer));
   b.addEventListener("click", () => pickCell(api, host, store, b, x.b, (cell) => update({ b: cell })));
-  const rel = chip(api, RELATIONS.find((r) => r.rel === cmp.relation)?.label ?? "?", "");
-  rel.addEventListener("click", () => pickChoice(api, rel, RELATIONS, (v) => {
+  const relation = RELATIONS.find((r) => r.rel === cmp.relation);
+  const rel = chip(api, relation ? translate(relation.label) : "?", "");
+  rel.addEventListener("click", () => pickChoice(api, rel, RELATIONS.map((r) => ({ ...r, label: translate(r.label) })), (v) => {
     const next = compareConditions(x, RELATIONS[v].rel);
     const conditions = trigger.conditions.filter((_, i) => !cmp.rows.includes(i));
     conditions.splice(cmp.rows[0] ?? conditions.length, 0, ...next);
     store.replace(index, { ...trigger, conditions }, t("Edit comparison"));
   }, { current: RELATIONS.findIndex((r) => r.rel === cmp.relation) }));
-  into.append(a, t(" is "), rel, " ", b);
+  into.append(...sentence(t("{a} is {relation} {b}"), { a, relation: rel, b }));
   into.append(api.ui.el("span", { className: "mg-tag", title: t("Answered by a run of generated triggers before this one, every cycle; they are hidden here and locked in the other editors.") }, "A+"));
 }
 

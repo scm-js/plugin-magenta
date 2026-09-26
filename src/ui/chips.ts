@@ -218,7 +218,7 @@ export function pickKey(api: PluginApi, anchor: HTMLElement, current: number, on
 export function pickPlacedUnit(api: PluginApi, host: Host, anchor: HTMLElement, current: number, onPick: (value: number) => void): PopoverHandle {
   const names = api.triggers.names();
   const placed = host.placedUnits();
-  const items: ChoiceOption[] = placed.map((u) => ({ value: u.slot, label: `${names.unit(u.unitId)} (slot ${u.slot})`, hint: `P${u.owner + 1} · ${Math.floor(u.x / 32)},${Math.floor(u.y / 32)}` }));
+  const items: ChoiceOption[] = placed.map((u) => ({ value: u.slot, label: api.i18n.t("{unit} (slot {n})", { unit: names.unit(u.unitId), n: u.slot }), hint: `P${u.owner + 1} · ${Math.floor(u.x / 32)},${Math.floor(u.y / 32)}` }));
   const byIndex = new Map(placed.map((u) => [u.index, u]));
   return pickChoice(api, anchor, items, onPick, {
     current, searchable: true, width: 320,

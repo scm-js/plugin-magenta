@@ -10,6 +10,8 @@ import { available } from "../model/eud";
 import { search, type SearchItem } from "../model/search";
 import { parseQuery, type Entity, type ParseNames } from "../model/parse";
 import { openPopover, type PopoverHandle } from "./popover";
+import { ACTION_TEMPLATES, CONDITION_TEMPLATES } from "../model/sentences";
+import { msg, translate } from "../i18n";
 
 export type Pick = { kind: "native"; type: number } | { kind: "eud"; entry: Entry } | { kind: "expansion"; what: "copy" | "add" | "subtract" | "compare" } | { kind: "build"; what: "chat" | "text" | "math" | "foreach" | "count" | "read" | "setloc" | "pick" | "scan" | "key" | "click" | "mouseIn" };
 
@@ -25,38 +27,69 @@ const NATIVE_ALIASES: Record<string, string[]> = {
   "Set Doodad State": ["door", "trap"], "Accumulate": ["resources", "minerals", "gas"], "Kill": ["has killed", "kills"], "Score": ["points"], "Opponents": ["players remaining", "enemies left"],
 };
 
+/** A template's words without its placeholders. */
+const wordsOf = (template: string): string => template.replace(/\{[^}]+\}/g, " ").replace(/\s+/g, " ").trim();
+
+/** The same text in the editor's language, when it has one: a query in either language finds the row. */
+const both = (english: string): string[] => { const shown = translate(english); return shown === english ? [english] : [english, shown]; };
+
 function entryAliases(e: Entry, kind: "condition" | "action"): string[] {
   const sentence = (kind === "condition" ? e.sentence.condition : e.sentence.action) ?? "";
-  const words = sentence.replace(/\{[^}]+\}/g, " ").replace(/\s+/g, " ").trim();
-  return [...(e.aliases ?? []), ...(words ? [words] : []), ...(e.value?.choices?.map((c) => c.label) ?? []), ...(e.args.some((a) => a.kind === "race") ? RACES.map((r) => r.label) : [])];
+  const shown = translate(e.name);
+  return [
+    ...(e.aliases ?? []), ...(shown !== e.name ? [e.name] : []), ...(sentence ? both(sentence).map(wordsOf) : []),
+    ...(e.value?.choices?.flatMap((c) => both(c.label)) ?? []), ...(e.args.some((a) => a.kind === "race") ? RACES.flatMap((r) => both(r.label)) : []),
+  ];
 }
+
+/** The English label as a search word, when the label shows in another language. */
+const english = (label: string): string[] => (translate(label) === label ? [] : [label]);
+
+/** A native condition's or action's search words: its name's aliases, and its sentence in the editor's language (the name itself is the game's, and stays English). */
+function nativeAliases(name: string, template: string | undefined): string[] | undefined {
+  const shown = template ? translate(template) : "";
+  const extra = shown && shown !== template ? [wordsOf(shown)] : [];
+  const list = [...(NATIVE_ALIASES[name] ?? []), ...extra];
+  return list.length ? list : undefined;
+}
+
+/** Magenta's own rows, in English here and shown in the editor's language. */
+const OWN_LABELS = {
+  compare: msg("Compare two counters"), chat: msg("The chat said a command"), key: msg("A player pressed a key (synced)"), click: msg("A player clicked (synced)"),
+  mouseIn: msg("A player's mouse is over a location (synced)"), scan: msg("Any unit of a kind has a stat below or above"),
+  text: msg("Show text with numbers in it"), math: msg("Multiply, divide or randomize a counter"), foreach: msg("For each unit of a kind"),
+  pick: msg("The weakest, strongest, nearest or a random unit of a kind"), count: msg("Count units into a counter"), read: msg("Read a unit's stat into a counter"),
+  setloc: msg("Move a location to coordinates or by an offset"), copy: msg("Copy a counter into another"), add: msg("Add a counter to another"), subtract: msg("Subtract a counter from another"),
+};
+const COUNTERS = msg("Counters");
+const BUILD = msg("Build");
 
 export function paletteItems(kind: "condition" | "action"): SearchItem<Pick>[] {
   const items: SearchItem<Pick>[] = [];
-  if (kind === "condition") for (const d of CONDITION_DEFS) { if (d.type !== ConditionType.Briefing) items.push({ label: d.name, aliases: NATIVE_ALIASES[d.name], priority: 1, value: { kind: "native", type: d.type } }); }
-  else for (const d of ACTION_DEFS) { if (d.type !== ActionType.None) items.push({ label: d.name, aliases: NATIVE_ALIASES[d.name], priority: 1, value: { kind: "native", type: d.type } }); }
+  if (kind === "condition") for (const d of CONDITION_DEFS) { if (d.type !== ConditionType.Briefing) items.push({ label: d.name, aliases: nativeAliases(d.name, CONDITION_TEMPLATES[d.type]), priority: 1, value: { kind: "native", type: d.type } }); }
+  else for (const d of ACTION_DEFS) { if (d.type !== ActionType.None) items.push({ label: d.name, aliases: nativeAliases(d.name, ACTION_TEMPLATES[d.type]), priority: 1, value: { kind: "native", type: d.type } }); }
   // An entry that goes through the game data's tables is offered once they are loaded. Its sentence's
   // words, its choices and its race argument search too, so "make marine a detector", "colour yellow"
   // and "terran supply cap" find their rows with the words a map maker would type.
-  for (const e of entriesFor(kind)) if (available(e)) items.push({ label: e.name, aliases: entryAliases(e, kind), group: e.group, value: { kind: "eud", entry: e } });
+  for (const e of entriesFor(kind)) if (available(e)) items.push({ label: translate(e.name), aliases: entryAliases(e, kind), group: translate(e.group), value: { kind: "eud", entry: e } });
   if (kind === "condition") {
-    items.push({ label: "Compare two counters", aliases: ["greater", "less", "equal", "variable"], group: "Counters", value: { kind: "expansion", what: "compare" } });
-    items.push({ label: "The chat said a command", aliases: ["chat", "typed", "command", "message", "-heal", "-set with a number", "argument"], group: "Build", value: { kind: "build", what: "chat" } });
-    items.push({ label: "A player pressed a key (synced)", aliases: ["keyboard", "hotkey", "press", "input"], group: "Build", value: { kind: "build", what: "key" } });
-    items.push({ label: "A player clicked (synced)", aliases: ["mouse button", "left click", "right click", "input"], group: "Build", value: { kind: "build", what: "click" } });
-    items.push({ label: "A player's mouse is over a location (synced)", aliases: ["hover", "cursor", "pointer", "mouse at"], group: "Build", value: { kind: "build", what: "mouseIn" } });
-    items.push({ label: "Any unit of a kind has a stat below or above", aliases: ["hp check", "low health", "any unit", "damaged", "scan", "is attacking", "under attack", "burrowed", "moving", "has a target", "percent", "below 30%", "hp %"], group: "Build", value: { kind: "build", what: "scan" } });
+    items.push({ label: translate(OWN_LABELS.compare), aliases: ["greater", "less", "equal", "variable", ...english(OWN_LABELS.compare)], group: translate(COUNTERS), value: { kind: "expansion", what: "compare" } });
+    items.push({ label: translate(OWN_LABELS.chat), aliases: ["chat", "typed", "command", "message", "-heal", "-set with a number", "argument", ...english(OWN_LABELS.chat)], group: translate(BUILD), value: { kind: "build", what: "chat" } });
+    items.push({ label: translate(OWN_LABELS.key), aliases: ["keyboard", "hotkey", "press", "input", ...english(OWN_LABELS.key)], group: translate(BUILD), value: { kind: "build", what: "key" } });
+    items.push({ label: translate(OWN_LABELS.click), aliases: ["mouse button", "left click", "right click", "input", ...english(OWN_LABELS.click)], group: translate(BUILD), value: { kind: "build", what: "click" } });
+    items.push({ label: translate(OWN_LABELS.mouseIn), aliases: ["hover", "cursor", "pointer", "mouse at", ...english(OWN_LABELS.mouseIn)], group: translate(BUILD), value: { kind: "build", what: "mouseIn" } });
+    items.push({ label: translate(OWN_LABELS.scan), aliases: ["hp check", "low health", "any unit", "damaged", "scan", "is attacking", "under attack", "burrowed", "moving", "has a target", "percent", "below 30%", "hp %", ...english(OWN_LABELS.scan)], group: translate(BUILD), value: { kind: "build", what: "scan" } });
   } else {
-    items.push({ label: "Show text with numbers in it", aliases: ["display counter", "print score", "dynamic text", "message with value"], group: "Build", value: { kind: "build", what: "text" } });
-    items.push({ label: "Multiply, divide or randomize a counter", aliases: ["times", "random", "modulo", "remainder", "maths"], group: "Build", value: { kind: "build", what: "math" } });
-    items.push({ label: "For each unit of a kind", aliases: ["all units", "every unit", "loop", "set hp of all", "give units with colour", "order all", "stun", "stim", "ensnare", "plague", "lockdown", "hold fire", "no-clip", "set minerals of field", "damage", "heal", "drain", "take hit points", "restore shields", "damage zone"], group: "Build", value: { kind: "build", what: "foreach" } });
-    items.push({ label: "The weakest, strongest, nearest or a random unit of a kind", aliases: ["pick", "lowest hp", "closest", "nearest", "most kills", "find unit", "one unit", "random unit", "lottery", "under the mouse", "clicked unit", "unit at the cursor"], group: "Build", value: { kind: "build", what: "pick" } });
-    items.push({ label: "Count units into a counter", aliases: ["number of", "how many", "tally"], group: "Build", value: { kind: "build", what: "count" } });
-    items.push({ label: "Read a unit's stat into a counter", aliases: ["get hp", "read health", "unit's kills", "position into", "what unit is at", "unit type at", "owner of"], group: "Build", value: { kind: "build", what: "read" } });
-    items.push({ label: "Move a location to coordinates or by an offset", aliases: ["set location", "place location", "location xy", "pixels", "move by", "shift location", "slide", "scroll location"], group: "Build", value: { kind: "build", what: "setloc" } });
-    items.push({ label: "Copy a counter into another", aliases: ["set variable", "assign", "transfer"], group: "Counters", value: { kind: "expansion", what: "copy" } });
-    items.push({ label: "Add a counter to another", aliases: ["sum", "plus", "variable"], group: "Counters", value: { kind: "expansion", what: "add" } });
-    items.push({ label: "Subtract a counter from another", aliases: ["minus", "difference", "variable"], group: "Counters", value: { kind: "expansion", what: "subtract" } });
+    items.push({ label: translate(OWN_LABELS.text), aliases: ["display counter", "print score", "dynamic text", "message with value", ...english(OWN_LABELS.text)], group: translate(BUILD), value: { kind: "build", what: "text" } });
+    items.push({ label: translate(OWN_LABELS.math), aliases: ["times", "random", "modulo", "remainder", "maths", ...english(OWN_LABELS.math)], group: translate(BUILD), value: { kind: "build", what: "math" } });
+    items.push({ label: translate(OWN_LABELS.foreach), aliases: ["all units", "every unit", "loop", "set hp of all", "give units with colour", "order all", "stun", "stim", "ensnare", "plague", "lockdown", "hold fire", "no-clip", "set minerals of field", "damage", "heal", "drain", "take hit points", "restore shields", "damage zone", ...english(OWN_LABELS.foreach)], group: translate(BUILD), value: { kind: "build", what: "foreach" } });
+    items.push({ label: translate(OWN_LABELS.pick), aliases: ["pick", "lowest hp", "closest", "nearest", "most kills", "find unit", "one unit", "random unit", "lottery", "under the mouse", "clicked unit", "unit at the cursor", ...english(OWN_LABELS.pick)], group: translate(BUILD), value: { kind: "build", what: "pick" } });
+    items.push({ label: translate(OWN_LABELS.count), aliases: ["number of", "how many", "tally", ...english(OWN_LABELS.count)], group: translate(BUILD), value: { kind: "build", what: "count" } });
+    items.push({ label: translate(OWN_LABELS.read), aliases: ["get hp", "read health", "unit's kills", "position into", "what unit is at", "unit type at", "owner of", ...english(OWN_LABELS.read)], group: translate(BUILD), value: { kind: "build", what: "read" } });
+    items.push({ label: translate(OWN_LABELS.setloc), aliases: ["set location", "place location", "location xy", "pixels", "move by", "shift location", "slide", "scroll location", ...english(OWN_LABELS.setloc)], group: translate(BUILD), value: { kind: "build", what: "setloc" } });
+    items.push({ label: translate(OWN_LABELS.copy), aliases: ["set variable", "assign", "transfer", ...english(OWN_LABELS.copy)], group: translate(COUNTERS), value: { kind: "expansion", what: "copy" } });
+    items.push({ label: translate(OWN_LABELS.add), aliases: ["sum", "plus", "variable", ...english(OWN_LABELS.add)], group: translate(COUNTERS), value: { kind: "expansion", what: "add" } });
+    items.push({ label: translate(OWN_LABELS.subtract), aliases: ["minus", "difference", "variable", ...english(OWN_LABELS.subtract)], group: translate(COUNTERS), value: { kind: "expansion", what: "subtract" } });
   }
   return items;
 }

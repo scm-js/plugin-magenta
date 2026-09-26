@@ -5,6 +5,7 @@
  * conditions it could not decide with a box to pretend they hold, the state — which
  * can be poked by hand — and a log of what fired, what was shown and who won.
  */
+import { compose } from "../i18n";
 import type { PluginApi, TriggerRecord } from "@scm-js/plugin-api";
 import { cellOf, usage } from "../model/counters";
 import { fingerprint, liveConditions } from "../model/records";
@@ -217,7 +218,7 @@ export function createSimulator(api: PluginApi, host: Host, store: Store, everyF
       ct.append(addCell);
       st.append(ct);
       // Timer and clock
-      const timer = el("button", { type: "button", className: "mg-chip", title: t("Click to change") }, `${seconds(Math.floor(state.countdown))} s${state.countdownPaused ? ` (${t("paused")})` : ""}`) as HTMLButtonElement;
+      const timer = el("button", { type: "button", className: "mg-chip", title: t("Click to change") }, state.countdownPaused ? t("{s} s (paused)", { s: seconds(Math.floor(state.countdown)) }) : t("{s} s", { s: seconds(Math.floor(state.countdown)) })) as HTMLButtonElement;
       timer.addEventListener("click", () => pickNumber(api, timer, Math.floor(state.countdown), (n) => { state.countdown = n; render(); }, { min: 0, integer: true, unit: "s" }));
       st.append(el("div", { className: "mg-sim-line" }, el("span", { className: "mg-sim-label" }, t("Countdown timer")), timer, el("span", { className: "hint" }, world.everyFrame ? t("24 cycles a second") : t("a cycle is {s} s", { s: seconds(secondsPerCycle(world)) }))));
       // Players
@@ -252,7 +253,7 @@ export function createSimulator(api: PluginApi, host: Host, store: Store, everyF
       unitChip.addEventListener("click", () => pickUnitType(api, host, unitChip, put.unit, (v) => { put.unit = v; unitChip.textContent = names.unit(v); }));
       const locChip = el("button", { type: "button", className: "mg-chip" }, names.location(put.location)) as HTMLButtonElement;
       locChip.addEventListener("click", () => pickLocation(api, host, locChip, put.location, (v) => { put.location = v; locChip.textContent = names.location(v); }));
-      putLine.append(countChip, unitChip, el("span", { className: "hint" }, t("for")), ownerChip, el("span", { className: "hint" }, t("at")), locChip, w.button(t("Add"), { onClick: () => { putUnits(state, world, put.owner, put.unit, put.count, put.location); render(); } }));
+      putLine.append(...compose<Node>(t("{count} {unit} for {player} at {location}"), { count: countChip, unit: unitChip, player: ownerChip, location: locChip }, (n) => n.textContent ?? ""), w.button(t("Add"), { onClick: () => { putUnits(state, world, put.owner, put.unit, put.count, put.location); render(); } }));
       st.append(putLine);
       scroll.append(st);
 
@@ -275,7 +276,7 @@ export function createSimulator(api: PluginApi, host: Host, store: Store, everyF
       const link = list[e.trigger] ? el("button", { type: "button", className: "mg-sim-link", onclick: () => store.select(e.trigger) }, titleOf(api, host, store, e.trigger)) : el("span", {}, t("trigger {n}", { n: e.trigger + 1 }));
       const line = el("div", { className: `mg-sim-log ${e.kind}` }, el("span", { className: "mg-sim-cycle" }, String(e.cycle)), el("span", { className: "mg-sim-who" }, who));
       switch (e.kind) {
-        case "fired": line.append(t("fires"), " ", link); break;
+        case "fired": line.append(...compose<Node>(t("fires {trigger}"), { trigger: link }, (n) => n.textContent ?? "")); break;
         case "text": line.append(el("span", { className: "mg-sim-text" }, `“${e.text}”`)); break;
         case "objectives": line.append(t("objectives:"), " ", el("span", { className: "mg-sim-text" }, e.text)); break;
         case "end": line.append(el("b", {}, e.result === "victory" ? t("wins") : e.result === "defeat" ? t("loses") : t("draws")), " · ", link); break;
@@ -286,8 +287,9 @@ export function createSimulator(api: PluginApi, host: Host, store: Store, everyF
     }
 
     const unsubscribe = store.subscribe(render);
+    const offLang = api.events.on("language", render);
     render();
-    return () => { unsubscribe(); };
+    return () => { unsubscribe(); offLang.dispose(); };
   }
 
   return { open, close: () => handle?.close(), isOpen: () => handle?.isOpen() ?? false };

@@ -3714,6 +3714,141 @@ var eud_default = {
   ]
 };
 
+// src/i18n.ts
+var ENGLISH = { t: (text, params) => format(text, params), tc: (_context, text, params) => format(text, params) };
+var current = ENGLISH;
+function setTranslator(i18n) {
+  current = i18n ?? ENGLISH;
+}
+function t(text, params) {
+  return current.t(text, params);
+}
+function tc(context, text, params) {
+  return current.tc(context, text, params);
+}
+function msg(text) {
+  return text;
+}
+function translate(text, params) {
+  return current.t(text, params);
+}
+function matchBrace(s, open) {
+  let depth = 0;
+  for (let i = open; i < s.length; i++) {
+    if (s[i] === "{") depth++;
+    else if (s[i] === "}" && --depth === 0) return i;
+  }
+  return -1;
+}
+function parseBranches(options) {
+  const out = /* @__PURE__ */ new Map();
+  let i = 0;
+  while (i < options.length) {
+    const open = options.indexOf("{", i);
+    if (open < 0) break;
+    const close = matchBrace(options, open);
+    if (close < 0) break;
+    const key = options.slice(i, open).trim();
+    if (key) out.set(key, options.slice(open + 1, close));
+    i = close + 1;
+  }
+  return out;
+}
+function placeholder(inner, params) {
+  const comma = inner.indexOf(",");
+  if (comma < 0) {
+    const bar = inner.indexOf("|");
+    const name2 = (bar < 0 ? inner : inner.slice(0, bar)).trim();
+    const value2 = params?.[name2];
+    if (value2 === void 0) return `{${inner}}`;
+    return bar < 0 ? String(value2) : josa(String(value2), inner.slice(bar + 1).trim());
+  }
+  const name = inner.slice(0, comma).trim();
+  const rest = inner.slice(comma + 1);
+  const comma2 = rest.indexOf(",");
+  if (comma2 < 0) return `{${inner}}`;
+  const kind = rest.slice(0, comma2).trim();
+  const value = params?.[name];
+  if (value === void 0) return `{${inner}}`;
+  const branches = parseBranches(rest.slice(comma2 + 1));
+  if (kind === "plural" && typeof value === "number") {
+    const branch = branches.get(`=${value}`) ?? branches.get(new Intl.PluralRules("en").select(value)) ?? branches.get("other");
+    return branch === void 0 ? `{${inner}}` : format(branch.replace(/#/g, new Intl.NumberFormat("en").format(value)), params);
+  }
+  if (kind === "select") {
+    const branch = branches.get(String(value)) ?? branches.get("other");
+    return branch === void 0 ? `{${inner}}` : format(branch, params);
+  }
+  return `{${inner}}`;
+}
+function format(message, params) {
+  if (!message.includes("{")) return message;
+  let out = "";
+  let i = 0;
+  while (i < message.length) {
+    const open = message.indexOf("{", i);
+    if (open < 0) {
+      out += message.slice(i);
+      break;
+    }
+    const close = matchBrace(message, open);
+    if (close < 0) {
+      out += message.slice(i);
+      break;
+    }
+    out += message.slice(i, open) + placeholder(message.slice(open + 1, close), params);
+    i = close + 1;
+  }
+  return out;
+}
+var JOSA = {
+  "\uC744": ["\uC744", "\uB97C"],
+  "\uB97C": ["\uC744", "\uB97C"],
+  "\uC774": ["\uC774", "\uAC00"],
+  "\uAC00": ["\uC774", "\uAC00"],
+  "\uC740": ["\uC740", "\uB294"],
+  "\uB294": ["\uC740", "\uB294"],
+  "\uACFC": ["\uACFC", "\uC640"],
+  "\uC640": ["\uACFC", "\uC640"],
+  "\uC73C\uB85C": ["\uC73C\uB85C", "\uB85C"],
+  "\uB85C": ["\uC73C\uB85C", "\uB85C"]
+};
+var BOTH = { "\uC744": "\uC744(\uB97C)", "\uC774": "\uC774(\uAC00)", "\uC740": "\uC740(\uB294)", "\uACFC": "\uACFC(\uC640)", "\uC73C\uB85C": "(\uC73C)\uB85C" };
+var DIGIT_FINAL = [21, 8, 0, 16, 0, 0, 1, 8, 8, 0];
+function josa(value, particle) {
+  const pair = JOSA[particle];
+  if (!pair) return value + particle;
+  const trimmed = value.replace(/[\s)\]"'.,%]+$/u, "");
+  const last = trimmed.codePointAt(trimmed.length - 1) ?? 0;
+  let final;
+  if (last >= 44032 && last <= 55203) final = (last - 44032) % 28;
+  else if (last >= 48 && last <= 57) final = DIGIT_FINAL[last - 48];
+  else return value + (BOTH[pair[0]] ?? particle);
+  const vowelLike = final === 0 || pair[0] === "\uC73C\uB85C" && final === 8;
+  return value + (vowelLike ? pair[1] : pair[0]);
+}
+function compose(template, parts, textOf) {
+  const out = [];
+  const re = /\{([^{}|]+)(?:\|([^{}]+))?\}/g;
+  let last = 0;
+  let m;
+  while (m = re.exec(template)) {
+    const name = m[1].trim();
+    if (!(name in parts)) continue;
+    if (m.index > last) out.push(template.slice(last, m.index));
+    const value = parts[name];
+    const list = Array.isArray(value) ? value : [value];
+    out.push(...list);
+    if (m[2]) {
+      const tail = list.map((p) => typeof p === "string" ? p : textOf(p)).join("");
+      out.push(josa(tail, m[2].trim()).slice(tail.length));
+    }
+    last = re.lastIndex;
+  }
+  if (last < template.length) out.push(template.slice(last));
+  return out;
+}
+
 // src/catalogue/index.ts
 var address = (json) => ({ base: Number(json.base), terms: json.terms });
 function load(json) {
@@ -3726,11 +3861,11 @@ var entry = (id) => BY_ID.get(id);
 var offers = (e, kind) => e.kind === "both" || e.kind === kind;
 var enumerated = (e) => !!(e.value?.choices || e.value?.kind || e.value?.setOnly || e.width === "bit");
 var grouped = (e) => !!e.parts?.length;
-var needsLookup = (e) => !!(e.value?.via || e.address.terms?.some((t) => t.via) || e.parts?.some((p) => p.address.terms?.some((t) => t.via)));
+var needsLookup = (e) => !!(e.value?.via || e.address.terms?.some((t2) => t2.via) || e.parts?.some((p) => p.address.terms?.some((t2) => t2.via)));
 function entriesFor(kind) {
   return ENTRIES.filter((e) => offers(e, kind));
 }
-var RACES = [{ value: 0, label: "Zerg" }, { value: 1, label: "Terran" }, { value: 2, label: "Protoss" }];
+var RACES = [{ value: 0, label: msg("Zerg") }, { value: 1, label: msg("Terran") }, { value: 2, label: msg("Protoss") }];
 
 // src/model/eud.ts
 var DEATHS_TABLE = 5808996;
@@ -4335,108 +4470,177 @@ var AI_SCRIPT_CHOICES = Object.entries(AI_SCRIPT_NAMES).map(([id, name]) => ({ i
 var C = ConditionType;
 var A = ActionType;
 var CONDITION_TEMPLATES = {
-  [C.Accumulate]: "{Player} accumulates {Comparison} {Amount} {Resource}",
-  [C.Always]: "Always",
-  [C.Bring]: "{Player} brings {Comparison} {Amount} {Unit} to {Location}",
-  [C.Command]: "{Player} commands {Comparison} {Amount} {Unit}",
-  [C.CommandTheLeast]: "Current player commands the least {Unit}",
-  [C.CommandTheLeastAt]: "Current player commands the least {Unit} at {Location}",
-  [C.CommandTheMost]: "Current player commands the most {Unit}",
-  [C.CommandTheMostAt]: "Current player commands the most {Unit} at {Location}",
-  [C.CountdownTimer]: "Countdown timer is {Comparison} {Amount} seconds",
-  [C.Deaths]: "{Player} has suffered {Comparison} {Amount} deaths of {Unit}",
-  [C.ElapsedTime]: "Elapsed game time is {Comparison} {Amount} seconds",
-  [C.HighestScore]: "Current player has the highest {Score} score",
-  [C.Kill]: "{Player} has killed {Comparison} {Amount} {Unit}",
-  [C.LeastKills]: "Current player has the fewest kills of {Unit}",
-  [C.LeastResources]: "Current player has the least {Resource}",
-  [C.LowestScore]: "Current player has the lowest {Score} score",
-  [C.MostKills]: "Current player has the most kills of {Unit}",
-  [C.MostResources]: "Current player has the most {Resource}",
-  [C.Never]: "Never",
-  [C.Opponents]: "{Player} has {Comparison} {Amount} opponents remaining",
-  [C.Score]: "{Player}'s {Score} score is {Comparison} {Amount}",
-  [C.Switch]: "{Switch} is {State}",
-  [C.Briefing]: "Mission briefing"
+  [C.Accumulate]: msg("{Player} accumulates {Comparison} {Amount} {Resource}"),
+  [C.Always]: msg("Always"),
+  [C.Bring]: msg("{Player} brings {Comparison} {Amount} {Unit} to {Location}"),
+  [C.Command]: msg("{Player} commands {Comparison} {Amount} {Unit}"),
+  [C.CommandTheLeast]: msg("Current player commands the least {Unit}"),
+  [C.CommandTheLeastAt]: msg("Current player commands the least {Unit} at {Location}"),
+  [C.CommandTheMost]: msg("Current player commands the most {Unit}"),
+  [C.CommandTheMostAt]: msg("Current player commands the most {Unit} at {Location}"),
+  [C.CountdownTimer]: msg("Countdown timer is {Comparison} {Amount} seconds"),
+  [C.Deaths]: msg("{Player} has suffered {Comparison} {Amount} deaths of {Unit}"),
+  [C.ElapsedTime]: msg("Elapsed game time is {Comparison} {Amount} seconds"),
+  [C.HighestScore]: msg("Current player has the highest {Score} score"),
+  [C.Kill]: msg("{Player} has killed {Comparison} {Amount} {Unit}"),
+  [C.LeastKills]: msg("Current player has the fewest kills of {Unit}"),
+  [C.LeastResources]: msg("Current player has the least {Resource}"),
+  [C.LowestScore]: msg("Current player has the lowest {Score} score"),
+  [C.MostKills]: msg("Current player has the most kills of {Unit}"),
+  [C.MostResources]: msg("Current player has the most {Resource}"),
+  [C.Never]: msg("Never"),
+  [C.Opponents]: msg("{Player} has {Comparison} {Amount} opponents remaining"),
+  [C.Score]: msg("{Player}'s {Score} score is {Comparison} {Amount}"),
+  [C.Switch]: msg("{Switch} is {State}"),
+  [C.Briefing]: msg("Mission briefing")
 };
 var ACTION_TEMPLATES = {
-  [A.CenterView]: "Center the view on {Location}",
-  [A.Comment]: "Comment {Text}",
-  [A.CreateUnit]: "Create {Count} {Unit} at {Location} for {Player}",
-  [A.CreateUnitWithProperties]: "Create {Count} {Unit} at {Location} for {Player} with {Properties}",
-  [A.Defeat]: "End the scenario in defeat",
-  [A.DisplayText]: "Display {Text} ({Display})",
-  [A.Draw]: "End the scenario in a draw",
-  [A.GiveUnits]: "Give {Count} {Unit} owned by {From} at {Location} to {To}",
-  [A.KillUnit]: "Kill all {Unit} owned by {Player}",
-  [A.KillUnitAt]: "Kill {Count} {Unit} owned by {Player} at {Location}",
-  [A.LeaderboardControl]: "Show a leader board of most {Unit} controlled, labelled {Label}",
-  [A.LeaderboardControlAt]: "Show a leader board of most {Unit} controlled at {Location}, labelled {Label}",
-  [A.LeaderboardGreed]: "Show the greed leader board with a goal of {Goal} resources",
-  [A.LeaderboardKills]: "Show a leader board of most {Unit} killed, labelled {Label}",
-  [A.LeaderboardPoints]: "Show a leader board of most {Score} points, labelled {Label}",
-  [A.LeaderboardResources]: "Show a leader board of most {Resource}, labelled {Label}",
-  [A.LeaderboardGoalControl]: "Show a leader board of {Unit} controlled with a goal of {Goal}, labelled {Label}",
-  [A.LeaderboardGoalControlAt]: "Show a leader board of {Unit} controlled at {Location} with a goal of {Goal}, labelled {Label}",
-  [A.LeaderboardGoalKills]: "Show a leader board of {Unit} killed with a goal of {Goal}, labelled {Label}",
-  [A.LeaderboardGoalPoints]: "Show a leader board of {Score} points with a goal of {Goal}, labelled {Label}",
-  [A.LeaderboardGoalResources]: "Show a leader board of {Resource} with a goal of {Goal}, labelled {Label}",
-  [A.LeaderboardComputerPlayers]: "{State} computer players on the leader board",
-  [A.MinimapPing]: "Ping the minimap at {Location}",
-  [A.ModifyEnergy]: "Set the energy of {Count} {Unit} owned by {Player} at {Location} to {Percent}%",
-  [A.ModifyHangarCount]: "Add {Amount} to the hangar of {Count} {Unit} owned by {Player} at {Location}",
-  [A.ModifyHitPoints]: "Set the hit points of {Count} {Unit} owned by {Player} at {Location} to {Percent}%",
-  [A.ModifyResourceAmount]: "Set the resources of {Count} resource units owned by {Player} at {Location} to {Amount}",
-  [A.ModifyShields]: "Set the shields of {Count} {Unit} owned by {Player} at {Location} to {Percent}%",
-  [A.MoveLocation]: "Center {Move} on {Unit} owned by {Player} at {Unit at}",
-  [A.MoveUnit]: "Move {Count} {Unit} owned by {Player} from {From} to {To}",
-  [A.MuteUnitSpeech]: "Mute unit speech",
-  [A.Order]: "Order {Unit} owned by {Player} at {From} to {Order} to {To}",
-  [A.PauseGame]: "Pause the game",
-  [A.PauseTimer]: "Pause the countdown timer",
-  [A.PlayWav]: "Play {WAV} ({Duration} ms)",
-  [A.PreserveTrigger]: "Preserve trigger",
-  [A.RemoveUnit]: "Remove all {Unit} owned by {Player}",
-  [A.RemoveUnitAt]: "Remove {Count} {Unit} owned by {Player} at {Location}",
-  [A.RunAiScript]: "Run the AI script {Script}",
-  [A.RunAiScriptAt]: "Run the AI script {Script} at {Location}",
-  [A.SetAllianceStatus]: "Set {Player} to {Status}",
-  [A.SetCountdownTimer]: "Set the countdown timer {Modifier} {Seconds} seconds",
-  [A.SetDeaths]: "Set deaths of {Unit} for {Player} {Modifier} {Amount}",
-  [A.SetDoodadState]: "{State} the doodad state of {Unit} owned by {Player} at {Location}",
-  [A.SetInvincibility]: "{State} invincibility for {Unit} owned by {Player} at {Location}",
-  [A.SetMissionObjectives]: "Set the mission objectives to {Text}",
-  [A.SetNextScenario]: "Load {Scenario} after this scenario",
-  [A.SetResources]: "Set {Resource} of {Player} {Modifier} {Amount}",
-  [A.SetScore]: "Set the {Score} score of {Player} {Modifier} {Amount}",
-  [A.SetSwitch]: "{Switch}: {Action}",
-  [A.TalkingPortrait]: "Show the talking portrait of {Unit} for {Duration} ms",
-  [A.Transmission]: "Transmission from {Unit} at {Location}: {Text}, {WAV} for {WAV duration} ms, shown {Modifier} {Duration} ms ({Display})",
-  [A.UnmuteUnitSpeech]: "Unmute unit speech",
-  [A.UnpauseGame]: "Unpause the game",
-  [A.UnpauseTimer]: "Unpause the countdown timer",
-  [A.Victory]: "End the scenario in victory",
-  [A.Wait]: "Wait {Milliseconds} ms",
-  [A.DisableDebugMode]: "Disable debug mode",
-  [A.EnableDebugMode]: "Enable debug mode"
+  [A.CenterView]: msg("Center the view on {Location}"),
+  [A.Comment]: msg("Comment {Text}"),
+  [A.CreateUnit]: msg("Create {Count} {Unit} at {Location} for {Player}"),
+  [A.CreateUnitWithProperties]: msg("Create {Count} {Unit} at {Location} for {Player} with {Properties}"),
+  [A.Defeat]: msg("End the scenario in defeat"),
+  [A.DisplayText]: msg("Display {Text} ({Display})"),
+  [A.Draw]: msg("End the scenario in a draw"),
+  [A.GiveUnits]: msg("Give {Count} {Unit} owned by {From} at {Location} to {To}"),
+  [A.KillUnit]: msg("Kill all {Unit} owned by {Player}"),
+  [A.KillUnitAt]: msg("Kill {Count} {Unit} owned by {Player} at {Location}"),
+  [A.LeaderboardControl]: msg("Show a leader board of most {Unit} controlled, labelled {Label}"),
+  [A.LeaderboardControlAt]: msg("Show a leader board of most {Unit} controlled at {Location}, labelled {Label}"),
+  [A.LeaderboardGreed]: msg("Show the greed leader board with a goal of {Goal} resources"),
+  [A.LeaderboardKills]: msg("Show a leader board of most {Unit} killed, labelled {Label}"),
+  [A.LeaderboardPoints]: msg("Show a leader board of most {Score} points, labelled {Label}"),
+  [A.LeaderboardResources]: msg("Show a leader board of most {Resource}, labelled {Label}"),
+  [A.LeaderboardGoalControl]: msg("Show a leader board of {Unit} controlled with a goal of {Goal}, labelled {Label}"),
+  [A.LeaderboardGoalControlAt]: msg("Show a leader board of {Unit} controlled at {Location} with a goal of {Goal}, labelled {Label}"),
+  [A.LeaderboardGoalKills]: msg("Show a leader board of {Unit} killed with a goal of {Goal}, labelled {Label}"),
+  [A.LeaderboardGoalPoints]: msg("Show a leader board of {Score} points with a goal of {Goal}, labelled {Label}"),
+  [A.LeaderboardGoalResources]: msg("Show a leader board of {Resource} with a goal of {Goal}, labelled {Label}"),
+  [A.LeaderboardComputerPlayers]: msg("{State} computer players on the leader board"),
+  [A.MinimapPing]: msg("Ping the minimap at {Location}"),
+  [A.ModifyEnergy]: msg("Set the energy of {Count} {Unit} owned by {Player} at {Location} to {Percent}%"),
+  [A.ModifyHangarCount]: msg("Add {Amount} to the hangar of {Count} {Unit} owned by {Player} at {Location}"),
+  [A.ModifyHitPoints]: msg("Set the hit points of {Count} {Unit} owned by {Player} at {Location} to {Percent}%"),
+  [A.ModifyResourceAmount]: msg("Set the resources of {Count} resource units owned by {Player} at {Location} to {Amount}"),
+  [A.ModifyShields]: msg("Set the shields of {Count} {Unit} owned by {Player} at {Location} to {Percent}%"),
+  [A.MoveLocation]: msg("Center {Move} on {Unit} owned by {Player} at {Unit at}"),
+  [A.MoveUnit]: msg("Move {Count} {Unit} owned by {Player} from {From} to {To}"),
+  [A.MuteUnitSpeech]: msg("Mute unit speech"),
+  [A.Order]: msg("Order {Unit} owned by {Player} at {From} to {Order} to {To}"),
+  [A.PauseGame]: msg("Pause the game"),
+  [A.PauseTimer]: msg("Pause the countdown timer"),
+  [A.PlayWav]: msg("Play {WAV} ({Duration} ms)"),
+  [A.PreserveTrigger]: msg("Preserve trigger"),
+  [A.RemoveUnit]: msg("Remove all {Unit} owned by {Player}"),
+  [A.RemoveUnitAt]: msg("Remove {Count} {Unit} owned by {Player} at {Location}"),
+  [A.RunAiScript]: msg("Run the AI script {Script}"),
+  [A.RunAiScriptAt]: msg("Run the AI script {Script} at {Location}"),
+  [A.SetAllianceStatus]: msg("Set {Player} to {Status}"),
+  [A.SetCountdownTimer]: msg("Set the countdown timer {Modifier} {Seconds} seconds"),
+  [A.SetDeaths]: msg("Set deaths of {Unit} for {Player} {Modifier} {Amount}"),
+  [A.SetDoodadState]: msg("{State} the doodad state of {Unit} owned by {Player} at {Location}"),
+  [A.SetInvincibility]: msg("{State} invincibility for {Unit} owned by {Player} at {Location}"),
+  [A.SetMissionObjectives]: msg("Set the mission objectives to {Text}"),
+  [A.SetNextScenario]: msg("Load {Scenario} after this scenario"),
+  [A.SetResources]: msg("Set {Resource} of {Player} {Modifier} {Amount}"),
+  [A.SetScore]: msg("Set the {Score} score of {Player} {Modifier} {Amount}"),
+  [A.SetSwitch]: msg("{Switch}: {Action}"),
+  [A.TalkingPortrait]: msg("Show the talking portrait of {Unit} for {Duration} ms"),
+  [A.Transmission]: msg("Transmission from {Unit} at {Location}: {Text}, {WAV} for {WAV duration} ms, shown {Modifier} {Duration} ms ({Display})"),
+  [A.UnmuteUnitSpeech]: msg("Unmute unit speech"),
+  [A.UnpauseGame]: msg("Unpause the game"),
+  [A.UnpauseTimer]: msg("Unpause the countdown timer"),
+  [A.Victory]: msg("End the scenario in victory"),
+  [A.Wait]: msg("Wait {Milliseconds} ms"),
+  [A.DisableDebugMode]: msg("Disable debug mode"),
+  [A.EnableDebugMode]: msg("Enable debug mode")
 };
 var BRIEFING_TEMPLATES = {
-  1: "Wait {Milliseconds} ms",
-  2: "Play {WAV} ({Duration} ms)",
-  3: "Show {Text} for {Duration} ms",
-  4: "Set the mission objectives to {Text}",
-  5: "Show the portrait of {Unit} in {Slot}",
-  6: "Hide the portrait in {Slot}",
-  7: "Animate the portrait in {Slot} for {Duration} ms",
-  8: "Transmission {Text} from {Slot}, {WAV}, shown {Modifier} {Amount} for {Duration} ms",
-  9: "Enable Skip Tutorial"
+  1: msg("Wait {Milliseconds} ms"),
+  2: msg("Play {WAV} ({Duration} ms)"),
+  3: msg("Show {Text} for {Duration} ms"),
+  4: msg("Set the mission objectives to {Text}"),
+  5: msg("Show the portrait of {Unit} in {Slot}"),
+  6: msg("Hide the portrait in {Slot}"),
+  7: msg("Animate the portrait in {Slot} for {Duration} ms"),
+  8: msg("Transmission {Text} from {Slot}, {WAV}, shown {Modifier} {Amount} for {Duration} ms"),
+  9: msg("Enable Skip Tutorial")
 };
 var NUMBER_KINDS = /* @__PURE__ */ new Set(["number", "amount", "count", "duration", "percent"]);
-var MODIFIER_WORDS = { 7: "to", 8: "up by", 9: "down by" };
+var MODIFIER_WORDS = { 7: msg("to"), 8: msg("up by"), 9: msg("down by") };
+var CHOICE_LABELS = [
+  msg("At least"),
+  msg("At most"),
+  msg("Exactly"),
+  msg("set"),
+  msg("not set"),
+  msg("clear"),
+  msg("toggle"),
+  msg("randomize"),
+  msg("Set To"),
+  msg("Add"),
+  msg("Subtract"),
+  msg("enable"),
+  msg("disable"),
+  msg("move"),
+  msg("patrol"),
+  msg("attack"),
+  msg("Enemy"),
+  msg("Ally"),
+  msg("Allied Victory"),
+  msg("ore"),
+  msg("gas"),
+  msg("ore and gas"),
+  msg("Total"),
+  msg("Units"),
+  msg("Buildings"),
+  msg("Units and buildings"),
+  msg("Kills"),
+  msg("Razings"),
+  msg("Kills and razings"),
+  msg("Custom"),
+  msg("Don't Always Display"),
+  msg("Always Display")
+];
+var ARG_LABELS = [
+  msg("Player"),
+  msg("Unit"),
+  msg("Location"),
+  msg("Comparison"),
+  msg("Amount"),
+  msg("Resource"),
+  msg("Score"),
+  msg("Switch"),
+  msg("State"),
+  msg("Count"),
+  msg("Modifier"),
+  msg("Text"),
+  msg("Label"),
+  msg("Display"),
+  msg("Properties"),
+  msg("From"),
+  msg("To"),
+  msg("Goal"),
+  msg("Percent"),
+  msg("Unit at"),
+  msg("Move"),
+  msg("Order"),
+  msg("WAV"),
+  msg("Duration"),
+  msg("Script"),
+  msg("Status"),
+  msg("Seconds"),
+  msg("Scenario"),
+  msg("Action"),
+  msg("WAV duration"),
+  msg("Milliseconds"),
+  msg("Slot"),
+  msg("Counter")
+];
 function opLabel(kind, value, namer) {
-  if (kind === "modifier" && MODIFIER_WORDS[value]) return MODIFIER_WORDS[value];
+  if (kind === "modifier" && MODIFIER_WORDS[value]) return translate(MODIFIER_WORDS[value]);
   const label = namer.choice(kind, value);
-  return label ? label.toLowerCase() : String(value);
+  return label ? translate(label).toLowerCase() : String(value);
 }
 function chipLabel(arg, value, namer) {
   switch (arg.kind) {
@@ -4450,30 +4654,33 @@ function chipLabel(arg, value, namer) {
       return namer.switch(value);
     case "text": {
       const s = namer.string(value);
-      return s === null ? value === 0 ? "(no text)" : `string ${value}` : s;
+      return s === null ? value === 0 ? t("(no text)") : t("string {n}", { n: value }) : s;
     }
     case "wav":
       return namer.wav(value);
     case "aiScript":
       return namer.aiScript(value);
     case "cuwp":
-      return value === 0 ? "no properties" : `properties slot ${value}`;
+      return value === 0 ? t("no properties") : t("properties slot {n}", { n: value });
     case "slot":
-      return `slot ${value + 1}`;
+      return t("slot {n}", { n: value + 1 });
     case "count":
-      return value === 0 ? "all" : String(value);
+      return value === 0 ? t("all") : String(value);
     case "comparison":
     case "modifier":
       return opLabel(arg.kind, value, namer);
     default:
       if (NUMBER_KINDS.has(arg.kind)) return String(value);
-      return namer.choice(arg.kind, value) ?? String(value);
+      {
+        const label = namer.choice(arg.kind, value);
+        return label === void 0 ? String(value) : translate(label);
+      }
   }
 }
 function parse(template, args, read, namer) {
   const out = [];
   const byLabel = new Map(args.map((a2) => [a2.label, a2]));
-  const re = /\{([^}]+)\}/g;
+  const re = /\{([^}|]+)(?:\|([^}]+))?\}/g;
   let last = 0;
   let m;
   while (m = re.exec(template)) {
@@ -4481,7 +4688,9 @@ function parse(template, args, read, namer) {
     const arg = byLabel.get(m[1]);
     if (!arg) throw new Error(`Template names an argument the definition lacks: {${m[1]}}`);
     const value = read(arg);
-    out.push({ kind: "chip", arg, value, label: chipLabel(arg, value, namer), role: arg.kind === "player" && value >= PLAYER_GROUP_COUNT ? "eud" : void 0 });
+    const label = chipLabel(arg, value, namer);
+    out.push({ kind: "chip", arg, value, label, role: arg.kind === "player" && value >= PLAYER_GROUP_COUNT ? "eud" : void 0 });
+    if (m[2]) out.push({ kind: "text", text: josa(label, m[2]).slice(label.length) });
     last = re.lastIndex;
   }
   if (last < template.length) out.push({ kind: "text", text: template.slice(last) });
@@ -4489,45 +4698,49 @@ function parse(template, args, read, namer) {
 }
 function rawCondition(c2) {
   const args = [["location", c2.location], ["player", c2.player], ["amount", c2.amount], ["unit", c2.unitId], ["comparison", c2.comparison], ["resource", c2.resource], ["flags", c2.flags], ["mask", c2.mask]];
-  return [{ kind: "text", text: `Condition ${c2.type}: ` }, ...args.flatMap(([label, value], i) => [
+  return [{ kind: "text", text: `${t("Condition {n}", { n: c2.type })}: ` }, ...args.flatMap(([label, value], i) => [
     ...i ? [{ kind: "text", text: ", " }] : [],
     { kind: "chip", arg: { kind: "number", field: label, label }, value, label: String(value) }
   ])];
 }
 function rawAction(a2) {
   const args = [["location", a2.location], ["text", a2.text], ["wav", a2.wav], ["time", a2.time], ["player", a2.player], ["target", a2.target], ["unit", a2.unitId], ["modifier", a2.modifier], ["flags", a2.flags], ["mask", a2.mask]];
-  return [{ kind: "text", text: `Action ${a2.type}: ` }, ...args.flatMap(([label, value], i) => [
+  return [{ kind: "text", text: `${t("Action {n}", { n: a2.type })}: ` }, ...args.flatMap(([label, value], i) => [
     ...i ? [{ kind: "text", text: ", " }] : [],
     { kind: "chip", arg: { kind: "number", field: label, label }, value, label: String(value) }
   ])];
 }
+var segmentsOf = (template, parts) => compose(template, parts, (seg) => seg.kind === "text" ? seg.text : seg.label).map((p) => typeof p === "string" ? { kind: "text", text: p } : p);
 var counterChip = (name, player, unit) => ({ kind: "chip", arg: { kind: "player", field: "player", label: "Counter" }, value: player * 65536 + unit, label: name, role: "counter" });
 function describeCondition(c2, namer) {
   const def = conditionDef(c2.type);
-  if (!def) return { segments: rawCondition(c2), def: null, name: `Condition ${c2.type}` };
+  if (!def) return { segments: rawCondition(c2), def: null, name: t("Condition {n}", { n: c2.type }) };
   if (c2.type === ConditionType.Deaths && c2.player < PLAYER_GROUP_COUNT) {
     const name = namer.counter?.(c2.player, c2.unitId);
     if (name) {
       const cmp = def.args.find((a2) => a2.kind === "comparison");
       const amt = def.args.find((a2) => a2.kind === "amount");
-      return { def, name: def.name, segments: [counterChip(name, c2.player, c2.unitId), { kind: "text", text: " is " }, { kind: "chip", arg: cmp, value: c2.comparison, label: chipLabel(cmp, c2.comparison, namer) }, { kind: "text", text: " " }, { kind: "chip", arg: amt, value: c2.amount, label: String(c2.amount) }] };
+      const parts = { counter: counterChip(name, c2.player, c2.unitId), cmp: { kind: "chip", arg: cmp, value: c2.comparison, label: chipLabel(cmp, c2.comparison, namer) }, amount: { kind: "chip", arg: amt, value: c2.amount, label: String(c2.amount) } };
+      return { def, name: def.name, segments: segmentsOf(t("{counter} is {cmp} {amount}"), parts) };
     }
   }
-  const template = CONDITION_TEMPLATES[c2.type] ?? def.name;
+  const template = CONDITION_TEMPLATES[c2.type] ? translate(CONDITION_TEMPLATES[c2.type]) : def.name;
   return { def, name: def.name, segments: parse(template, def.args, (arg) => c2[arg.field], namer) };
 }
 function describeAction(a2, namer, briefing = false) {
   const def = actionDef(a2.type, briefing);
-  if (!def) return { segments: rawAction(a2), def: null, name: `Action ${a2.type}` };
+  if (!def) return { segments: rawAction(a2), def: null, name: t("Action {n}", { n: a2.type }) };
   if (!briefing && a2.type === ActionType.SetDeaths && a2.player < PLAYER_GROUP_COUNT) {
     const name = namer.counter?.(a2.player, a2.unitId);
     if (name) {
       const mod = def.args.find((a3) => a3.kind === "modifier");
       const amt = def.args.find((a3) => a3.kind === "amount");
-      return { def, name: def.name, segments: [{ kind: "text", text: "Set " }, counterChip(name, a2.player, a2.unitId), { kind: "text", text: " " }, { kind: "chip", arg: mod, value: a2.modifier, label: chipLabel(mod, a2.modifier, namer) }, { kind: "text", text: " " }, { kind: "chip", arg: amt, value: a2.target, label: String(a2.target) }] };
+      const parts = { counter: counterChip(name, a2.player, a2.unitId), mod: { kind: "chip", arg: mod, value: a2.modifier, label: chipLabel(mod, a2.modifier, namer) }, amount: { kind: "chip", arg: amt, value: a2.target, label: String(a2.target) } };
+      return { def, name: def.name, segments: segmentsOf(t("Set {counter} {mod} {amount}"), parts) };
     }
   }
-  const template = (briefing ? BRIEFING_TEMPLATES : ACTION_TEMPLATES)[a2.type] ?? def.name;
+  const english2 = (briefing ? BRIEFING_TEMPLATES : ACTION_TEMPLATES)[a2.type];
+  const template = english2 ? translate(english2) : def.name;
   const read = (arg) => arg.kind === "textFlags" ? a2.flags & 4 : a2[arg.field];
   return { def, name: def.name, segments: parse(template, def.args, read, namer) };
 }
@@ -4551,35 +4764,41 @@ function eudArgLabel(arg, value, namer, extra) {
     case "key":
       return extra.key(value);
     case "unitIndex":
-      return extra.slot ? extra.slot(value) : `slot ${value}`;
-    case "race":
-      return RACES.find((r) => r.value === value)?.label ?? String(value);
+      return extra.slot ? extra.slot(value) : t("slot {n}", { n: value });
+    case "race": {
+      const race = RACES.find((r) => r.value === value);
+      return race ? translate(race.label) : String(value);
+    }
     default:
       return String(value);
   }
 }
 function eudValueLabel(row, namer, extra) {
   const v = row.entry.value;
-  if (v?.choices) return v.choices.find((c2) => c2.value === row.value)?.label ?? String(row.value);
+  if (v?.choices) {
+    const choice = v.choices.find((c2) => c2.value === row.value);
+    return choice ? translate(choice.label) : String(row.value);
+  }
   if (v?.kind === "unit") return namer.unit(row.value);
   if (v?.kind === "player") return namer.player(row.value);
   if (v?.kind === "weapon") return extra.weapon(row.value);
   if (v?.kind === "string") {
     const s = namer.string(row.value);
-    return s === null ? row.value === 0 ? "(no text)" : `string ${row.value}` : s;
+    return s === null ? row.value === 0 ? t("(no text)") : t("string {n}", { n: row.value }) : s;
   }
   const n = Number.isInteger(row.value) ? String(row.value) : row.value.toFixed(2).replace(/\.?0+$/, "");
-  return v?.unit ? `${n} ${v.unit}` : n;
+  return v?.unit ? `${n} ${translate(v.unit)}` : n;
 }
 function describeEud(row, kind, namer, extra) {
-  const template = (kind === "condition" ? row.entry.sentence.condition : row.entry.sentence.action) ?? row.entry.name;
+  const template = translate((kind === "condition" ? row.entry.sentence.condition : row.entry.sentence.action) ?? row.entry.name);
   const out = [];
-  const re = /\{([^}]+)\}/g;
+  const re = /\{([^}|]+)(?:\|([^}]+))?\}/g;
   let last = 0;
   let m;
   while (m = re.exec(template)) {
     if (m.index > last) out.push({ kind: "text", text: template.slice(last, m.index) });
     const name = m[1];
+    const before = out.length;
     if (name === "value") out.push({ kind: "echip", slot: "value", value: row.value, label: eudValueLabel(row, namer, extra) });
     else if (name === "cmp" || name === "mod") {
       if (!enumerated(row.entry)) out.push({ kind: "echip", slot: "op", value: row.op, label: opLabel(kind === "condition" ? "comparison" : "modifier", row.op, namer) });
@@ -4587,6 +4806,8 @@ function describeEud(row, kind, namer, extra) {
       const arg = row.entry.args.find((a2) => a2.name === name);
       if (arg) out.push({ kind: "echip", slot: { arg }, value: row.args[arg.name] ?? 0, label: eudArgLabel(arg, row.args[arg.name] ?? 0, namer, extra) });
     }
+    const chip3 = out.length > before ? out[out.length - 1] : null;
+    if (m[2] && chip3 && chip3.kind === "echip") out.push({ kind: "text", text: josa(chip3.label, m[2]).slice(chip3.label.length) });
     last = re.lastIndex;
   }
   if (last < template.length) out.push({ kind: "text", text: template.slice(last) });
@@ -4615,7 +4836,7 @@ var KEYS = [
   { code: 33, label: "Page Up" },
   { code: 34, label: "Page Down" }
 ];
-var keyLabel = (code) => KEYS.find((k) => k.code === code)?.label ?? `key 0x${code.toString(16).toUpperCase()}`;
+var keyLabel = (code) => KEYS.find((k) => k.code === code)?.label ?? t("key 0x{hex}", { hex: code.toString(16).toUpperCase() });
 
 // src/ui/describe.ts
 var words = (row, kind, namer, extra) => describeEud(row, kind, namer, extra).map((s) => s.kind === "text" ? s.text : s.label).join("");
@@ -4633,10 +4854,10 @@ function actionsText(actions, namer, extra, briefing = false) {
 }
 function memoryCellText(flatIndex, raw, namer, extra) {
   const row = recognize("action", flatIndex, 0, 0, 0, raw, SetModifier.SetTo);
-  if (!row) return `memory 0x${(5808996 + flatIndex * 4).toString(16).toUpperCase()} = ${raw}`;
+  if (!row) return t("memory 0x{hex} = {value}", { hex: (5808996 + flatIndex * 4).toString(16).toUpperCase(), value: raw });
   const segs = describeEud(row, "action", namer, extra);
   const value = segs.find((s) => s.kind === "echip" && s.slot === "value");
-  const words2 = segs.filter((s) => !(s.kind === "echip" && (s.slot === "value" || s.slot === "op"))).map((s) => s.kind === "text" ? s.text : s.label).join("").replace(/\s+/g, " ").trim().replace(/^(Set|Make|Name) /, "");
+  const words2 = segs.filter((s) => !(s.kind === "echip" && (s.slot === "value" || s.slot === "op"))).map((s) => s.kind === "text" ? s.text : s.label).join("").replace(/\s+/g, " ").trim().replace(/^(Set|Make|Name) /, "").replace(/[\s:]+$/, "");
   return `${words2} = ${value && value.kind === "echip" ? value.label : raw}`;
 }
 
@@ -4705,14 +4926,14 @@ function compareConditions(x, relation) {
 function forEachPlayerRun(x, anchor, markers) {
   const swap = (v, p) => v === x.placeholder ? p : v;
   return x.players.map((p, i) => {
-    const t = {
+    const t2 = {
       ...anchor,
       conditions: liveConditions(anchor).map((c2) => ({ ...c2, player: swap(c2.player, p) })),
       actions: liveActions(anchor).filter((a2) => a2.type !== ActionType.Comment).map((a2) => ({ ...a2, player: swap(a2.player, p), target: a2.type === ActionType.GiveUnits ? swap(a2.target, p) : a2.target })),
       players: anchor.players.map(() => 0)
     };
-    t.actions.push(comment(i === 0 ? markers.begin : i === x.players.length - 1 ? markers.end : markers.row));
-    return setOwners(t, [x.placeholder === PlayerGroup.CurrentPlayer ? p : p]);
+    t2.actions.push(comment(i === 0 ? markers.begin : i === x.players.length - 1 ? markers.end : markers.row));
+    return setOwners(t2, [x.placeholder === PlayerGroup.CurrentPlayer ? p : p]);
   });
 }
 function locateRun(list, id, text) {
@@ -4749,7 +4970,7 @@ function readSidecar(bytes) {
   if (!bytes) return { sidecar: emptySidecar(), problem: null };
   try {
     const parsed = JSON.parse(new TextDecoder().decode(bytes));
-    if (!parsed || typeof parsed !== "object" || !Number.isInteger(parsed.version)) return { sidecar: emptySidecar(), problem: { kind: "malformed", detail: "no version" } };
+    if (!parsed || typeof parsed !== "object" || !Number.isInteger(parsed.version)) return { sidecar: emptySidecar(), problem: { kind: "malformed", detail: t("no version") } };
     if (parsed.version > SIDECAR_VERSION) return { sidecar: emptySidecar(), problem: { kind: "newer", version: parsed.version } };
     return { problem: null, sidecar: {
       version: 1,
@@ -4824,7 +5045,7 @@ function withFolders(sidecar, list, folders) {
 function installClaims(api, open) {
   const handles = /* @__PURE__ */ new Map();
   const text = (i) => api.names.string(i);
-  const label = (x) => x.kind === "compare" ? "Magenta's counter comparison" : x.kind === "forEachPlayer" ? "Magenta's per-player copies" : `Magenta's counter ${x.kind}`;
+  const label = (x) => x.kind === "compare" ? msg("Magenta's counter comparison") : x.kind === "forEachPlayer" ? msg("Magenta's per-player copies") : x.kind === "copy" ? msg("Magenta's counter copy") : x.kind === "add" ? msg("Magenta's counter add") : msg("Magenta's counter subtract");
   const refresh = () => {
     const sidecar = api.document.isOpen() ? decodeSidecar(api.document.extras.get(MEMBER)) : null;
     const wanted = new Map((sidecar?.expansions ?? []).map((x) => [x.id, x]));
@@ -4841,9 +5062,9 @@ function installClaims(api, open) {
         label: label(x),
         badge: "magenta",
         locate: (list) => locateRun(list, id, text),
-        describe: () => `${label(x)}: generated from the trigger it belongs to. Edit that trigger in Magenta; the run is rebuilt with it.`,
+        describe: () => t("{what}: generated from the trigger it belongs to. Edit that trigger in Magenta; the run is rebuilt with it.", { what: translate(label(x)) }),
         open: (index) => open(index),
-        openLabel: "Open Magenta"
+        openLabel: msg("Open Magenta")
       }));
     }
   };
@@ -4887,13 +5108,13 @@ function playerSlots(player, triggerOwners) {
 function usage(list) {
   const cells2 = /* @__PURE__ */ new Set();
   const switches = /* @__PURE__ */ new Set();
-  for (const t of list) {
-    const own = owners(t);
-    for (const c2 of t.conditions) {
+  for (const t2 of list) {
+    const own = owners(t2);
+    for (const c2 of t2.conditions) {
       if (c2.type === ConditionType.Deaths && c2.unitId < UNIT_CLASS_FIRST) for (const p of playerSlots(c2.player, own)) cells2.add(cellKey(p, c2.unitId));
       if (c2.type === ConditionType.Switch) switches.add(c2.resource);
     }
-    for (const a2 of t.actions) {
+    for (const a2 of t2.actions) {
       if (a2.type === ActionType.SetDeaths && a2.unitId < UNIT_CLASS_FIRST) for (const p of playerSlots(a2.player, own)) cells2.add(cellKey(p, a2.unitId));
       if (a2.type === ActionType.SetSwitch) switches.add(a2.target);
     }
@@ -4967,7 +5188,7 @@ var Host = class {
   }
   /** Scenario ▸ Map Revision ▸ Remastered 1.21+, with the string table moved to STRx as the dialog does by default. */
   setRemastered() {
-    this.api.document.update("Map revision", (tx) => {
+    this.api.document.update(this.api.i18n.t("Map revision"), (tx) => {
       tx.setVersion("remastered");
     });
   }
@@ -4984,15 +5205,16 @@ var Host = class {
   namer(sidecar) {
     const names = this.api.triggers.names();
     const players = this.api.settings.players();
+    const t2 = this.api.i18n.t;
     return {
       unit: (id) => names.unit(id),
-      location: (n) => n === 0 ? "no location" : names.location(n),
+      location: (n) => n === 0 ? t2("no location") : names.location(n),
       switch: (i) => names.switch(i),
       string: (i) => names.string(i),
-      player: (v) => v >= PLAYER_GROUP_COUNT ? `memory at 0x${addressOf(v).toString(16).toUpperCase()}` : this.api.names.playerGroup(v),
+      player: (v) => v >= PLAYER_GROUP_COUNT ? t2("memory at 0x{addr}", { addr: addressOf(v).toString(16).toUpperCase() }) : this.api.names.playerGroup(v),
       playerColor: (v) => v < 12 ? players[v]?.colorHex ?? null : null,
       aiScript: (code) => this.api.names.aiScript(code),
-      wav: (i) => i === 0 ? "no sound" : (names.string(i) ?? `sound ${i}`).split("\\").pop() ?? `sound ${i}`,
+      wav: (i) => i === 0 ? t2("no sound") : (names.string(i) ?? t2("sound {n}", { n: i })).split("\\").pop() ?? t2("sound {n}", { n: i }),
       choice: (kind, value) => this.api.triggers.defs.choiceLabel(kind, value),
       counter: (player, unit) => sidecar.counters.find((c2) => c2.player === player && c2.unit === unit)?.name ?? null
     };
@@ -5000,11 +5222,12 @@ var Host = class {
   extra() {
     const w = new Map(this.api.names.weapons().map((n) => [n.value, n.label]));
     const u = new Map(this.api.names.upgrades().map((n) => [n.value, n.label]));
-    const t = new Map(this.api.names.techs().map((n) => [n.value, n.label]));
+    const techs = new Map(this.api.names.techs().map((n) => [n.value, n.label]));
+    const t2 = this.api.i18n.t;
     return {
-      weapon: (id) => id === 130 ? "no weapon" : w.get(id) ?? `weapon ${id}`,
-      upgrade: (id) => u.get(id) ?? `upgrade ${id}`,
-      tech: (id) => t.get(id) ?? `technology ${id}`,
+      weapon: (id) => id === 130 ? t2("no weapon") : w.get(id) ?? t2("weapon {n}", { n: id }),
+      upgrade: (id) => u.get(id) ?? t2("upgrade {n}", { n: id }),
+      tech: (id) => techs.get(id) ?? t2("technology {n}", { n: id }),
       key: keyLabel
     };
   }
@@ -5066,7 +5289,7 @@ var Host = class {
     return this.api.triggers.switchNames().map((label, value) => ({ value, label }));
   }
   sounds() {
-    return this.api.settings.sounds().map((s) => ({ value: s.stringIndex, label: s.path.split("\\").pop() ?? s.path, hint: s.present ? void 0 : "missing" }));
+    return this.api.settings.sounds().map((s) => ({ value: s.stringIndex, label: s.path.split("\\").pop() ?? s.path, hint: s.present ? void 0 : this.api.i18n.t("missing") }));
   }
   /** Seconds of a PCM WAV in the archive, from its header; null when it is not there or not plain PCM. */
   wavSeconds(path) {
@@ -5094,7 +5317,7 @@ var Host = class {
     const names = this.api.triggers.names();
     for (let i = 0; i < 63; i++) if (names.location(i + 1) === name && this.locationExists(i + 1)) return i + 1;
     let made = -1;
-    this.api.document.edit(`Add ${name}`, (tx) => {
+    this.api.document.edit(this.api.i18n.t("Add {name}", { name }), (tx) => {
       made = tx.addLocation({ left: 0, top: 0, right: 64, bottom: 64 }, name);
     });
     return made >= 0 ? made + 1 : null;
@@ -5114,7 +5337,7 @@ var Host = class {
       }
     }
     if (free < 0) return null;
-    this.api.document.update(`Name switch ${name}`, (tx) => {
+    this.api.document.update(this.api.i18n.t("Name switch {name}", { name }), (tx) => {
       tx.switches.setName(free, name);
     });
     return free;
@@ -5211,7 +5434,7 @@ var Host = class {
     });
   }
   renameSwitch(index, name) {
-    this.api.document.update("Rename switch", (tx) => {
+    this.api.document.update(this.api.i18n.t("Rename switch"), (tx) => {
       tx.switches.setName(index, name);
     });
   }
@@ -5258,11 +5481,11 @@ function isFrameTrigger(tr) {
 
 // src/model/sync.ts
 function clean(list, text) {
-  return list.filter((t) => !markerOf(t, text));
+  return list.filter((t2) => !markerOf(t2, text));
 }
 function anchorOf(list, ref) {
   if (ref.i < list.length && fingerprint(list[ref.i]) === ref.h) return ref.i;
-  const at = list.findIndex((t) => fingerprint(t) === ref.h);
+  const at = list.findIndex((t2) => fingerprint(t2) === ref.h);
   if (at >= 0) return at;
   return ref.i < list.length ? ref.i : -1;
 }
@@ -5288,7 +5511,7 @@ function sync(list, expansions, text, intern) {
   const ownersAt = (at) => perPlayer.get(at) ?? owners(base[at]);
   for (const x of expansions) {
     if (x.kind === "copy" || x.kind === "add" || x.kind === "subtract") {
-      const at = base.findIndex((t) => t.actions.some((a2) => isFlagAction(a2, { cell: x.flag })));
+      const at = base.findIndex((t2) => t2.actions.some((a2) => isFlagAction(a2, { cell: x.flag })));
       if (at < 0) continue;
       const run2 = counterRun(x, ownersAt(at), { cell: x.flag }, markers(x.id));
       const s = slot(at);
@@ -5363,9 +5586,9 @@ var trigger2 = (ctx, title, owners2, conditions, actions) => setOwners({ ...empt
 var RECIPES = [
   {
     id: "beacon-give",
-    label: "Give units at a beacon",
+    label: msg("Give units at a beacon"),
     aliases: ["shop", "buy", "hero pick", "capture"],
-    description: "A player who brings a unit to the location is given the units standing on it. Change the location, the unit and its owner.",
+    description: msg("A player who brings a unit to the location is given the units standing on it. Change the location, the unit and its owner."),
     build: (ctx) => [trigger2(
       ctx,
       "Give units at the beacon",
@@ -5376,9 +5599,9 @@ var RECIPES = [
   },
   {
     id: "countdown-end",
-    label: "Countdown that ends the game",
+    label: msg("Countdown that ends the game"),
     aliases: ["timer", "time limit", "survive"],
-    description: "A ten-minute countdown, then victory for everyone still in. Change the seconds, or Victory to Defeat.",
+    description: msg("A ten-minute countdown, then victory for everyone still in. Change the seconds, or Victory to Defeat."),
     build: (ctx) => [
       trigger2(ctx, "Start the countdown", [P.AllPlayers], [always()], [act(A2.SetCountdownTimer, { modifier: SetModifier.SetTo, time: 600 })]),
       trigger2(ctx, "Countdown over", [P.AllPlayers], [cond(C2.CountdownTimer, { comparison: Comparison.AtMost, amount: 0 })], [act(A2.Victory)])
@@ -5386,9 +5609,9 @@ var RECIPES = [
   },
   {
     id: "respawn",
-    label: "Respawn a unit when it dies",
+    label: msg("Respawn a unit when it dies"),
     aliases: ["hero", "revive", "resurrect"],
-    description: "When the player's unit dies, wait five seconds and create it again at the location. Change the unit and the location.",
+    description: msg("When the player's unit dies, wait five seconds and create it again at the location. Change the unit and the location."),
     build: (ctx) => [trigger2(
       ctx,
       "Respawn",
@@ -5399,9 +5622,9 @@ var RECIPES = [
   },
   {
     id: "cash-for-kills",
-    label: "Minerals for each kill",
+    label: msg("Minerals for each kill"),
     aliases: ["bounty", "reward", "money per kill"],
-    description: "Every enemy unit that dies pays the players 50 minerals. Change the enemy player and the unit, or the amount.",
+    description: msg("Every enemy unit that dies pays the players 50 minerals. Change the enemy player and the unit, or the amount."),
     build: (ctx) => [trigger2(
       ctx,
       "Bounty",
@@ -5412,9 +5635,9 @@ var RECIPES = [
   },
   {
     id: "waves",
-    label: "Reinforcements every minute",
+    label: msg("Reinforcements every minute"),
     aliases: ["spawn", "waves", "periodic", "timer spawn"],
-    description: "Every sixty seconds four Marines appear at the location for Player 8. Change the unit, the count, the player and the location.",
+    description: msg("Every sixty seconds four Marines appear at the location for Player 8. Change the unit, the count, the player and the location."),
     build: (ctx) => [
       trigger2(ctx, "Wave timer", [P.AllPlayers], [always()], [act(A2.SetCountdownTimer, { modifier: SetModifier.SetTo, time: 60 })]),
       trigger2(
@@ -5428,9 +5651,9 @@ var RECIPES = [
   },
   {
     id: "hold-to-win",
-    label: "Win by holding a location",
+    label: msg("Win by holding a location"),
     aliases: ["king of the hill", "capture point", "control"],
-    description: "A player with a unit at the location for thirty seconds wins. Uses a switch as the clock; change the location and the seconds.",
+    description: msg("A player with a unit at the location for thirty seconds wins. Uses a switch as the clock; change the location and the seconds."),
     build: (ctx) => [
       trigger2(
         ctx,
@@ -5457,24 +5680,24 @@ var RECIPES = [
   },
   {
     id: "defeat-when-dead",
-    label: "Defeat when nothing is left",
+    label: msg("Defeat when nothing is left"),
     aliases: ["lose", "elimination", "game over"],
-    description: "A player with no units and no buildings left is defeated.",
+    description: msg("A player with no units and no buildings left is defeated."),
     build: (ctx) => [trigger2(ctx, "Eliminated", [P.AllPlayers], [cond(C2.Command, { player: P.CurrentPlayer, unitId: UnitClass.Any, comparison: Comparison.AtMost, amount: 0 })], [act(A2.Defeat)])]
   },
   {
     id: "intro",
-    label: "Message at the start",
+    label: msg("Message at the start"),
     aliases: ["welcome", "intro", "instructions", "text"],
-    description: "One message to everyone when the game begins. Change the text.",
+    description: msg("One message to everyone when the game begins. Change the text."),
     build: (ctx) => [trigger2(ctx, "Intro", [P.AllPlayers], [always()], [display(ctx, "Welcome. Change this text.")])]
   },
   {
     id: "key-minerals",
-    label: "A key gives minerals",
+    label: msg("A key gives minerals"),
     aliases: ["keyboard", "hotkey", "cheat key", "press"],
     needsBuild: true,
-    description: "Pressing M gives the player who pressed it 100 minerals. A synced key press: every computer sees it, so the game stays in step. Needs a Build. Change the key.",
+    description: msg("Pressing M gives the player who pressed it 100 minerals. A synced key press: every computer sees it, so the game stays in step. Needs a Build. Change the key."),
     build: (ctx) => {
       const pressed = ctx.input("key", { code: 77 });
       if (!pressed) return [];
@@ -5483,9 +5706,9 @@ var RECIPES = [
   },
   {
     id: "buff-unit",
-    label: "Change a unit type's stats",
+    label: msg("Change a unit type's stats"),
     aliases: ["balance", "mod", "stats", "hp armor damage"],
-    description: "At the start, set the Marine's max hit points to 80 and its armor to 2. EUD writes; add rows for other stats.",
+    description: msg("At the start, set the Marine's max hit points to 80 and its armor to 2. EUD writes; add rows for other stats."),
     build: (ctx) => [trigger2(
       ctx,
       "Unit stats",
@@ -5514,8 +5737,8 @@ function carries(trigger4, record) {
 }
 function refs(list, record) {
   const out = [];
-  list.forEach((t, i) => {
-    if (carries(t, record)) out.push(i);
+  list.forEach((t2, i) => {
+    if (carries(t2, record)) out.push(i);
   });
   return out;
 }
@@ -5593,36 +5816,36 @@ function orderBuilds(builds, list) {
 
 // src/model/builds.ts
 var UNIT_FIELDS = [
-  { field: "hp", label: "hit points" },
-  { field: "shields", label: "shields" },
-  { field: "energy", label: "energy" },
-  { field: "kills", label: "kills" },
-  { field: "x", label: "x" },
-  { field: "y", label: "y" },
-  { field: "order", label: "order id" },
-  { field: "hasTarget", label: "targeting something", yesNo: true },
-  { field: "underAttack", label: "under attack", yesNo: true },
-  { field: "burrowed", label: "burrowed", yesNo: true },
-  { field: "inTransport", label: "in a transport", yesNo: true },
-  { field: "speed", label: "moving", yesNo: true },
-  { field: "buildTime", label: "remaining build time" },
-  { field: "resources", label: "resources" },
-  { field: "cooldown", label: "weapon cooldown" },
-  { field: "hpPct", label: "hit points %" },
-  { field: "shieldsPct", label: "shields %" },
-  { field: "energyPct", label: "energy %" },
-  { field: "unitType", label: "unit type id" },
-  { field: "owner", label: "owner" }
+  { field: "hp", label: msg("hit points") },
+  { field: "shields", label: msg("shields") },
+  { field: "energy", label: msg("energy") },
+  { field: "kills", label: msg("kills") },
+  { field: "x", label: msg("x") },
+  { field: "y", label: msg("y") },
+  { field: "order", label: msg("order id") },
+  { field: "hasTarget", label: msg("targeting something"), yesNo: true },
+  { field: "underAttack", label: msg("under attack"), yesNo: true },
+  { field: "burrowed", label: msg("burrowed"), yesNo: true },
+  { field: "inTransport", label: msg("in a transport"), yesNo: true },
+  { field: "speed", label: msg("moving"), yesNo: true },
+  { field: "buildTime", label: msg("remaining build time") },
+  { field: "resources", label: msg("resources") },
+  { field: "cooldown", label: msg("weapon cooldown") },
+  { field: "hpPct", label: msg("hit points %") },
+  { field: "shieldsPct", label: msg("shields %") },
+  { field: "energyPct", label: msg("energy %") },
+  { field: "unitType", label: msg("unit type id") },
+  { field: "owner", label: msg("owner") }
 ];
 var TIMERS = [
-  { timer: "stim", label: "stim" },
-  { timer: "ensnare", label: "ensnare" },
-  { timer: "plague", label: "plague" },
-  { timer: "lockdown", label: "lockdown" },
-  { timer: "stasis", label: "stasis" },
-  { timer: "maelstrom", label: "maelstrom" },
-  { timer: "irradiate", label: "irradiate" },
-  { timer: "matrix", label: "a defensive matrix" }
+  { timer: "stim", label: msg("stim") },
+  { timer: "ensnare", label: msg("ensnare") },
+  { timer: "plague", label: msg("plague") },
+  { timer: "lockdown", label: msg("lockdown") },
+  { timer: "stasis", label: msg("stasis") },
+  { timer: "maelstrom", label: msg("maelstrom") },
+  { timer: "irradiate", label: msg("irradiate") },
+  { timer: "matrix", label: msg("a defensive matrix") }
 ];
 var TIMER_TICKS_PER_SECOND = 3;
 var HOLD_FIRE_COOLDOWN = 250;
@@ -5697,13 +5920,13 @@ function nextChatValue(builds) {
   return n;
 }
 function checkChatMessage(text) {
-  if (!text.trim()) return "Type the message players will send.";
-  if (/[\r\n]/.test(text)) return "One line.";
-  if (new TextEncoder().encode(text).length > 78) return "Up to 78 bytes, which is what the game lets a player type.";
-  if (/[:=]/.test(text)) return "A message cannot contain : or =.";
+  if (!text.trim()) return t("Type the message players will send.");
+  if (/[\r\n]/.test(text)) return t("One line.");
+  if (new TextEncoder().encode(text).length > 78) return t("Up to 78 bytes, which is what the game lets a player type.");
+  if (/[:=]/.test(text)) return t("A message cannot contain : or =.");
   if (text.startsWith("^") && text.endsWith("$")) {
     const n = text.slice(1, -1).split(".*").length - 1;
-    if (n < 1 || n > 2) return "A pattern is ^start.*end$ or ^start.*middle.*end$.";
+    if (n < 1 || n > 2) return t("A pattern is ^start.*end$ or ^start.*middle.*end$.");
   }
   return null;
 }
@@ -5761,9 +5984,9 @@ function textToParts(text, names) {
 }
 
 // src/ui/popover.ts
-var current = null;
+var current2 = null;
 function closePopover() {
-  current?.close();
+  current2?.close();
 }
 function openPopover(anchor, build, options = {}) {
   closePopover();
@@ -5780,7 +6003,7 @@ function openPopover(anchor, build, options = {}) {
       document.removeEventListener("pointerdown", onDown, true);
       document.removeEventListener("keydown", onKey, true);
       window.removeEventListener("resize", place);
-      if (current?.close === handle.close) current = null;
+      if (current2?.close === handle.close) current2 = null;
       options.onClose?.();
       if (options.returnFocus !== false && document.contains(anchor)) anchor.focus();
     }
@@ -5812,7 +6035,7 @@ function openPopover(anchor, build, options = {}) {
   document.addEventListener("pointerdown", onDown, true);
   document.addEventListener("keydown", onKey, true);
   window.addEventListener("resize", place);
-  current = handle;
+  current2 = handle;
   const first = root.querySelector("input, textarea, [tabindex], button");
   first?.focus();
   return handle;
@@ -5901,10 +6124,10 @@ function pickChoice(api, anchor, items, onPick, options = {}) {
     return [showFilter ? filter : el("div", { tabIndex: 0, style: "outline:none", onkeydown: keys }), list, foot].filter(Boolean);
   }, { width: options.width });
 }
-function pickNumber(api, anchor, current2, onPick, options = {}) {
+function pickNumber(api, anchor, current3, onPick, options = {}) {
   const el = api.ui.el;
   return openPopover(anchor, (handle) => {
-    const input = el("input", { className: "input mono", type: "number", value: String(current2), min: options.min ?? 0, max: options.max ?? 4294967295, step: options.step ?? 1 });
+    const input = el("input", { className: "input mono", type: "number", value: String(current3), min: options.min ?? 0, max: options.max ?? 4294967295, step: options.step ?? 1 });
     const commit = () => {
       const n = Number(input.value);
       if (!Number.isFinite(n)) return;
@@ -5925,11 +6148,11 @@ function pickNumber(api, anchor, current2, onPick, options = {}) {
     ].filter(Boolean);
   }, { width: 220 });
 }
-function pickText(api, anchor, current2, onPick, options = {}) {
+function pickText(api, anchor, current3, onPick, options = {}) {
   const el = api.ui.el;
   return openPopover(anchor, (handle) => {
     const area = el("textarea", { className: "textarea", rows: 5, spellcheck: false });
-    area.value = current2;
+    area.value = current3;
     const commit = () => {
       onPick(area.value);
       handle.close();
@@ -5957,24 +6180,24 @@ function pickText(api, anchor, current2, onPick, options = {}) {
     ].filter(Boolean);
   }, { width: 340 });
 }
-function pickPlayer(api, host, anchor, current2, onPick, options = {}) {
+function pickPlayer(api, host, anchor, current3, onPick, options = {}) {
   const players = host.players();
   const groups = host.playerGroups();
   const items = groups.map((g) => ({ value: g.value, label: g.label, color: g.value < 12 ? players[g.value]?.color ?? null : void 0, hint: g.value < 12 ? players[g.value]?.type : void 0 }));
   const actions = options.eud === false ? [] : [{
-    label: current2 >= PLAYER_GROUP_COUNT ? api.i18n.t("Address 0x{hex}\u2026", { hex: addressOf(current2).toString(16).toUpperCase() }) : api.i18n.t("Memory address\u2026"),
+    label: current3 >= PLAYER_GROUP_COUNT ? api.i18n.t("Address 0x{hex}\u2026", { hex: addressOf(current3).toString(16).toUpperCase() }) : api.i18n.t("Memory address\u2026"),
     run: (h) => {
       h.close();
-      void api.ui.prompt(api.i18n.t("Hex address the player value should reach through the deaths table (Deaths and Set Deaths only)"), { title: api.i18n.t("EUD player"), value: current2 >= PLAYER_GROUP_COUNT ? addressOf(current2).toString(16).toUpperCase() : "" }).then((text) => {
+      void api.ui.prompt(api.i18n.t("Hex address the player value should reach through the deaths table (Deaths and Set Deaths only)"), { title: api.i18n.t("EUD player"), value: current3 >= PLAYER_GROUP_COUNT ? addressOf(current3).toString(16).toUpperCase() : "" }).then((text) => {
         if (text === null || text === void 0) return;
         const n = parseInt(String(text).replace(/^0x/i, ""), 16);
         if (Number.isFinite(n)) onPick(epd(n));
       });
     }
   }];
-  return pickChoice(api, anchor, items, onPick, { current: current2, actions, width: 240 });
+  return pickChoice(api, anchor, items, onPick, { current: current3, actions, width: 240 });
 }
-function pickUnitType(api, host, anchor, current2, onPick, options = {}) {
+function pickUnitType(api, host, anchor, current3, onPick, options = {}) {
   const units = host.units();
   const items = [];
   if (options.classes !== false) {
@@ -5984,7 +6207,7 @@ function pickUnitType(api, host, anchor, current2, onPick, options = {}) {
   items.push({ value: -2, label: api.i18n.t("Units"), group: true });
   for (const u of units) if (u.value < 228) items.push(u);
   return pickChoice(api, anchor, items, onPick, {
-    current: current2,
+    current: current3,
     searchable: true,
     width: 280,
     placeholder: api.i18n.t("Unit name\u2026"),
@@ -5996,10 +6219,10 @@ function pickUnitType(api, host, anchor, current2, onPick, options = {}) {
     } }]
   });
 }
-function pickLocation(api, host, anchor, current2, onPick) {
+function pickLocation(api, host, anchor, current3, onPick) {
   const items = [{ value: 0, label: api.i18n.t("No location") }, ...host.locations()];
   return pickChoice(api, anchor, items, onPick, {
-    current: current2,
+    current: current3,
     searchable: true,
     width: 260,
     onHover: (n) => host.flashLocation(n),
@@ -6010,45 +6233,45 @@ function pickLocation(api, host, anchor, current2, onPick) {
           if (n !== null) onPick(n);
         });
       } },
-      ...current2 > 0 && current2 < 64 ? [{ label: api.i18n.t("Show"), run: (h) => {
+      ...current3 > 0 && current3 < 64 ? [{ label: api.i18n.t("Show"), run: (h) => {
         h.close();
-        host.revealLocation(current2);
-        host.flashLocation(current2);
+        host.revealLocation(current3);
+        host.flashLocation(current3);
       } }] : []
     ]
   });
 }
-function pickSwitch(api, host, anchor, current2, onPick, onRename) {
+function pickSwitch(api, host, anchor, current3, onPick, onRename) {
   const items = host.switches().map((s) => ({ value: s.value, label: s.label, hint: `#${s.value + 1}` }));
   return pickChoice(api, anchor, items, onPick, {
-    current: current2,
+    current: current3,
     searchable: true,
     width: 260,
     actions: [{ label: api.i18n.t("Rename\u2026"), run: (h) => {
       h.close();
-      void api.ui.prompt(api.i18n.t("Name for switch {n}", { n: current2 + 1 }), { title: api.i18n.t("Rename switch"), value: host.switches()[current2]?.label ?? "" }).then((name) => {
-        if (typeof name === "string") onRename(current2, name);
+      void api.ui.prompt(api.i18n.t("Name for switch {n}", { n: current3 + 1 }), { title: api.i18n.t("Rename switch"), value: host.switches()[current3]?.label ?? "" }).then((name) => {
+        if (typeof name === "string") onRename(current3, name);
       });
     } }]
   });
 }
-function pickSound(api, host, anchor, current2, onPick) {
+function pickSound(api, host, anchor, current3, onPick) {
   const items = [{ value: 0, label: api.i18n.t("No sound") }, ...host.sounds()];
-  return pickChoice(api, anchor, items, onPick, { current: current2, searchable: true, width: 280 });
+  return pickChoice(api, anchor, items, onPick, { current: current3, searchable: true, width: 280 });
 }
-function pickNamed(api, anchor, items, current2, onPick, width = 260) {
-  return pickChoice(api, anchor, items, onPick, { current: current2, searchable: true, width });
+function pickNamed(api, anchor, items, current3, onPick, width = 260) {
+  return pickChoice(api, anchor, items, onPick, { current: current3, searchable: true, width });
 }
-function pickKey(api, anchor, current2, onPick) {
-  return pickChoice(api, anchor, KEYS.map((k) => ({ value: k.code, label: k.label, hint: `0x${k.code.toString(16).toUpperCase()}` })), onPick, { current: current2, searchable: true, width: 200 });
+function pickKey(api, anchor, current3, onPick) {
+  return pickChoice(api, anchor, KEYS.map((k) => ({ value: k.code, label: k.label, hint: `0x${k.code.toString(16).toUpperCase()}` })), onPick, { current: current3, searchable: true, width: 200 });
 }
-function pickPlacedUnit(api, host, anchor, current2, onPick) {
+function pickPlacedUnit(api, host, anchor, current3, onPick) {
   const names = api.triggers.names();
   const placed = host.placedUnits();
-  const items = placed.map((u) => ({ value: u.slot, label: `${names.unit(u.unitId)} (slot ${u.slot})`, hint: `P${u.owner + 1} \xB7 ${Math.floor(u.x / 32)},${Math.floor(u.y / 32)}` }));
+  const items = placed.map((u) => ({ value: u.slot, label: api.i18n.t("{unit} (slot {n})", { unit: names.unit(u.unitId), n: u.slot }), hint: `P${u.owner + 1} \xB7 ${Math.floor(u.x / 32)},${Math.floor(u.y / 32)}` }));
   const byIndex = new Map(placed.map((u) => [u.index, u]));
   return pickChoice(api, anchor, items, onPick, {
-    current: current2,
+    current: current3,
     searchable: true,
     width: 320,
     onHover: (slot) => {
@@ -6067,13 +6290,18 @@ function pickPlacedUnit(api, host, anchor, current2, onPick) {
 
 // src/ui/expansionRows.ts
 var RELATIONS = [
-  { value: 0, label: "greater than", rel: ">" },
-  { value: 1, label: "at least", rel: ">=" },
-  { value: 2, label: "equal to", rel: "==" },
-  { value: 3, label: "less than", rel: "<" },
-  { value: 4, label: "at most", rel: "<=" }
+  { value: 0, label: msg("greater than"), rel: ">" },
+  { value: 1, label: msg("at least"), rel: ">=" },
+  { value: 2, label: msg("equal to"), rel: "==" },
+  { value: 3, label: msg("less than"), rel: "<" },
+  { value: 4, label: msg("at most"), rel: "<=" }
 ];
 var RELATION_WORDS = Object.fromEntries(RELATIONS.map((r) => [r.rel, r.label]));
+var compareText = (a2, relation, b) => t("{a} is {relation} {b}", { a: a2, relation: translate(RELATION_WORDS[relation]), b });
+function stepText(kind, from, to) {
+  return kind === "copy" ? t("Copy {from} into {to}", { from, to }) : kind === "add" ? t("Add {from} to {to}", { from, to }) : t("Subtract {from} from {to}", { from, to });
+}
+var sentence = (template, parts) => compose(template, parts, (n) => n.textContent ?? "");
 var counterExpansionOf = (store, a2) => store.sidecar.expansions.find((x) => (x.kind === "copy" || x.kind === "add" || x.kind === "subtract") && isFlagAction(a2, { cell: x.flag })) ?? null;
 function compareOf(store, index, trigger4) {
   const clean2 = store.cleanIndex(index);
@@ -6090,7 +6318,7 @@ function compareOf(store, index, trigger4) {
   return { x, rows, relation };
 }
 function cellLabel(cell, namer) {
-  return namer.counter?.(cell[0], cell[1]) ?? `${namer.player(cell[0])}'s ${namer.unit(cell[1]).replace(/ \(Unused\)$/, "")} deaths`;
+  return namer.counter?.(cell[0], cell[1]) ?? t("{player}'s {unit} deaths", { player: namer.player(cell[0]), unit: namer.unit(cell[1]).replace(/ \(Unused\)$/, "") });
 }
 function freeCell(store, host, taken = []) {
   const used = usage(store.list).cells;
@@ -6143,22 +6371,22 @@ function freeUnit(store, host) {
   for (const unit of COUNTER_UNITS) if (!taken.has(unit) && !placed.has(unit)) return unit;
   return null;
 }
-function pickCell(api, host, store, anchor, current2, onPick) {
-  const t = api.i18n.t;
+function pickCell(api, host, store, anchor, current3, onPick) {
+  const t2 = api.i18n.t;
   const namer = host.namer(store.sidecar);
   const items = store.sidecar.counters.map((c2) => ({ value: cellKey(c2.player, c2.unit), label: c2.name, hint: `${namer.player(c2.player)} \xB7 ${namer.unit(c2.unit)}` }));
   pickChoice(api, anchor, items, (key) => onPick([key % 12, Math.floor(key / 12)]), {
-    current: cellKey(...current2),
+    current: cellKey(...current3),
     width: 280,
     searchable: true,
-    actions: [{ label: t("New counter\u2026"), run: (p) => {
+    actions: [{ label: t2("New counter\u2026"), run: (p) => {
       p.close();
       const cell = freeCell(store, host);
       if (!cell) {
-        api.ui.toast({ kind: "error", title: t("No free counter cell") });
+        api.ui.toast({ kind: "error", title: t2("No free counter cell") });
         return;
       }
-      void api.ui.prompt(t("Name for the new counter"), { title: t("New counter") }).then((name) => {
+      void api.ui.prompt(t2("Name for the new counter"), { title: t2("New counter") }).then((name) => {
         if (typeof name !== "string" || !name.trim()) return;
         store.sidecar.counters.push({ player: cell[0], unit: cell[1], name: name.trim() });
         onPick(cell);
@@ -6170,39 +6398,39 @@ function chip(api, label, className = "counter") {
   return api.ui.el("button", { type: "button", className: `mg-chip ${className}` }, label);
 }
 function renderCounterExpansion(api, host, store, x, into) {
-  const t = api.i18n.t;
+  const t2 = api.i18n.t;
   const namer = host.namer(store.sidecar);
-  const update = (patch) => store.updateSidecar(t("Edit counter step"), { expansions: store.sidecar.expansions.map((e) => e.id === x.id ? { ...e, ...patch } : e) });
+  const update = (patch) => store.updateSidecar(t2("Edit counter step"), { expansions: store.sidecar.expansions.map((e) => e.id === x.id ? { ...e, ...patch } : e) });
   const from = chip(api, cellLabel(x.from, namer));
   from.addEventListener("click", () => pickCell(api, host, store, from, x.from, (cell) => update({ from: cell })));
   const to = chip(api, cellLabel(x.to, namer));
   to.addEventListener("click", () => pickCell(api, host, store, to, x.to, (cell) => update({ to: cell })));
-  const bits = chip(api, `${x.bits ?? 32}-bit`, "");
-  bits.title = t("How many bits of the counter to carry: 16 is half the triggers for a counter that stays under 65536");
-  bits.addEventListener("click", () => pickChoice(api, bits, [{ value: 16, label: t("16-bit (up to 65,535)") }, { value: 32, label: t("32-bit (any count)") }], (v) => update({ bits: v }), { current: x.bits ?? 32 }));
-  if (x.kind === "copy") into.append(t("Copy "), from, t(" into "), to, " ", bits);
-  else if (x.kind === "add") into.append(t("Add "), from, t(" to "), to, " ", bits);
-  else into.append(t("Subtract "), from, t(" from "), to, " ", bits);
-  into.append(api.ui.el("span", { className: "mg-tag", title: t("Done by a run of {n} generated triggers right after this one, in the same cycle: this trigger's own rows run first, the triggers after the run see the result. The run is hidden here and locked in the other editors.", { n: (x.bits ?? 32) + (x.kind === "copy" ? 2 : 1) }) }, "A+"));
+  const bits = chip(api, t2("{n}-bit", { n: x.bits ?? 32 }), "");
+  bits.title = t2("How many bits of the counter to carry: 16 is half the triggers for a counter that stays under 65536");
+  bits.addEventListener("click", () => pickChoice(api, bits, [{ value: 16, label: t2("16-bit (up to 65,535)") }, { value: 32, label: t2("32-bit (any count)") }], (v) => update({ bits: v }), { current: x.bits ?? 32 }));
+  const template = x.kind === "copy" ? t2("Copy {from} into {to}") : x.kind === "add" ? t2("Add {from} to {to}") : t2("Subtract {from} from {to}");
+  into.append(...sentence(template, { from, to }), " ", bits);
+  into.append(api.ui.el("span", { className: "mg-tag", title: t2("Done by a run of {n} generated triggers right after this one, in the same cycle: this trigger's own rows run first, the triggers after the run see the result. The run is hidden here and locked in the other editors.", { n: (x.bits ?? 32) + (x.kind === "copy" ? 2 : 1) }) }, "A+"));
 }
 function renderCompare(api, host, store, index, trigger4, cmp, into) {
-  const t = api.i18n.t;
+  const t2 = api.i18n.t;
   const namer = host.namer(store.sidecar);
   const { x } = cmp;
-  const update = (patch) => store.updateSidecar(t("Edit comparison"), { expansions: store.sidecar.expansions.map((e) => e.id === x.id ? { ...e, ...patch } : e) });
+  const update = (patch) => store.updateSidecar(t2("Edit comparison"), { expansions: store.sidecar.expansions.map((e) => e.id === x.id ? { ...e, ...patch } : e) });
   const a2 = chip(api, cellLabel(x.a, namer));
   a2.addEventListener("click", () => pickCell(api, host, store, a2, x.a, (cell) => update({ a: cell })));
   const b = chip(api, cellLabel(x.b, namer));
   b.addEventListener("click", () => pickCell(api, host, store, b, x.b, (cell) => update({ b: cell })));
-  const rel = chip(api, RELATIONS.find((r) => r.rel === cmp.relation)?.label ?? "?", "");
-  rel.addEventListener("click", () => pickChoice(api, rel, RELATIONS, (v) => {
+  const relation = RELATIONS.find((r) => r.rel === cmp.relation);
+  const rel = chip(api, relation ? translate(relation.label) : "?", "");
+  rel.addEventListener("click", () => pickChoice(api, rel, RELATIONS.map((r) => ({ ...r, label: translate(r.label) })), (v) => {
     const next = compareConditions(x, RELATIONS[v].rel);
     const conditions = trigger4.conditions.filter((_, i) => !cmp.rows.includes(i));
     conditions.splice(cmp.rows[0] ?? conditions.length, 0, ...next);
-    store.replace(index, { ...trigger4, conditions }, t("Edit comparison"));
+    store.replace(index, { ...trigger4, conditions }, t2("Edit comparison"));
   }, { current: RELATIONS.findIndex((r) => r.rel === cmp.relation) }));
-  into.append(a2, t(" is "), rel, " ", b);
-  into.append(api.ui.el("span", { className: "mg-tag", title: t("Answered by a run of generated triggers before this one, every cycle; they are hidden here and locked in the other editors.") }, "A+"));
+  into.append(...sentence(t2("{a} is {relation} {b}"), { a: a2, relation: rel, b }));
+  into.append(api.ui.el("span", { className: "mg-tag", title: t2("Answered by a run of generated triggers before this one, every cycle; they are hidden here and locked in the other editors.") }, "A+"));
 }
 function newCompare(store, host, index, trigger4) {
   const named = store.sidecar.counters;
@@ -6225,6 +6453,7 @@ function newCounterStep(store, host, what) {
 }
 
 // src/ui/buildRows.ts
+var sentence2 = (template, parts) => compose(template, parts, (n) => n.textContent ?? "");
 var hookOf = (store, a2) => store.sidecar.builds.find((b) => "flag" in b && isFlagAction(a2, { cell: b.flag })) ?? null;
 function conditionRowOf(store, c2) {
   if (c2.type !== ConditionType.Deaths) return null;
@@ -6264,10 +6493,11 @@ function counterNames(store, host) {
 function chip2(api, label, className = "counter") {
   return api.ui.el("button", { type: "button", className: `mg-chip ${className}` }, label);
 }
-var BUILD_NOTE = "Needs a Build (\u22EF menu): the game's own triggers cannot do this, so the built map carries the code that does. It runs once every trigger has had its turn this cycle \u2014 a row below it in this trigger still sees the map as it was; a trigger in the next cycle sees the result. The source map stays as it is.";
-var INPUT_NOTE = "Needs a Build (\u22EF menu). The MSQC plugin in the built map turns each player's input into a game command, so every computer sees the same press in the same cycle, before its triggers run; the cell is cleared once they have.";
-var tag = (api, title = BUILD_NOTE) => api.ui.el("span", { className: "mg-tag", title }, "BUILD");
+var BUILD_NOTE = msg("Needs a Build (\u22EF menu): the game's own triggers cannot do this, so the built map carries the code that does. It runs once every trigger has had its turn this cycle \u2014 a row below it in this trigger still sees the map as it was; a trigger in the next cycle sees the result. The source map stays as it is.");
+var INPUT_NOTE = msg("Needs a Build (\u22EF menu). The MSQC plugin in the built map turns each player's input into a game command, so every computer sees the same press in the same cycle, before its triggers run; the cell is cleared once they have.");
+var tag = (api, title = translate(BUILD_NOTE)) => api.ui.el("span", { className: "mg-tag", title }, "BUILD");
 var FIELDS = UNIT_FIELDS.map((f, value) => ({ value, label: f.label, field: f.field, yesNo: f.yesNo === true }));
+var fields = () => FIELDS.map((f) => ({ ...f, label: translate(f.label) }));
 var fieldIndex = (field) => Math.max(0, FIELDS.findIndex((f) => f.field === field));
 var CHAT_NUMBER_NAME = "Chat number";
 function ensureChatArgs(host, store) {
@@ -6285,31 +6515,31 @@ function ensureChatArgs(host, store) {
   return { args: { ptr, len, pattern, number }, counters };
 }
 function filterChips(api, host, store, f, update) {
-  const t = api.i18n.t;
+  const t2 = api.i18n.t;
   const namer = host.namer(store.sidecar);
-  const unit = chip2(api, f.unit === null ? t("any unit") : namer.unit(f.unit));
+  const unit = chip2(api, f.unit === null ? t2("any unit") : namer.unit(f.unit));
   unit.addEventListener("click", () => pickUnitType(api, host, unit, f.unit ?? 228, (v) => update({ unit: v >= 228 ? null : v }), { classes: true }));
-  const owner = chip2(api, f.owner === null ? t("anyone") : namer.player(f.owner), "");
-  owner.addEventListener("click", () => pickChoice(api, owner, [{ value: -1, label: t("anyone") }, ...Array.from({ length: 12 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null }))], (v) => update({ owner: v < 0 ? null : v }), { current: f.owner ?? -1 }));
-  const loc = chip2(api, f.location === null ? t("anywhere") : namer.location(f.location), "");
+  const owner = chip2(api, f.owner === null ? t2("anyone") : namer.player(f.owner), "");
+  owner.addEventListener("click", () => pickChoice(api, owner, [{ value: -1, label: t2("anyone") }, ...Array.from({ length: 12 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null }))], (v) => update({ owner: v < 0 ? null : v }), { current: f.owner ?? -1 }));
+  const loc = chip2(api, f.location === null ? t2("anywhere") : namer.location(f.location), "");
   loc.addEventListener("click", () => pickLocation(api, host, loc, f.location ?? 64, (v) => update({ location: v === 0 || v === 64 ? null : v })));
-  return [unit, api.ui.el("span", {}, t(" owned by ")), owner, api.ui.el("span", {}, t(" at ")), loc];
+  return sentence2(t2("{unit} owned by {owner} at {location}"), { unit, owner, location: loc });
 }
 function renderHook(api, host, store, hook, into) {
-  const t = api.i18n.t;
+  const t2 = api.i18n.t;
   const namer = host.namer(store.sidecar);
-  const update = (patch) => store.updateSidecar(t("Edit build row"), { builds: store.sidecar.builds.map((b) => b.id === hook.id ? { ...b, ...patch } : b) });
+  const update = (patch) => store.updateSidecar(t2("Edit build row"), { builds: store.sidecar.builds.map((b) => b.id === hook.id ? { ...b, ...patch } : b) });
   if (hook.kind === "text") {
     const names = counterNames(store, host);
     const text = chip2(api, partsToText(hook.parts, names), "text");
-    text.addEventListener("click", () => pickText(api, text, partsToText(hook.parts, names), (value) => update({ parts: textToParts(value, names) }), { title: t("{Counter name} for a counter's value, {Player 1} for a name, {Player 1's colour} to switch colour; the buttons insert the game's own codes") }));
-    const to = chip2(api, hook.to === "all" ? t("everyone") : namer.player(hook.to), "");
-    to.addEventListener("click", () => pickChoice(api, to, [{ value: -1, label: t("everyone") }, ...Array.from({ length: 8 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null }))], (v) => update({ to: v < 0 ? "all" : v }), { current: hook.to === "all" ? -1 : hook.to }));
-    into.append(t("Show "), text, t(" to "), to, tag(api));
+    text.addEventListener("click", () => pickText(api, text, partsToText(hook.parts, names), (value) => update({ parts: textToParts(value, names) }), { title: t2("{Counter name} for a counter's value, {Player 1} for a name, {Player 1's colour} to switch colour; the buttons insert the game's own codes") }));
+    const to = chip2(api, hook.to === "all" ? t2("everyone") : namer.player(hook.to), "");
+    to.addEventListener("click", () => pickChoice(api, to, [{ value: -1, label: t2("everyone") }, ...Array.from({ length: 8 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null }))], (v) => update({ to: v < 0 ? "all" : v }), { current: hook.to === "all" ? -1 : hook.to }));
+    into.append(...sentence2(t2("Show {text} to {player}"), { text, player: to }), tag(api));
     return;
   }
   if (hook.kind === "math") {
-    const OPS = [{ value: 0, label: t("times"), op: "mul" }, { value: 1, label: t("divided by"), op: "div" }, { value: 2, label: t("modulo"), op: "mod" }, { value: 3, label: t("a random number below"), op: "rand" }];
+    const OPS = [{ value: 0, label: t2("times"), op: "mul" }, { value: 1, label: t2("divided by"), op: "div" }, { value: 2, label: t2("modulo"), op: "mod" }, { value: 3, label: t2("a random number below"), op: "rand" }];
     const to = chip2(api, cellLabel(hook.to, namer));
     to.addEventListener("click", () => pickCell(api, host, store, to, hook.to, (cell) => update({ to: cell })));
     const a2 = chip2(api, cellLabel(hook.a, namer));
@@ -6319,24 +6549,24 @@ function renderHook(api, host, store, hook, into) {
     const b = chip2(api, typeof hook.b === "number" ? String(hook.b) : cellLabel(hook.b, namer));
     b.addEventListener("click", () => pickCell(api, host, store, b, typeof hook.b === "number" ? hook.a : hook.b, (cell) => update({ b: cell })));
     const num = chip2(api, "#", "");
-    num.title = t("A number instead of a counter");
+    num.title = t2("A number instead of a counter");
     num.addEventListener("click", () => pickNumber(api, num, typeof hook.b === "number" ? hook.b : 2, (v) => update({ b: v }), { min: hook.op === "mul" ? 0 : 1 }));
-    if (hook.op === "rand") into.append(t("Set "), to, t(" to "), op, " ", b, num, tag(api));
-    else into.append(t("Set "), to, t(" to "), a2, " ", op, " ", b, num, tag(api));
+    if (hook.op === "rand") into.append(...sentence2(t2("Set {counter} to {op} {b}"), { counter: to, op, b: [b, num] }), tag(api));
+    else into.append(...sentence2(t2("Set {counter} to {a} {op} {b}"), { counter: to, a: a2, op, b: [b, num] }), tag(api));
     return;
   }
   if (hook.kind === "count") {
     const to = chip2(api, cellLabel(hook.to, namer));
     to.addEventListener("click", () => pickCell(api, host, store, to, hook.to, (cell) => update({ to: cell })));
-    into.append(t("Set "), to, t(" to the number of "), ...filterChips(api, host, store, hook, update), tag(api));
+    into.append(...sentence2(t2("Set {counter} to the number of {units}"), { counter: to, units: filterChips(api, host, store, hook, update) }), tag(api));
     return;
   }
   if (hook.kind === "read") {
     const to = chip2(api, cellLabel(hook.to, namer));
     to.addEventListener("click", () => pickCell(api, host, store, to, hook.to, (cell) => update({ to: cell })));
-    const field = chip2(api, FIELDS[fieldIndex(hook.field)].label, "");
-    field.addEventListener("click", () => pickChoice(api, field, FIELDS, (v) => update({ field: FIELDS[v].field }), { current: fieldIndex(hook.field) }));
-    into.append(t("Set "), to, t(" to the "), field, t(" of the first "), ...filterChips(api, host, store, hook, update), tag(api));
+    const field = chip2(api, translate(FIELDS[fieldIndex(hook.field)].label), "");
+    field.addEventListener("click", () => pickChoice(api, field, fields(), (v) => update({ field: FIELDS[v].field }), { current: fieldIndex(hook.field) }));
+    into.append(...sentence2(t2("Set {counter} to the {field} of the first {units}"), { counter: to, field, units: filterChips(api, host, store, hook, update) }), tag(api));
     return;
   }
   if (hook.kind === "pick") {
@@ -6352,184 +6582,185 @@ function renderHook(api, host, store, hook, into) {
     x.addEventListener("click", () => pickNumber(api, x, hook.x, (v) => update({ x: v }), { min: 0, max: 65535, unit: "px" }));
     const y = chip2(api, String(hook.y), "");
     y.addEventListener("click", () => pickNumber(api, y, hook.y, (v) => update({ y: v }), { min: 0, max: 65535, unit: "px" }));
-    const MODE = [{ value: 0, label: t("to") }, { value: 1, label: t("by") }];
+    const MODE = [{ value: 0, label: tc("move a location", "to") }, { value: 1, label: tc("move a location", "by") }];
     const mode = chip2(api, hook.relative ? MODE[1].label : MODE[0].label, "");
-    mode.title = t("To: the top-left corner lands on x, y. By: the whole location shifts by x, y from where it is (negative goes left or up).");
+    mode.title = t2("To: the top-left corner lands on x, y. By: the whole location shifts by x, y from where it is (negative goes left or up).");
     mode.addEventListener("click", () => pickChoice(api, mode, MODE, (v) => update({ relative: v === 1 }), { current: hook.relative ? 1 : 0 }));
     if (hook.relative) {
       const dx = chip2(api, String(hook.x), "");
       dx.addEventListener("click", () => pickNumber(api, dx, hook.x, (v) => update({ x: v }), { min: -65535, max: 65535, unit: "px" }));
       const dy = chip2(api, String(hook.y), "");
       dy.addEventListener("click", () => pickNumber(api, dy, hook.y, (v) => update({ y: v }), { min: -65535, max: 65535, unit: "px" }));
-      into.append(t("Move "), loc, " ", mode, " ", dx, ", ", dy, tag(api));
+      into.append(...sentence2(t2("Move {location} {mode} {x}, {y}"), { location: loc, mode, x: dx, y: dy }), tag(api));
       return;
     }
-    const size = chip2(api, hook.width === null || hook.height === null ? t("its size") : `${hook.width} \xD7 ${hook.height}`, "");
-    size.title = t("Width \xD7 height in map pixels, 32 per tile; 0 keeps the location's own size");
-    size.addEventListener("click", () => pickNumber(api, size, hook.width ?? 0, (wv) => pickNumber(api, size, hook.height ?? 0, (hv) => update({ width: wv > 0 ? wv : null, height: hv > 0 ? hv : null }), { min: 0, max: 65535, unit: t("px high") }), { min: 0, max: 65535, unit: t("px wide") }));
-    into.append(t("Move "), loc, " ", mode, " ", x, ", ", y, t(" keeping "), size, tag(api));
+    const size = chip2(api, hook.width === null || hook.height === null ? t2("its size") : `${hook.width} \xD7 ${hook.height}`, "");
+    size.title = t2("Width \xD7 height in map pixels, 32 per tile; 0 keeps the location's own size");
+    size.addEventListener("click", () => pickNumber(api, size, hook.width ?? 0, (wv) => pickNumber(api, size, hook.height ?? 0, (hv) => update({ width: wv > 0 ? wv : null, height: hv > 0 ? hv : null }), { min: 0, max: 65535, unit: t2("px high") }), { min: 0, max: 65535, unit: t2("px wide") }));
+    into.append(...sentence2(t2("Move {location} {mode} {x}, {y} keeping {size}"), { location: loc, mode, x, y, size }), tag(api));
     return;
   }
-  into.append(t("For each "), ...filterChips(api, host, store, hook, update), ": ", ...doChips(api, host, store, hook.do, (d) => update({ do: d })), tag(api));
+  into.append(...sentence2(t2("For each {units}: {action}"), { units: filterChips(api, host, store, hook, update), action: doChips(api, host, store, hook.do, (d) => update({ do: d })) }), tag(api));
 }
 function doChips(api, host, store, d, onChange, allowNothing = false) {
-  const t = api.i18n.t;
+  const t2 = api.i18n.t;
   const namer = host.namer(store.sidecar);
   const scratch = () => host.ensureLocation("Magenta scratch");
   const firstLocation = () => host.locations().find((l) => l.value !== 64)?.value ?? 1;
   const DOS = [
-    { value: 0, label: t("set hit points"), make: () => ({ set: "hp", value: 100 }) },
-    { value: 1, label: t("set shields"), make: () => ({ set: "shields", value: 100 }) },
-    { value: 2, label: t("set energy"), make: () => ({ set: "energy", value: 100 }) },
-    { value: 3, label: t("set kills"), make: () => ({ set: "kills", value: 0 }) },
-    { value: 4, label: t("kill"), make: () => ({ kill: true }) },
-    { value: 5, label: t("remove"), make: () => ({ remove: true }) },
-    { value: 6, label: t("make invincible"), make: () => ({ invincible: true }) },
-    { value: 7, label: t("make vulnerable"), make: () => ({ invincible: false }) },
-    { value: 8, label: t("hallucinate"), make: () => ({ hallucination: true }) },
-    { value: 9, label: t("un-hallucinate"), make: () => ({ hallucination: false }) },
-    { value: 10, label: t("give the speed upgrade"), make: () => ({ speed: true }) },
-    { value: 11, label: t("take the speed upgrade"), make: () => ({ speed: false }) },
-    { value: 12, label: t("give to"), make: () => ({ give: 1 }) },
-    { value: 13, label: t("center a location on it"), make: () => ({ locate: firstLocation() }) },
-    { value: 14, label: t("order to move to"), make: () => {
+    { value: 0, label: t2("set hit points"), make: () => ({ set: "hp", value: 100 }) },
+    { value: 1, label: t2("set shields"), make: () => ({ set: "shields", value: 100 }) },
+    { value: 2, label: t2("set energy"), make: () => ({ set: "energy", value: 100 }) },
+    { value: 3, label: t2("set kills"), make: () => ({ set: "kills", value: 0 }) },
+    { value: 4, label: t2("kill"), make: () => ({ kill: true }) },
+    { value: 5, label: t2("remove"), make: () => ({ remove: true }) },
+    { value: 6, label: t2("make invincible"), make: () => ({ invincible: true }) },
+    { value: 7, label: t2("make vulnerable"), make: () => ({ invincible: false }) },
+    { value: 8, label: t2("hallucinate"), make: () => ({ hallucination: true }) },
+    { value: 9, label: t2("un-hallucinate"), make: () => ({ hallucination: false }) },
+    { value: 10, label: t2("give the speed upgrade"), make: () => ({ speed: true }) },
+    { value: 11, label: t2("take the speed upgrade"), make: () => ({ speed: false }) },
+    { value: 12, label: t2("give to"), make: () => ({ give: 1 }) },
+    { value: 13, label: t2("center a location on it"), make: () => ({ locate: firstLocation() }) },
+    { value: 14, label: t2("order to move to"), make: () => {
       const sc = scratch();
       return sc ? { order: "move", location: firstLocation(), scratch: sc } : null;
     } },
-    { value: 15, label: t("order to patrol to"), make: () => {
+    { value: 15, label: t2("order to patrol to"), make: () => {
       const sc = scratch();
       return sc ? { order: "patrol", location: firstLocation(), scratch: sc } : null;
     } },
-    { value: 16, label: t("order to attack-move to"), make: () => {
+    { value: 16, label: t2("order to attack-move to"), make: () => {
       const sc = scratch();
       return sc ? { order: "attack", location: firstLocation(), scratch: sc } : null;
     } },
-    { value: 17, label: t("apply a spell effect"), make: () => ({ timer: "stim", value: 10 * TIMER_TICKS_PER_SECOND }) },
-    { value: 18, label: t("hold fire"), make: () => ({ cooldown: HOLD_FIRE_COOLDOWN }) },
-    { value: 19, label: t("set the resources"), make: () => ({ set: "resources", value: 1500 }) },
-    { value: 20, label: t("set the remaining build time"), make: () => ({ set: "buildTime", value: 0 }) },
-    { value: 21, label: t("set the rank"), make: () => ({ set: "rank", value: 0 }) },
-    { value: 22, label: t("walk through anything"), make: () => ({ status: "noclip", on: true }) },
-    { value: 23, label: t("collide again"), make: () => ({ status: "noclip", on: false }) },
-    { value: 25, label: t("take"), make: () => ({ adjust: "hp", delta: -20 }) },
-    { value: 26, label: t("give"), make: () => ({ adjust: "hp", delta: 20 }) },
-    ...allowNothing ? [{ value: 24, label: t("do nothing to it"), make: () => null }] : []
+    { value: 17, label: t2("apply a spell effect"), make: () => ({ timer: "stim", value: 10 * TIMER_TICKS_PER_SECOND }) },
+    { value: 18, label: t2("hold fire"), make: () => ({ cooldown: HOLD_FIRE_COOLDOWN }) },
+    { value: 19, label: t2("set the resources"), make: () => ({ set: "resources", value: 1500 }) },
+    { value: 20, label: t2("set the remaining build time"), make: () => ({ set: "buildTime", value: 0 }) },
+    { value: 21, label: t2("set the rank"), make: () => ({ set: "rank", value: 0 }) },
+    { value: 22, label: t2("walk through anything"), make: () => ({ status: "noclip", on: true }) },
+    { value: 23, label: t2("collide again"), make: () => ({ status: "noclip", on: false }) },
+    { value: 25, label: t2("take"), make: () => ({ adjust: "hp", delta: -20 }) },
+    { value: 26, label: t2("give"), make: () => ({ adjust: "hp", delta: 20 }) },
+    ...allowNothing ? [{ value: 24, label: t2("do nothing to it"), make: () => null }] : []
   ];
-  const current2 = d === null ? 24 : "set" in d ? { hp: 0, shields: 1, energy: 2, kills: 3, resources: 19, buildTime: 20, rank: 21 }[d.set] : "kill" in d ? 4 : "remove" in d ? 5 : "invincible" in d ? d.invincible ? 6 : 7 : "hallucination" in d ? d.hallucination ? 8 : 9 : "speed" in d ? d.speed ? 10 : 11 : "give" in d ? 12 : "locate" in d ? 13 : "order" in d ? { move: 14, patrol: 15, attack: 16 }[d.order] : "timer" in d ? 17 : "cooldown" in d ? 18 : "adjust" in d ? d.delta < 0 ? 25 : 26 : d.on ? 22 : 23;
-  const what = chip2(api, DOS.find((x) => x.value === current2)?.label ?? "?", "");
+  const current3 = d === null ? 24 : "set" in d ? { hp: 0, shields: 1, energy: 2, kills: 3, resources: 19, buildTime: 20, rank: 21 }[d.set] : "kill" in d ? 4 : "remove" in d ? 5 : "invincible" in d ? d.invincible ? 6 : 7 : "hallucination" in d ? d.hallucination ? 8 : 9 : "speed" in d ? d.speed ? 10 : 11 : "give" in d ? 12 : "locate" in d ? 13 : "order" in d ? { move: 14, patrol: 15, attack: 16 }[d.order] : "timer" in d ? 17 : "cooldown" in d ? 18 : "adjust" in d ? d.delta < 0 ? 25 : 26 : d.on ? 22 : 23;
+  const what = chip2(api, DOS.find((x) => x.value === current3)?.label ?? "?", "");
   what.addEventListener("click", () => pickChoice(api, what, DOS, (v) => {
     const entry2 = DOS.find((x) => x.value === v);
     const made = entry2.make();
     if (made === null && v !== 24) {
-      api.ui.toast({ kind: "error", title: t("No free location slot"), detail: t("Ordering one unit at a time needs a location of Magenta's own; free a location slot first.") });
+      api.ui.toast({ kind: "error", title: t2("No free location slot"), detail: t2("Ordering one unit at a time needs a location of Magenta's own; free a location slot first.") });
       return;
     }
     onChange(made);
-  }, { current: current2 }));
-  const out = [what];
-  if (d === null) return out;
+  }, { current: current3 }));
+  if (d === null) return [what];
   if ("set" in d) {
     const value = chip2(api, String(d.value), "");
     value.addEventListener("click", () => pickNumber(api, value, d.value, (v) => onChange({ set: d.set, value: v }), { min: 0, max: 65535 }));
-    out.push(t(" to "), value);
+    return sentence2(t2("{action} to {value}"), { action: what, value });
   } else if ("give" in d) {
     const p = chip2(api, namer.player(d.give), "");
     p.addEventListener("click", () => pickChoice(api, p, Array.from({ length: 12 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null })), (v) => onChange({ give: v }), { current: d.give }));
-    out.push(" ", p);
+    return sentence2(t2("{action} {player}"), { action: what, player: p });
   } else if ("locate" in d) {
     const l = chip2(api, namer.location(d.locate), "");
     l.addEventListener("click", () => pickLocation(api, host, l, d.locate, (v) => {
       if (v > 0 && v < 64) onChange({ locate: v });
     }));
-    out.push(": ", l);
+    return sentence2(t2("{action}: {location}"), { action: what, location: l });
   } else if ("order" in d) {
     const l = chip2(api, namer.location(d.location), "");
     l.addEventListener("click", () => pickLocation(api, host, l, d.location, (v) => {
       if (v > 0 && v < 64) onChange({ ...d, location: v });
     }));
-    l.title = t("The destination. The order goes to one unit at a time through the location named Magenta scratch, which is Magenta's to move.");
-    out.push(" ", l);
+    l.title = t2("The destination. The order goes to one unit at a time through the location named Magenta scratch, which is Magenta's to move.");
+    return sentence2(t2("{action} {location}"), { action: what, location: l });
   } else if ("timer" in d) {
-    const which = chip2(api, TIMERS.find((x) => x.timer === d.timer)?.label ?? d.timer, "");
-    which.addEventListener("click", () => pickChoice(api, which, TIMERS.map((x, value) => ({ value, label: x.label })), (v) => onChange({ timer: TIMERS[v].timer, value: d.value }), { current: Math.max(0, TIMERS.findIndex((x) => x.timer === d.timer)) }));
+    const timer = TIMERS.find((x) => x.timer === d.timer);
+    const which = chip2(api, timer ? translate(timer.label) : d.timer, "");
+    which.addEventListener("click", () => pickChoice(api, which, TIMERS.map((x, value) => ({ value, label: translate(x.label) })), (v) => onChange({ timer: TIMERS[v].timer, value: d.value }), { current: Math.max(0, TIMERS.findIndex((x) => x.timer === d.timer)) }));
     const seconds = chip2(api, String(Math.round(d.value / TIMER_TICKS_PER_SECOND)), "");
-    seconds.title = t("Seconds at the fastest speed; the game counts these timers in ticks of about eight frames. The effect applies without the spell's overlay graphic.");
+    seconds.title = t2("Seconds at the fastest speed; the game counts these timers in ticks of about eight frames. The effect applies without the spell's overlay graphic.");
     seconds.addEventListener("click", () => pickNumber(api, seconds, Math.round(d.value / TIMER_TICKS_PER_SECOND), (v) => onChange({ timer: d.timer, value: Math.max(1, Math.min(255, v * TIMER_TICKS_PER_SECOND)) }), { min: 1, max: 85, unit: "s" }));
-    out.push(": ", which, t(" for "), seconds, t(" s"));
+    return sentence2(t2("{action}: {effect} for {seconds} s"), { action: what, effect: which, seconds });
   } else if ("cooldown" in d) {
-    const note = api.ui.el("span", { className: "hint", title: t("The cooldowns are written each time the trigger fires; to keep a unit from firing, the trigger must fire every cycle (preserved, with triggers running every frame).") }, t(" (each cycle)"));
-    out.push(note);
+    const note = api.ui.el("span", { className: "hint", title: t2("The cooldowns are written each time the trigger fires; to keep a unit from firing, the trigger must fire every cycle (preserved, with triggers running every frame).") }, t2(" (each cycle)"));
+    return [what, note];
   } else if ("adjust" in d) {
-    const ADJ = [{ value: 0, label: t("hit points"), field: "hp" }, { value: 1, label: t("shields"), field: "shields" }, { value: 2, label: t("energy"), field: "energy" }];
+    const ADJ = [{ value: 0, label: t2("hit points"), field: "hp" }, { value: 1, label: t2("shields"), field: "shields" }, { value: 2, label: t2("energy"), field: "energy" }];
     const sign = d.delta < 0 ? -1 : 1;
     const n = chip2(api, String(Math.abs(d.delta)), "");
     n.addEventListener("click", () => pickNumber(api, n, Math.abs(d.delta), (v) => onChange({ adjust: d.adjust, delta: sign * Math.max(1, v) }), { min: 1, max: 65535 }));
     const f = chip2(api, ADJ.find((x) => x.field === d.adjust)?.label ?? d.adjust, "");
-    f.title = d.delta < 0 ? t("Never below 0; a unit whose hit points reach 0 dies.") : t("Never above the type's maximum.");
+    f.title = d.delta < 0 ? t2("Never below 0; a unit whose hit points reach 0 dies.") : t2("Never above the type's maximum.");
     f.addEventListener("click", () => pickChoice(api, f, ADJ, (v) => onChange({ adjust: ADJ[v].field, delta: d.delta }), { current: ADJ.findIndex((x) => x.field === d.adjust) }));
-    out.push(" ", n, " ", f);
+    return sentence2(t2("{action} {n} {field}"), { action: what, n, field: f });
   }
-  return out;
+  return [what];
 }
 function renderPick(api, host, store, hook, into, update) {
-  const t = api.i18n.t;
+  const t2 = api.i18n.t;
   const namer = host.namer(store.sidecar);
-  const BY = [{ value: 0, label: t("with the least"), by: "min" }, { value: 1, label: t("with the greatest"), by: "max" }, { value: 2, label: t("nearest to"), by: "nearest" }, { value: 3, label: t("at random"), by: "random" }];
+  const BY = [{ value: 0, label: t2("with the least"), by: "min" }, { value: 1, label: t2("with the greatest"), by: "max" }, { value: 2, label: t2("nearest to"), by: "nearest" }, { value: 3, label: t2("at random"), by: "random" }];
   const by = chip2(api, BY.find((b) => b.by === hook.by).label, "");
   by.addEventListener("click", () => pickChoice(api, by, BY, (v) => update({ by: BY[v].by, near: BY[v].by === "nearest" ? hook.near ?? host.locations().find((l) => l.value !== 64)?.value ?? 1 : hook.near }), { current: BY.findIndex((b) => b.by === hook.by) }));
-  into.append(t("Take the "), ...filterChips(api, host, store, hook, update), " ", by, " ");
+  let measure = [];
   if (hook.by === "nearest") {
     const mouseOf = typeof hook.near === "object" && hook.near !== null ? hook.near.mouse : null;
-    const near = chip2(api, mouseOf !== null ? t("{player}'s mouse", { player: namer.player(mouseOf) }) : typeof hook.near === "number" ? namer.location(hook.near) : t("a location"), "");
+    const near = chip2(api, mouseOf !== null ? t2("{player}'s mouse", { player: namer.player(mouseOf) }) : typeof hook.near === "number" ? namer.location(hook.near) : t2("a location"), "");
     near.addEventListener("click", () => {
       const pop = pickLocation(api, host, near, typeof hook.near === "number" ? hook.near : 1, (v) => {
         if (v > 0 && v < 64) update({ near: v, radius: null });
       });
       const foot = pop.root.querySelector(".mg-pop-foot");
-      foot?.prepend(api.ui.widgets.button(t("A player's mouse\u2026"), { ghost: true, onClick: () => {
+      foot?.prepend(api.ui.widgets.button(t2("A player's mouse\u2026"), { ghost: true, onClick: () => {
         pop.close();
         pickChoice(api, near, Array.from({ length: 8 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null })), (p) => {
           const m = withMsqc(host, store, true);
           if (!m) {
-            api.ui.toast({ kind: "error", title: t("No room for the mouse"), detail: t("It needs nine free location slots for MSQC.") });
+            api.ui.toast({ kind: "error", title: t2("No room for the mouse"), detail: t2("It needs nine free location slots for MSQC.") });
             return;
           }
-          store.commit(t("Pick near the mouse"), () => store.list, { sidecar: { msqc: m, builds: store.sidecar.builds.map((b) => b.id === hook.id ? { ...b, near: { mouse: p }, radius: hook.radius ?? 64 } : b) } });
+          store.commit(t2("Pick near the mouse"), () => store.list, { sidecar: { msqc: m, builds: store.sidecar.builds.map((b) => b.id === hook.id ? { ...b, near: { mouse: p }, radius: hook.radius ?? 64 } : b) } });
         }, { current: mouseOf ?? 0, width: 200 });
       } }));
     });
-    into.append(near);
+    measure = [near];
     if (mouseOf !== null) {
-      const radius = chip2(api, hook.radius === null || hook.radius === void 0 ? t("any distance") : `${hook.radius} px`, "");
-      radius.title = t("How far from the mouse a unit still counts, in map pixels (32 a tile); farther, and the pick finds nothing.");
-      radius.addEventListener("click", () => pickNumber(api, radius, hook.radius ?? 64, (v) => update({ radius: v > 0 ? v : null }), { min: 0, max: 4096, unit: "px", hint: t("0 for any distance") }));
-      into.append(t(" within "), radius);
+      const radius = chip2(api, hook.radius === null || hook.radius === void 0 ? t2("any distance") : `${hook.radius} px`, "");
+      radius.title = t2("How far from the mouse a unit still counts, in map pixels (32 a tile); farther, and the pick finds nothing.");
+      radius.addEventListener("click", () => pickNumber(api, radius, hook.radius ?? 64, (v) => update({ radius: v > 0 ? v : null }), { min: 0, max: 4096, unit: "px", hint: t2("0 for any distance") }));
+      measure = sentence2(t2("{point} within {radius}"), { point: near, radius });
     }
   } else if (hook.by === "random") {
   } else {
     const numeric = FIELDS.filter((f) => !f.yesNo);
-    const field = chip2(api, FIELDS[fieldIndex(hook.field)].label, "");
-    field.addEventListener("click", () => pickChoice(api, field, numeric, (v) => update({ field: FIELDS[v].field }), { current: fieldIndex(hook.field) }));
-    into.append(field);
+    const field = chip2(api, translate(FIELDS[fieldIndex(hook.field)].label), "");
+    field.addEventListener("click", () => pickChoice(api, field, numeric.map((f) => ({ ...f, label: translate(f.label) })), (v) => update({ field: FIELDS[v].field }), { current: fieldIndex(hook.field) }));
+    measure = [field];
   }
-  into.append(t(": "), ...doChips(api, host, store, hook.do, (d) => update({ do: d }), true));
-  const locate = chip2(api, hook.locate ? namer.location(hook.locate) : t("no location"), "");
-  locate.title = t("A small box is centred on the unit once this cycle's triggers have all run, so a trigger in the next cycle can act on it through the location. A row below this one in the same trigger still sees the location where it was.");
+  const locate = chip2(api, hook.locate ? namer.location(hook.locate) : t2("no location"), "");
+  locate.title = t2("A small box is centred on the unit once this cycle's triggers have all run, so a trigger in the next cycle can act on it through the location. A row below this one in the same trigger still sees the location where it was.");
   locate.addEventListener("click", () => pickLocation(api, host, locate, hook.locate ?? 64, (v) => update({ locate: v > 0 && v < 64 ? v : null })));
-  const to = chip2(api, hook.to ? cellLabel(hook.to, namer) : t("no counter"));
-  to.title = t("The field's value \u2014 or the distance, for the nearest \u2014 goes into this counter; 0 when nothing matched.");
+  const to = chip2(api, hook.to ? cellLabel(hook.to, namer) : t2("no counter"));
+  to.title = t2("The field's value \u2014 or the distance, for the nearest \u2014 goes into this counter; 0 when nothing matched.");
   to.addEventListener("click", () => pickCell(api, host, store, to, hook.to ?? store.sidecar.chat?.cell ?? [0, 181], (cell) => update({ to: cell })));
-  into.append(t(", center "), locate, t(" on it, value into "), to);
+  const counter = [to];
   if (hook.to) {
     const clear = chip2(api, "\xD7", "");
-    clear.title = t("No counter");
+    clear.title = t2("No counter");
     clear.addEventListener("click", () => update({ to: null }));
-    into.append(clear);
+    counter.push(clear);
   }
-  into.append(tag(api));
+  const parts = { units: filterChips(api, host, store, hook, update), by, measure, point: measure, action: doChips(api, host, store, hook.do, (d) => update({ do: d }), true), location: locate, counter };
+  const template = hook.by === "nearest" ? t2("Take the {units} {by} {point}: {action}, center {location} on it, value into {counter}") : measure.length ? t2("Take the {units} {by} {measure}: {action}, center {location} on it, value into {counter}") : t2("Take the {units} {by}: {action}, center {location} on it, value into {counter}");
+  into.append(...sentence2(template, parts), tag(api));
 }
 function renderConditionRow(api, host, store, row, into, replace) {
-  const t = api.i18n.t;
+  const t2 = api.i18n.t;
   const namer = host.namer(store.sidecar);
   const playerChip = (player, onPick) => {
     const c2 = chip2(api, namer.player(player), "");
@@ -6548,52 +6779,52 @@ function renderConditionRow(api, host, store, row, into, replace) {
       const needArgs = isChatPattern(next) && !store.sidecar.chat?.args;
       const made = needArgs ? ensureChatArgs(host, store) : null;
       if (needArgs && !made) {
-        api.ui.toast({ kind: "error", title: t("No free counter cells for a chat pattern") });
+        api.ui.toast({ kind: "error", title: t2("No free counter cells for a chat pattern") });
         return;
       }
       const chatCell = { ...store.sidecar.chat ?? { cell: [0, 181] }, ...made ? { args: made.args } : {} };
-      store.commit(t("Edit chat command"), () => store.list, { sidecar: { builds: store.sidecar.builds.map((b) => b.id === chat.id ? next : b), chat: chatCell, ...made ? { counters: made.counters } : {} } });
+      store.commit(t2("Edit chat command"), () => store.list, { sidecar: { builds: store.sidecar.builds.map((b) => b.id === chat.id ? next : b), chat: chatCell, ...made ? { counters: made.counters } : {} } });
       replace(chatCondition(chatCell, next));
     };
-    const msg = chip2(api, chat.message, "text");
-    msg.addEventListener("click", () => pickText(api, msg, chat.message, setMessage, { title: chat.arg === "number" ? t("The command before the number: -set matches -set 250, and the number lands in the counter named Chat number") : t("What a player types in chat; ^\u2026$ writes a pattern, as in ^-give .*$") }));
-    const ARG = [{ value: 0, label: t("exactly") }, { value: 1, label: t("followed by a number") }];
+    const msg2 = chip2(api, chat.message, "text");
+    msg2.addEventListener("click", () => pickText(api, msg2, chat.message, setMessage, { title: chat.arg === "number" ? t2("The command before the number: -set matches -set 250, and the number lands in the counter named Chat number") : t2("What a player types in chat; ^\u2026$ writes a pattern, as in ^-give .*$") }));
+    const ARG = [{ value: 0, label: tc("chat message", "exactly") }, { value: 1, label: t2("followed by a number") }];
     const arg = chip2(api, chat.arg === "number" ? ARG[1].label : ARG[0].label, "");
-    arg.title = t("With a number, the message is a prefix and the number typed after it goes into the counter named Chat number.");
+    arg.title = t2("With a number, the message is a prefix and the number typed after it goes into the counter named Chat number.");
     arg.addEventListener("click", () => pickChoice(api, arg, ARG, (v) => {
       const next = v === 1 ? { ...chat, arg: "number", message: chat.message.startsWith("^") ? chat.message.replace(/^\^|\.\*|\$$/g, "").trim() || "-set" : chat.message } : { id: chat.id, kind: "chat", message: chat.message, value: chat.value };
       const made = v === 1 && !store.sidecar.chat?.args ? ensureChatArgs(host, store) : null;
       if (v === 1 && !store.sidecar.chat?.args && !made) {
-        api.ui.toast({ kind: "error", title: t("No free counter cells for the number") });
+        api.ui.toast({ kind: "error", title: t2("No free counter cells for the number") });
         return;
       }
       const chatCell = { ...store.sidecar.chat ?? { cell: [0, 181] }, ...made ? { args: made.args } : {} };
-      store.commit(t("Edit chat command"), () => store.list, { sidecar: { builds: store.sidecar.builds.map((b) => b.id === chat.id ? next : b), chat: chatCell, ...made ? { counters: made.counters } : {} } });
+      store.commit(t2("Edit chat command"), () => store.list, { sidecar: { builds: store.sidecar.builds.map((b) => b.id === chat.id ? next : b), chat: chatCell, ...made ? { counters: made.counters } : {} } });
       replace(chatCondition(chatCell, next));
     }, { current: chat.arg === "number" ? 1 : 0 }));
-    into.append(t("The chat said "), msg, " ", arg, tag(api, t("Needs a Build (\u22EF menu): the chat plugin in the built map writes the command's number into a cell this condition reads, in the cycle the message arrives, for every player at once. A message with a number is matched as a pattern and the number is parsed out for you.")));
+    into.append(...sentence2(t2("The chat said {message} {mode}"), { message: msg2, mode: arg }), tag(api, t2("Needs a Build (\u22EF menu): the chat plugin in the built map writes the command's number into a cell this condition reads, in the cycle the message arrives, for every player at once. A message with a number is matched as a pattern and the number is parsed out for you.")));
     return;
   }
   if (row.kind === "scan") {
     const s = row.record;
-    const update = (patch) => store.updateSidecar(t("Edit unit check"), { builds: store.sidecar.builds.map((b) => b.id === s.id ? { ...b, ...patch } : b) });
+    const update = (patch) => store.updateSidecar(t2("Edit unit check"), { builds: store.sidecar.builds.map((b) => b.id === s.id ? { ...b, ...patch } : b) });
     const fi = FIELDS[fieldIndex(s.field)];
-    const field = chip2(api, fi.label, "");
-    field.addEventListener("click", () => pickChoice(api, field, FIELDS, (v) => update(FIELDS[v].yesNo ? { field: FIELDS[v].field, cmp: "=", value: s.cmp === "=" && s.value === 0 ? 0 : 1 } : { field: FIELDS[v].field }), { current: fieldIndex(s.field) }));
-    const note = tag(api, t("Needs a Build (\u22EF menu): the built map checks this every cycle, before the triggers run, and leaves the answer in a cell this condition reads."));
+    const field = chip2(api, translate(fi.label), "");
+    field.addEventListener("click", () => pickChoice(api, field, fields(), (v) => update(FIELDS[v].yesNo ? { field: FIELDS[v].field, cmp: "=", value: s.cmp === "=" && s.value === 0 ? 0 : 1 } : { field: FIELDS[v].field }), { current: fieldIndex(s.field) }));
+    const note = tag(api, t2("Needs a Build (\u22EF menu): the built map checks this every cycle, before the triggers run, and leaves the answer in a cell this condition reads."));
     if (fi.yesNo) {
-      const IS = [{ value: 1, label: t("is") }, { value: 0, label: t("is not") }];
+      const IS = [{ value: 1, label: t2("is") }, { value: 0, label: t2("is not") }];
       const is = chip2(api, s.value === 0 ? IS[1].label : IS[0].label, "");
       is.addEventListener("click", () => pickChoice(api, is, IS, (v) => update({ cmp: "=", value: v }), { current: s.value === 0 ? 0 : 1 }));
-      into.append(t("Any "), ...filterChips(api, host, store, s, update), " ", is, " ", field, note);
+      into.append(...sentence2(t2("Any {units} {is} {field}"), { units: filterChips(api, host, store, s, update), is, field }), note);
       return;
     }
-    const CMP = [{ value: 0, label: t("below"), cmp: "<" }, { value: 1, label: t("above"), cmp: ">" }, { value: 2, label: t("exactly"), cmp: "=" }];
+    const CMP = [{ value: 0, label: t2("below"), cmp: "<" }, { value: 1, label: t2("above"), cmp: ">" }, { value: 2, label: tc("comparison", "exactly"), cmp: "=" }];
     const cmp = chip2(api, CMP.find((c2) => c2.cmp === s.cmp)?.label ?? s.cmp, "");
     cmp.addEventListener("click", () => pickChoice(api, cmp, CMP, (v) => update({ cmp: CMP[v].cmp }), { current: CMP.findIndex((c2) => c2.cmp === s.cmp) }));
     const value = chip2(api, String(s.value), "");
     value.addEventListener("click", () => pickNumber(api, value, s.value, (v) => update({ value: v }), { min: 0, max: 65535 }));
-    into.append(t("Any "), ...filterChips(api, host, store, s, update), t(" has "), field, " ", cmp, " ", value, note);
+    into.append(...sentence2(t2("Any {units} has {field} {cmp} {value}"), { units: filterChips(api, host, store, s, update), field, cmp, value }), note);
     return;
   }
   const m = store.sidecar.msqc ?? DEFAULT_MSQC;
@@ -6602,22 +6833,22 @@ function renderConditionRow(api, host, store, row, into, replace) {
     key.addEventListener("click", () => pickKey(api, key, row.code, (code) => {
       const unit = m.keys[String(code)] ?? m.keys[String(row.code)];
       void unit;
-      store.commit(t("Change key"), () => store.list, { sidecar: { msqc: { ...m, keys: { ...m.keys, [String(code)]: m.keys[String(code)] ?? freeUnit(store, host) ?? m.keys[String(row.code)] } } } });
+      store.commit(t2("Change key"), () => store.list, { sidecar: { msqc: { ...m, keys: { ...m.keys, [String(code)]: m.keys[String(code)] ?? freeUnit(store, host) ?? m.keys[String(row.code)] } } } });
       replace(deathsIs2([row.player, (store.sidecar.msqc ?? m).keys[String(code)] ?? m.keys[String(row.code)]], Comparison.AtLeast, 1));
     }));
-    into.append(playerChip(row.player, (p) => replace(deathsIs2([p, m.keys[String(row.code)]], Comparison.AtLeast, 1))), t(" pressed "), key, tag(api, INPUT_NOTE));
+    into.append(...sentence2(t2("{player} pressed {key}"), { player: playerChip(row.player, (p) => replace(deathsIs2([p, m.keys[String(row.code)]], Comparison.AtLeast, 1))), key }), tag(api, translate(INPUT_NOTE)));
     return;
   }
   if (row.kind === "click") {
-    const button = chip2(api, row.button === "L" ? t("left") : row.button === "M" ? t("middle") : t("right"), "");
-    button.addEventListener("click", () => pickChoice(api, button, [{ value: 0, label: t("left") }, { value: 1, label: t("right") }, { value: 2, label: t("middle") }], (v) => {
+    const button = chip2(api, row.button === "L" ? t2("left") : row.button === "M" ? t2("middle") : t2("right"), "");
+    button.addEventListener("click", () => pickChoice(api, button, [{ value: 0, label: t2("left") }, { value: 1, label: t2("right") }, { value: 2, label: t2("middle") }], (v) => {
       const b = v === 0 ? "L" : v === 1 ? "R" : "M";
       const unit = m.clicks[b] ?? freeUnit(store, host);
       if (unit === null) return;
-      store.commit(t("Change button"), () => store.list, { sidecar: { msqc: { ...m, clicks: { ...m.clicks, [b]: unit } } } });
+      store.commit(t2("Change button"), () => store.list, { sidecar: { msqc: { ...m, clicks: { ...m.clicks, [b]: unit } } } });
       replace(deathsIs2([row.player, unit], Comparison.AtLeast, 1));
     }, { current: row.button === "L" ? 0 : row.button === "R" ? 1 : 2 }));
-    into.append(playerChip(row.player, (p) => replace(deathsIs2([p, m.clicks[row.button]], Comparison.AtLeast, 1))), t(" clicked the "), button, t(" button"), tag(api, INPUT_NOTE));
+    into.append(...sentence2(t2("{player} clicked the {button} button"), { player: playerChip(row.player, (p) => replace(deathsIs2([p, m.clicks[row.button]], Comparison.AtLeast, 1))), button }), tag(api, translate(INPUT_NOTE)));
     return;
   }
   const loc = chip2(api, namer.location(row.location), "");
@@ -6625,10 +6856,10 @@ function renderConditionRow(api, host, store, row, into, replace) {
     if (v <= 0 || v >= 64) return;
     const unit = m.mouseIn[String(v)] ?? freeUnit(store, host);
     if (unit === null) return;
-    store.commit(t("Change location"), () => store.list, { sidecar: { msqc: { ...m, mouseIn: { ...m.mouseIn, [String(v)]: unit } } } });
+    store.commit(t2("Change location"), () => store.list, { sidecar: { msqc: { ...m, mouseIn: { ...m.mouseIn, [String(v)]: unit } } } });
     replace(deathsIs2([row.player, unit], Comparison.Exactly, 1));
   }));
-  into.append(playerChip(row.player, (p) => replace(deathsIs2([p, m.mouseIn[String(row.location)]], Comparison.Exactly, 1))), t("'s mouse is over "), loc, tag(api, INPUT_NOTE));
+  into.append(...sentence2(t2("{player}'s mouse is over {location}"), { player: playerChip(row.player, (p) => replace(deathsIs2([p, m.mouseIn[String(row.location)]], Comparison.Exactly, 1))), location: loc }), tag(api, translate(INPUT_NOTE)));
 }
 function newChat(host, store, message = "-command", arg = null) {
   const chat = store.sidecar.chat ?? (() => {
@@ -6736,7 +6967,7 @@ function sourceRevision(list, sidecar, extra = []) {
   const settings = { ...sidecar.settings };
   delete settings.lastBuild;
   let h = 2166136261;
-  for (const t of list) h = fnv(fingerprint(t), h);
+  for (const t2 of list) h = fnv(fingerprint(t2), h);
   h = fnv(JSON.stringify({ builds: sidecar.builds, chat: sidecar.chat, msqc: sidecar.msqc, expansions: sidecar.expansions, settings }), h);
   let g = 2166136261;
   for (const s of extra) g = fnv(s, g);
@@ -6757,20 +6988,20 @@ function preflight(input) {
   const m = sidecar.msqc;
   if (usesMsqc(m)) {
     const p = m.qcPlayer;
-    if ((input.playerTypes[p] ?? PLAYER_INACTIVE) !== PLAYER_INACTIVE) out.push({ level: "error", text: `Synced input needs ${input.playerName(p)} for itself, and the slot is set to ${input.playerTypeName(p)}. Make it inactive in Scenario \u25B8 Players, or free another slot and remove the input rows to let Magenta pick again.` });
-    if (input.placedOwners.has(p)) out.push({ level: "error", text: `Synced input needs ${input.playerName(p)} for itself, and units on the map belong to it.` });
-    list.forEach((t, i) => {
-      if (owners(t).includes(p)) out.push({ level: "warn", text: `Synced input owns ${input.playerName(p)}; this trigger runs for it too.`, trigger: i });
+    if ((input.playerTypes[p] ?? PLAYER_INACTIVE) !== PLAYER_INACTIVE) out.push({ level: "error", text: t("Synced input needs {player} for itself, and the slot is set to {type}. Make it inactive in Scenario \u25B8 Players, or free another slot and remove the input rows to let Magenta pick again.", { player: input.playerName(p), type: input.playerTypeName(p) }) });
+    if (input.placedOwners.has(p)) out.push({ level: "error", text: t("Synced input needs {player} for itself, and units on the map belong to it.", { player: input.playerName(p) }) });
+    list.forEach((tr, i) => {
+      if (owners(tr).includes(p)) out.push({ level: "warn", text: t("Synced input owns {player}; this trigger runs for it too.", { player: input.playerName(p) }), trigger: i });
     });
-    if (input.placedUnitIds.has(m.qcUnit)) out.push({ level: "error", text: `Synced input uses the ${input.unitName(m.qcUnit)} type for its own command units, and the map has some placed. Remove them, or pick another unit type in the map's settings.` });
-    list.forEach((t, i) => {
-      if (liveActions(t).some((a2) => (a2.type === ActionType.CreateUnit || a2.type === ActionType.CreateUnitWithProperties) && a2.unitId === m.qcUnit)) out.push({ level: "error", text: `This trigger creates a ${input.unitName(m.qcUnit)}, the type synced input keeps for itself.`, trigger: i });
+    if (input.placedUnitIds.has(m.qcUnit)) out.push({ level: "error", text: t("Synced input uses the {unit} type for its own command units, and the map has some placed. Remove them, or pick another unit type in the map's settings.", { unit: input.unitName(m.qcUnit) }) });
+    list.forEach((tr, i) => {
+      if (liveActions(tr).some((a2) => (a2.type === ActionType.CreateUnit || a2.type === ActionType.CreateUnitWithProperties) && a2.unitId === m.qcUnit)) out.push({ level: "error", text: t("This trigger creates a {unit}, the type synced input keeps for itself.", { unit: input.unitName(m.qcUnit) }), trigger: i });
     });
-    if (!free(m.qcLoc)) out.push({ level: "error", text: `Synced input's own location slot (${m.qcLoc + 1}) is no longer empty: a location was made there. Free it, or remove the input rows and add them again to pick another.` });
+    if (!free(m.qcLoc)) out.push({ level: "error", text: t("Synced input's own location slot ({n}) is no longer empty: a location was made there. Free it, or remove the input rows and add them again to pick another.", { n: m.qcLoc + 1 }) });
     if (m.mouseBase !== null) {
       const taken = [];
       for (let k = 0; k < 8; k++) if (!free(m.mouseBase - 1 + k)) taken.push(m.mouseBase + k);
-      if (taken.length) out.push({ level: "error", text: `The eight location slots the players' mice use (${m.mouseBase}\u2013${m.mouseBase + 7}) must stay empty; ${taken.length === 1 ? "slot" : "slots"} ${taken.join(", ")} ${taken.length === 1 ? "is" : "are"} in use.` });
+      if (taken.length) out.push({ level: "error", text: t("{n, plural, one {The eight location slots the players' mice use ({from}\u2013{to}) must stay empty; slot {taken} is in use.} other {The eight location slots the players' mice use ({from}\u2013{to}) must stay empty; slots {taken} are in use.}}", { n: taken.length, from: m.mouseBase, to: m.mouseBase + 7, taken: taken.join(", ") }) });
     }
   }
   const seenChat = /* @__PURE__ */ new Map();
@@ -6779,37 +7010,37 @@ function preflight(input) {
     const at = carriers[0];
     if (b.kind === "chat") {
       const bad = checkChatMessage(b.message);
-      if (bad) out.push({ level: "error", text: `The chat command "${b.message}": ${bad}` });
+      if (bad) out.push({ level: "error", text: t('The chat command "{message}": {problem}', { message: b.message, problem: bad }) });
       const key = b.message.toLowerCase();
-      if (seenChat.has(key)) out.push({ level: "warn", text: `Two chat commands say "${b.message}"; the second never fires on its own.` });
+      if (seenChat.has(key)) out.push({ level: "warn", text: t('Two chat commands say "{message}"; the second never fires on its own.', { message: b.message }) });
       seenChat.set(key, 1);
       continue;
     }
     if (!carriers.length) {
-      out.push({ level: "info", text: `A ${b.kind === "scan" ? "unit check" : "build row"} no trigger uses is still in the map's Magenta data; it is sent, and never fires.` });
+      out.push({ level: "info", text: b.kind === "scan" ? t("A unit check no trigger uses is still in the map's Magenta data; it is sent, and never fires.") : t("A build row no trigger uses is still in the map's Magenta data; it is sent, and never fires.") });
       continue;
     }
-    if ("location" in b && b.location !== null && !locExists(b.location)) out.push({ level: "error", text: `A build row names location ${b.location}, which the map no longer has.`, trigger: at });
+    if ("location" in b && b.location !== null && !locExists(b.location)) out.push({ level: "error", text: t("A build row names location {n}, which the map no longer has.", { n: b.location }), trigger: at });
     if (b.kind === "foreach" || b.kind === "pick") {
       const d = b.do;
       if (d && "order" in d) {
-        if (!locExists(d.scratch)) out.push({ level: "error", text: `The order row's scratch location (${d.scratch}) is gone; pick the order again to make one.`, trigger: at });
-        if (!locExists(d.location)) out.push({ level: "error", text: `The order row's target location (${d.location}) is gone.`, trigger: at });
+        if (!locExists(d.scratch)) out.push({ level: "error", text: t("The order row's scratch location ({n}) is gone; pick the order again to make one.", { n: d.scratch }), trigger: at });
+        if (!locExists(d.location)) out.push({ level: "error", text: t("The order row's target location ({n}) is gone.", { n: d.location }), trigger: at });
       }
-      if (d && "locate" in d && !locExists(d.locate)) out.push({ level: "error", text: `The row centres location ${d.locate} on the unit, and the map no longer has it.`, trigger: at });
+      if (d && "locate" in d && !locExists(d.locate)) out.push({ level: "error", text: t("The row centres location {n} on the unit, and the map no longer has it.", { n: d.locate }), trigger: at });
     }
     if (b.kind === "pick") {
-      if (b.locate !== null && !locExists(b.locate)) out.push({ level: "error", text: `The pick row centres location ${b.locate} on the unit, and the map no longer has it.`, trigger: at });
-      if (typeof b.near === "number" && !locExists(b.near)) out.push({ level: "error", text: `The pick row measures from location ${b.near}, which the map no longer has.`, trigger: at });
+      if (b.locate !== null && !locExists(b.locate)) out.push({ level: "error", text: t("The pick row centres location {n} on the unit, and the map no longer has it.", { n: b.locate }), trigger: at });
+      if (typeof b.near === "number" && !locExists(b.near)) out.push({ level: "error", text: t("The pick row measures from location {n}, which the map no longer has.", { n: b.near }), trigger: at });
     }
   }
   if (options.camera) {
     const l = input.locations[options.camera.location - 1];
-    if (!l || l.empty) out.push({ level: "error", text: `The camera follows location ${options.camera.location}, which the map no longer has.` });
-    else if (!l.named) out.push({ level: "error", text: `The camera finds its location by name, and location ${options.camera.location} has none of its own.` });
+    if (!l || l.empty) out.push({ level: "error", text: t("The camera follows location {n}, which the map no longer has.", { n: options.camera.location }) });
+    else if (!l.named) out.push({ level: "error", text: t("The camera finds its location by name, and location {n} has none of its own.", { n: options.camera.location }) });
   }
-  if (options.bgm && !input.soundPresent(options.bgm.path)) out.push({ level: "error", text: `The background music ${options.bgm.path.split("\\").pop()} is not in the map archive.` });
-  if (!input.runtime) out.push({ level: "error", text: "The eudplib plugin is not running: it is the library that builds EUD maps. Install or turn it on under Plugins \u25B8 Manage Plugins\u2026" });
+  if (options.bgm && !input.soundPresent(options.bgm.path)) out.push({ level: "error", text: t("The background music {file} is not in the map archive.", { file: options.bgm.path.split("\\").pop() ?? "" }) });
+  if (!input.runtime) out.push({ level: "error", text: t("The eudplib plugin is not running: it is the library that builds EUD maps. Install or turn it on under Plugins \u25B8 Manage Plugins\u2026") });
   const rank = { error: 0, warn: 1, info: 2 };
   return out.sort((a2, b) => rank[a2.level] - rank[b.level]);
 }
@@ -6826,7 +7057,7 @@ var CAMMOVE_SWITCH = "cammove";
 var eudplib = (api) => api.services.get(EUDPLIB_SERVICE);
 var runtimeOf = (svc) => svc ? { eudplib: svc.versions.eudplib, euddraft: svc.versions.euddraft } : null;
 function buildStatus(host, store) {
-  const triggers = store.list.filter((t) => needsBuild(store, t)).length;
+  const triggers = store.list.filter((t2) => needsBuild(store, t2)).length;
   const revision = sourceRevision(store.list, store.sidecar, host.revisionExtra());
   const last = store.sidecar.settings.lastBuild ?? null;
   return { triggers, freshness: buildFreshness(last, revision), last, revision };
@@ -6836,27 +7067,27 @@ var timeOf = (iso) => {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
 };
 function openBuildDialog(api, host, store, everyFrame) {
-  const t = api.i18n.t;
+  const t2 = api.i18n.t;
   const el = api.ui.el;
   const w = api.ui.widgets;
   const builds = orderBuilds(store.sidecar.builds, store.list);
   const chats = builds.filter((b) => b.kind === "chat").length;
   const hooks = builds.length - chats;
   const options = { ...DEFAULT_OPTIONS, ...store.sidecar.settings.build };
-  const saveOptions = () => store.updateSidecar(t("Build options"), { settings: { ...store.sidecar.settings, build: options } });
+  const saveOptions = () => store.updateSidecar(t2("Build options"), { settings: { ...store.sidecar.settings, build: options } });
   const plugins = () => composePlugins(builds, store.sidecar.chat, everyFrame, store.sidecar.msqc, options, options.camera ? 0 : null);
   const locations = host.locations().filter((l) => l.value !== 64 && l.named);
-  const cameraOn = w.checkbox(t("The camera follows a location, for everyone"), { value: !!options.camera });
+  const cameraOn = w.checkbox(t2("The camera follows a location, for everyone"), { value: !!options.camera });
   const cameraLoc = w.select(locations.map((l) => ({ value: l.value, label: l.label })), { value: options.camera?.location ?? locations[0]?.value ?? 0 });
   const inertia = w.number({ value: options.camera?.inertia ?? 5, min: 1, max: 60 });
   const maxspeed = w.number({ value: options.camera?.maxspeed ?? 48, min: 1, max: 999 });
-  const cameraStart = w.checkbox(t("Start following at once (a trigger sets the cammove switch)"), { value: true });
+  const cameraStart = w.checkbox(t2("Start following at once (a trigger sets the cammove switch)"), { value: true });
   const readCamera = () => {
     const loc = locations.find((l) => l.value === Number(cameraLoc.value));
     options.camera = cameraOn.input.checked && loc ? { location: loc.value, name: loc.label, inertia: Number(inertia.value) || 5, maxspeed: Number(maxspeed.value) || 48 } : null;
   };
   const sounds = host.sounds().filter((s) => s.value !== 0);
-  const bgmOn = w.checkbox(t("Loop a sound as background music"), { value: !!options.bgm });
+  const bgmOn = w.checkbox(t2("Loop a sound as background music"), { value: !!options.bgm });
   const bgmPath = w.select(sounds.map((s) => ({ value: s.value, label: s.label })), { value: sounds.find((s) => api.names.string(s.value) === options.bgm?.path)?.value ?? sounds[0]?.value ?? 0 });
   const bgmLen = w.number({ value: options.bgm?.length ?? 60, min: 1, max: 3600, step: 0.5 });
   const readBgm = () => {
@@ -6872,8 +7103,8 @@ function openBuildDialog(api, host, store, everyFrame) {
     const secs = host.wavSeconds(path);
     if (secs) bgmLen.value = String(Math.round(secs * 2) / 2);
   });
-  const noAir = w.checkbox(t("Air units pass through one another"), { value: options.noAirCollision });
-  const unlimiter = w.checkbox(t("Lift the sprite and image limits"), { value: options.unlimiter });
+  const noAir = w.checkbox(t2("Air units pass through one another"), { value: options.noAirCollision });
+  const unlimiter = w.checkbox(t2("Lift the sprite and image limits"), { value: options.unlimiter });
   const readAll = () => {
     readCamera();
     readBgm();
@@ -6887,10 +7118,10 @@ function openBuildDialog(api, host, store, everyFrame) {
   const summary = el(
     "ul",
     {},
-    el("li", {}, chats ? t("{n, plural, one {# chat command} other {# chat commands}}", { n: chats }) : t("No chat commands")),
-    el("li", {}, hooks ? t("{n, plural, one {# build row} other {# build rows}} (text, maths, unit passes, checks)", { n: hooks }) : t("No build rows")),
-    el("li", {}, plugins().MSQC ? t("Synced input (keys, clicks, mouse) through MSQC") : t("No synced input")),
-    el("li", {}, everyFrame ? t("Triggers run every frame (turbo)") : t("Triggers run every two seconds"))
+    el("li", {}, chats ? t2("{n, plural, one {# chat command} other {# chat commands}}", { n: chats }) : t2("No chat commands")),
+    el("li", {}, hooks ? t2("{n, plural, one {# build row} other {# build rows}} (text, maths, unit passes, checks)", { n: hooks }) : t2("No build rows")),
+    el("li", {}, plugins().MSQC ? t2("Synced input (keys, clicks, mouse) through MSQC") : t2("No synced input")),
+    el("li", {}, everyFrame ? t2("Triggers run every frame (turbo)") : t2("Triggers run every two seconds"))
   );
   const nothing = !Object.keys(plugins()).length;
   const fresh = el("div", { className: "mg-build-fresh" });
@@ -6900,9 +7131,9 @@ function openBuildDialog(api, host, store, everyFrame) {
   const renderFresh = () => {
     const st = buildStatus(host, store);
     fresh.replaceChildren();
-    if (st.freshness === "never") fresh.append(el("span", {}, t("This map has not been built yet.")));
-    else if (st.freshness === "fresh") fresh.append(el("span", {}, t("Built from the map as it is now, {when}{file}.", { when: timeOf(st.last.at), file: st.last.file ? ` (${st.last.file})` : "" })));
-    else fresh.append(el("span", { style: "color: var(--warn)" }, t("The map changed since its last build, {when}{file}: that output is stale.", { when: timeOf(st.last.at), file: st.last.file ? ` (${st.last.file})` : "" })));
+    if (st.freshness === "never") fresh.append(el("span", {}, t2("This map has not been built yet.")));
+    else if (st.freshness === "fresh") fresh.append(el("span", {}, t2("Built from the map as it is now, {when}{file}.", { when: timeOf(st.last.at), file: st.last.file ? ` (${st.last.file})` : "" })));
+    else fresh.append(el("span", { style: "color: var(--warn)" }, t2("The map changed since its last build, {when}{file}: that output is stale.", { when: timeOf(st.last.at), file: st.last.file ? ` (${st.last.file})` : "" })));
   };
   const problems = () => {
     readAll();
@@ -6933,7 +7164,7 @@ function openBuildDialog(api, host, store, everyFrame) {
         li.append(el("button", { type: "button", className: "mg-sim-link", onclick: () => {
           store.select(i);
           handle?.close();
-        } }, t("Show")));
+        } }, t2("Show")));
       }
       problemsEl.append(li);
     }
@@ -6946,8 +7177,8 @@ function openBuildDialog(api, host, store, everyFrame) {
       return;
     }
     const state = svc.state();
-    const where = state === "ready" ? t("ready in this editor") : state === "installing" ? t("being downloaded") : t("downloaded on the first build, {mb} MB", { mb: Math.round(svc.downloadBytes / 1e5) / 10 });
-    runtimeLine.textContent = t("Builds run with eudplib {eudplib} and euddraft {euddraft}, {where}.", { eudplib: svc.versions.eudplib, euddraft: svc.versions.euddraft, where });
+    const where = state === "ready" ? t2("ready in this editor") : state === "installing" ? t2("being downloaded") : t2("downloaded on the first build, {mb} MB", { mb: Math.round(svc.downloadBytes / 1e5) / 10 });
+    runtimeLine.textContent = t2("Builds run with eudplib {eudplib} and euddraft {euddraft}, {where}.", { eudplib: svc.versions.eudplib, euddraft: svc.versions.euddraft, where });
   };
   const watching = api.services.watch(EUDPLIB_SERVICE, () => {
     renderRuntime();
@@ -6957,38 +7188,38 @@ function openBuildDialog(api, host, store, everyFrame) {
   cameraLoc.addEventListener("change", () => renderProblems());
   bgmPath.addEventListener("change", () => renderProblems());
   handle = api.ui.dialog({
-    title: t("Build EUD map"),
+    title: t2("Build EUD map"),
     size: "md",
     mount(body) {
       renderFresh();
       renderRuntime();
       renderProblems();
       body.append(
-        w.hint(t("euddraft adds the code for the rows below to the map as it stands, here in the editor, and the built map is saved as a file. Nothing leaves this machine. Only StarCraft: Remastered plays the result. Keep this map as the source: the built one is the compiled output, the way a program is.")),
+        w.hint(t2("euddraft adds the code for the rows below to the map as it stands, here in the editor, and the built map is saved as a file. Nothing leaves this machine. Only StarCraft: Remastered plays the result. Keep this map as the source: the built one is the compiled output, the way a program is.")),
         summary,
         fresh,
         problemsEl,
         w.group(
-          t("Map-wide"),
-          w.column(cameraOn, w.form([{ label: t("Location"), field: cameraLoc }, { label: t("Inertia"), field: inertia }, { label: t("Max speed"), field: maxspeed }]), cameraStart),
-          w.column(bgmOn, w.form([{ label: t("Sound"), field: bgmPath }, { label: t("Seconds"), field: bgmLen }])),
+          t2("Map-wide"),
+          w.column(cameraOn, w.form([{ label: t2("Location"), field: cameraLoc }, { label: t2("Inertia"), field: inertia }, { label: t2("Max speed"), field: maxspeed }]), cameraStart),
+          w.column(bgmOn, w.form([{ label: t2("Sound"), field: bgmPath }, { label: t2("Seconds"), field: bgmLen }])),
           noAir,
           unlimiter,
-          w.hint(t("The camera follows a location by its name, so only named locations are offered. It follows while a switch named cammove is set, so a trigger can turn it on and off; the switch and a helper location named cammoveLoc are made in this map at build time. A looped sound needs its length; a plain WAV's is read from the file."))
+          w.hint(t2("The camera follows a location by its name, so only named locations are offered. It follows while a switch named cammove is set, so a trigger can turn it on and off; the switch and a helper location named cammoveLoc are made in this map at build time. A looped sound needs its length; a plain WAV's is read from the file."))
         ),
         runtimeLine,
         status,
         log
       );
-      if (nothing && !locations.length) status.set(t("Nothing in this map needs a build; a plain save is all it takes."), "warn");
+      if (nothing && !locations.length) status.set(t2("Nothing in this map needs a build; a plain save is all it takes."), "warn");
       return () => watching.dispose();
     },
     buttons: [
-      { label: t("Build\u2026"), primary: true, closes: false, run: async () => {
+      { label: t2("Build\u2026"), primary: true, closes: false, run: async () => {
         readAll();
         const errors = renderProblems().filter((p) => p.level === "error").length;
         if (errors) {
-          status.set(t("{n, plural, one {Fix the problem above first.} other {Fix the # problems above first.}}", { n: errors }), "error");
+          status.set(t2("{n, plural, one {Fix the problem above first.} other {Fix the # problems above first.}}", { n: errors }), "error");
           return;
         }
         saveOptions();
@@ -6996,18 +7227,18 @@ function openBuildDialog(api, host, store, everyFrame) {
         if (options.camera) {
           cammove = host.ensureLocation(CAMMOVE_LOC);
           if (cammove === null) {
-            status.set(t("The camera needs one free location slot for its helper location."), "error");
+            status.set(t2("The camera needs one free location slot for its helper location."), "error");
             return;
           }
           const sw = host.ensureSwitch(CAMMOVE_SWITCH);
           if (sw === null) {
-            status.set(t("The camera needs one free switch to turn it on and off."), "error");
+            status.set(t2("The camera needs one free switch to turn it on and off."), "error");
             return;
           }
           store.reload();
           const sets = store.list.some((tr) => tr.actions.some((a2) => a2.type === 13 && a2.target === sw));
           if (cameraStart.input.checked && !sets) {
-            store.commit(t("Start the camera"), (intern) => {
+            store.commit(t2("Start the camera"), (intern) => {
               const tr = api.triggers.newTrigger([17]);
               tr.conditions = [api.triggers.newCondition(22)];
               tr.actions = [{ ...api.triggers.newAction(47), text: intern("Camera: start following") }, { ...api.triggers.newAction(13), target: sw, modifier: 4 }];
@@ -7019,21 +7250,21 @@ function openBuildDialog(api, host, store, everyFrame) {
         const revision = buildStatus(host, store).revision;
         const file = await api.document.export();
         if (!file) {
-          status.set(t("No map is open."), "error");
+          status.set(t2("No map is open."), "error");
           return;
         }
         const svc = eudplib(api);
         if (!svc) {
-          status.set(t("The eudplib plugin is not running; install or turn it on under Plugins \u25B8 Manage Plugins\u2026"), "error");
+          status.set(t2("The eudplib plugin is not running; install or turn it on under Plugins \u25B8 Manage Plugins\u2026"), "error");
           return;
         }
-        const ready = await svc.ensure({ reason: t("Magenta needs it to build this map.") });
+        const ready = await svc.ensure({ reason: t2("Magenta needs it to build this map.") });
         renderRuntime();
         if (!ready) {
-          status.set(t("Not built: the build runtime was not installed."), "warn");
+          status.set(t2("Not built: the build runtime was not installed."), "warn");
           return;
         }
-        status.busy(t("Building\u2026"));
+        status.busy(t2("Building\u2026"));
         log.style.display = "none";
         log.value = "";
         try {
@@ -7043,19 +7274,19 @@ function openBuildDialog(api, host, store, everyFrame) {
           } });
           const out = result.map;
           const saved = await api.ui.saveFile(out, `${stem2}-eud.scx`);
-          status.set(saved ? t("Built: {name}, {kb} KB in {s} s.", { name: saved.fileName, kb: Math.round(out.length / 1024), s: Math.round(result.ms / 100) / 10 }) : t("Built, but not saved."), saved ? "ok" : "warn");
+          status.set(saved ? t2("Built: {name}, {kb} KB in {s} s.", { name: saved.fileName, kb: Math.round(out.length / 1024), s: Math.round(result.ms / 100) / 10 }) : t2("Built, but not saved."), saved ? "ok" : "warn");
           if (result.log) {
             log.value = result.log;
             log.style.display = "";
           }
-          store.updateSidecar(t("Build"), { settings: { ...store.sidecar.settings, lastBuild: lastBuildRecord(revision, saved?.fileName ?? null, runtimeOf(svc)) } });
+          store.updateSidecar(t2("Build"), { settings: { ...store.sidecar.settings, lastBuild: lastBuildRecord(revision, saved?.fileName ?? null, runtimeOf(svc)) } });
           renderFresh();
         } catch (err) {
-          status.set(t("The build failed: {why}. The map is unchanged.", { why: String(err.message ?? err) }), "error");
+          status.set(t2("The build failed: {why}. The map is unchanged.", { why: String(err.message ?? err) }), "error");
           if (log.value) log.style.display = "";
         }
       } },
-      { label: t("Close") }
+      { label: t2("Close") }
     ]
   });
 }
@@ -7077,12 +7308,12 @@ function check(trigger4, ctx = {}) {
   const conditions = liveConditions(trigger4);
   const actions = liveActions(trigger4);
   const own = owners(trigger4);
-  if (own.length === 0 && !ctx.template) out.push({ level: "error", text: "No player owns this trigger, so it never runs." });
-  if (actions.length === 0) out.push({ level: "warn", text: "This trigger has no actions." });
-  if (conditions.length >= MAX_CONDITIONS) out.push({ level: "info", text: "All 16 condition slots are used." });
-  if (actions.length >= MAX_ACTIONS) out.push({ level: "info", text: "All 64 action slots are used." });
+  if (own.length === 0 && !ctx.template) out.push({ level: "error", text: t("No player owns this trigger, so it never runs.") });
+  if (actions.length === 0) out.push({ level: "warn", text: t("This trigger has no actions.") });
+  if (conditions.length >= MAX_CONDITIONS) out.push({ level: "info", text: t("All 16 condition slots are used.") });
+  if (actions.length >= MAX_ACTIONS) out.push({ level: "info", text: t("All 64 action slots are used.") });
   const enabledConditions = conditions.map((c2, index) => ({ c: c2, index })).filter(({ c: c2 }) => !isConditionDisabled(c2));
-  if (enabledConditions.some(({ c: c2 }) => c2.type === ConditionType.Never)) out.push({ level: "warn", text: "A Never condition means this trigger never fires." });
+  if (enabledConditions.some(({ c: c2 }) => c2.type === ConditionType.Never)) out.push({ level: "warn", text: t("A Never condition means this trigger never fires.") });
   for (let i = 0; i < enabledConditions.length; i++) for (let j = i + 1; j < enabledConditions.length; j++) {
     const a2 = enabledConditions[i].c, b = enabledConditions[j].c;
     if (a2.type !== b.type || a2.player !== b.player || a2.unitId !== b.unitId || a2.location !== b.location || a2.resource !== b.resource || a2.mask !== b.mask) continue;
@@ -7090,23 +7321,23 @@ function check(trigger4, ctx = {}) {
     if (!def?.args.some((x) => x.kind === "comparison")) continue;
     const lo = a2.comparison === Comparison.AtLeast ? a2 : b.comparison === Comparison.AtLeast ? b : null;
     const hi = a2.comparison === Comparison.AtMost ? a2 : b.comparison === Comparison.AtMost ? b : null;
-    if (lo && hi && lo.amount > hi.amount) out.push({ level: "warn", text: `Conditions ${enabledConditions[i].index + 1} and ${enabledConditions[j].index + 1} contradict each other: at least ${lo.amount} and at most ${hi.amount}.` });
-    if (a2.comparison === Comparison.Exactly && b.comparison === Comparison.Exactly && a2.amount !== b.amount) out.push({ level: "warn", text: `Conditions ${enabledConditions[i].index + 1} and ${enabledConditions[j].index + 1} contradict each other: exactly ${a2.amount} and exactly ${b.amount}.` });
+    if (lo && hi && lo.amount > hi.amount) out.push({ level: "warn", text: t("Conditions {a} and {b} contradict each other: at least {lo} and at most {hi}.", { a: enabledConditions[i].index + 1, b: enabledConditions[j].index + 1, lo: lo.amount, hi: hi.amount }) });
+    if (a2.comparison === Comparison.Exactly && b.comparison === Comparison.Exactly && a2.amount !== b.amount) out.push({ level: "warn", text: t("Conditions {a} and {b} contradict each other: exactly {x} and exactly {y}.", { a: enabledConditions[i].index + 1, b: enabledConditions[j].index + 1, x: a2.amount, y: b.amount }) });
   }
   const sharedOwner = own.some((o) => o >= 12);
   const perPlayer = enabledConditions.some(({ c: c2 }) => c2.type === ConditionType.Deaths && c2.player === 13);
   const usesSwitch = enabledConditions.some(({ c: c2 }) => c2.type === ConditionType.Switch) && actions.some((a2) => a2.type === ActionType.SetSwitch && !isActionDisabled(a2));
-  if (sharedOwner && perPlayer && usesSwitch) out.push({ level: "warn", text: "Every owner runs this trigger, and its switch is shared: when the Current Player condition is false for one of them, that run can flip the switch for the others. Guard with a death counter of the Current Player instead." });
+  if (sharedOwner && perPlayer && usesSwitch) out.push({ level: "warn", text: t("Every owner runs this trigger, and its switch is shared: when the Current Player condition is false for one of them, that run can flip the switch for the others. Guard with a death counter of the Current Player instead.") });
   const localRead = enabledConditions.find(({ c: c2 }) => c2.type === ConditionType.Deaths && isEud(c2.player) && recognizeCondition(c2)?.entry.local);
   if (localRead && actions.some((a2) => !isActionDisabled(a2) && !LOCAL_ACTIONS.has(a2.type))) {
-    out.push({ level: "warn", text: `${recognizeCondition(localRead.c).entry.name} is each computer's own, and this trigger changes the game for everyone: the players can go out of sync. For a key or a click, use a synced press (search "key press"); a read like this fits only what one screen shows.`, at: { kind: "condition", index: localRead.index } });
+    out.push({ level: "warn", text: t(`{what} is each computer's own, and this trigger changes the game for everyone: the players can go out of sync. For a key or a click, use a synced press (search "key press"); a read like this fits only what one screen shows.`, { what: translate(recognizeCondition(localRead.c).entry.name) }), at: { kind: "condition", index: localRead.index } });
   }
   const preserved = (trigger4.flags & TriggerFlag.Preserve) !== 0 || actions.some((a2) => a2.type === ActionType.PreserveTrigger && !isActionDisabled(a2));
   const groups = actionSpans(actions).filter((s) => s.group);
   const inGroup = new Set(groups.flatMap((s) => Array.from({ length: s.count }, (_, i) => s.at + i)));
   for (const s of groups) {
     const v = s.group.entry.value;
-    if (v?.kind === "string" && s.group.value !== 0 && ctx.stringExists && !ctx.stringExists(s.group.value)) out.push({ level: "error", text: `${s.group.entry.name} names string ${s.group.value}, which the map does not have.`, at: { kind: "action", index: s.at } });
+    if (v?.kind === "string" && s.group.value !== 0 && ctx.stringExists && !ctx.stringExists(s.group.value)) out.push({ level: "error", text: t("{what} names string {n}, which the map does not have.", { what: translate(s.group.entry.name), n: s.group.value }), at: { kind: "action", index: s.at } });
   }
   const movedLater = /* @__PURE__ */ new Map();
   actions.forEach((a2, index) => {
@@ -7123,24 +7354,24 @@ function check(trigger4, ctx = {}) {
       const value = a2[arg.field];
       const row = movedLater.get(value);
       if (row === void 0) continue;
-      out.push({ level: "warn", text: `Row ${row + 1} moves ${ctx.locationName?.(value) ?? `location ${value}`} only after this cycle's triggers have all run, so this row still sees it where it was. Put this row in a trigger that fires in a later cycle.`, at });
+      out.push({ level: "warn", text: t("Row {row} moves {location} only after this cycle's triggers have all run, so this row still sees it where it was. Put this row in a trigger that fires in a later cycle.", { row: row + 1, location: ctx.locationName?.(value) ?? t("location {n}", { n: value }) }), at });
       break;
     }
     if (a2.type === ActionType.Wait || a2.type === ActionType.Transmission) {
-      if (preserved) out.push({ level: "warn", text: "A Wait in a preserved trigger holds up every other trigger of its owner while it waits, every cycle.", at });
-      if (ctx.everyFrame) out.push({ level: "warn", text: "With triggers running every frame, a Wait blocks the owner's other triggers for its whole length.", at });
+      if (preserved) out.push({ level: "warn", text: t("A Wait in a preserved trigger holds up every other trigger of its owner while it waits, every cycle."), at });
+      if (ctx.everyFrame) out.push({ level: "warn", text: t("With triggers running every frame, a Wait blocks the owner's other triggers for its whole length."), at });
     }
     const def = actionDef(a2.type);
     if (def) {
       for (const arg of def.args) {
         const value = a2[arg.field];
         if (arg.kind === "location") {
-          if (value === 0) out.push({ level: "warn", text: `${def.name} names no location.`, at });
-          else if (value !== LOCATION_ANYWHERE && ctx.locationExists && !ctx.locationExists(value)) out.push({ level: "error", text: `${def.name} names location ${value}, which the map no longer has.`, at });
+          if (value === 0) out.push({ level: "warn", text: t("{what} names no location.", { what: def.name }), at });
+          else if (value !== LOCATION_ANYWHERE && ctx.locationExists && !ctx.locationExists(value)) out.push({ level: "error", text: t("{what} names location {n}, which the map no longer has.", { what: def.name, n: value }), at });
         }
-        if (arg.kind === "text" && value !== 0 && ctx.stringExists && !ctx.stringExists(value)) out.push({ level: "error", text: `${def.name} names string ${value}, which the map does not have.`, at });
-        if (arg.kind === "text" && value === 0 && (a2.type === ActionType.DisplayText || a2.type === ActionType.SetMissionObjectives)) out.push({ level: "warn", text: `${def.name} has no text.`, at });
-        if (arg.kind === "wav" && value !== 0 && ctx.wavPresent && !ctx.wavPresent(value)) out.push({ level: "warn", text: `The sound of ${def.name} is not in the map.`, at });
+        if (arg.kind === "text" && value !== 0 && ctx.stringExists && !ctx.stringExists(value)) out.push({ level: "error", text: t("{what} names string {n}, which the map does not have.", { what: def.name, n: value }), at });
+        if (arg.kind === "text" && value === 0 && (a2.type === ActionType.DisplayText || a2.type === ActionType.SetMissionObjectives)) out.push({ level: "warn", text: t("{what} has no text.", { what: def.name }), at });
+        if (arg.kind === "wav" && value !== 0 && ctx.wavPresent && !ctx.wavPresent(value)) out.push({ level: "warn", text: t("The sound of {what} is not in the map.", { what: def.name }), at });
       }
     }
     if (a2.type === ActionType.SetDeaths) {
@@ -7148,13 +7379,13 @@ function check(trigger4, ctx = {}) {
         const row = recognizeAction(a2);
         if (!row) {
           const access = accessOf(a2.player, a2.unitId, a2.mask, a2.location);
-          out.push({ level: "info", text: `Writes memory at 0x${access.address.toString(16).toUpperCase()}, which the catalogue does not know.`, at });
-        } else if (!row.entry.remastered.write) out.push({ level: "error", text: `Remastered does not let a trigger write ${row.entry.name.toLowerCase()}.`, at });
-        else if (row.entry.value?.kind === "string" && ctx.stringExists && !ctx.stringExists(row.value)) out.push({ level: "error", text: `${row.entry.name} names string ${row.value}, which the map does not have.`, at });
-        else if (row.entry.value?.kind === "string" && row.value === 0) out.push({ level: "warn", text: `${row.entry.name} has no text.`, at });
+          out.push({ level: "info", text: t("Writes memory at 0x{hex}, which the catalogue does not know.", { hex: access.address.toString(16).toUpperCase() }), at });
+        } else if (!row.entry.remastered.write) out.push({ level: "error", text: t("Remastered does not let a trigger write {what}.", { what: translate(row.entry.name).toLowerCase() }), at });
+        else if (row.entry.value?.kind === "string" && ctx.stringExists && !ctx.stringExists(row.value)) out.push({ level: "error", text: t("{what} names string {n}, which the map does not have.", { what: translate(row.entry.name), n: row.value }), at });
+        else if (row.entry.value?.kind === "string" && row.value === 0) out.push({ level: "warn", text: t("{what} has no text.", { what: translate(row.entry.name) }), at });
       } else if (ctx.claimedCells && a2.unitId < 228) {
         for (const p of playerSlots(a2.player, own)) if (ctx.claimedCells.has(cellKey(p, a2.unitId))) {
-          out.push({ level: "warn", text: "This death counter is used by another plugin's generated triggers.", at });
+          out.push({ level: "warn", text: t("This death counter is used by another plugin's generated triggers."), at });
           break;
         }
       }
@@ -7166,22 +7397,22 @@ function check(trigger4, ctx = {}) {
     const def = conditionDef(c2.type);
     if (def) for (const arg of def.args) {
       const value = c2[arg.field];
-      if (arg.kind === "location" && value !== 0 && value !== LOCATION_ANYWHERE && ctx.locationExists && !ctx.locationExists(value)) out.push({ level: "error", text: `${def.name} names location ${value}, which the map no longer has.`, at });
-      if (arg.kind === "location" && value === 0) out.push({ level: "warn", text: `${def.name} names no location.`, at });
+      if (arg.kind === "location" && value !== 0 && value !== LOCATION_ANYWHERE && ctx.locationExists && !ctx.locationExists(value)) out.push({ level: "error", text: t("{what} names location {n}, which the map no longer has.", { what: def.name, n: value }), at });
+      if (arg.kind === "location" && value === 0) out.push({ level: "warn", text: t("{what} names no location.", { what: def.name }), at });
     }
     if (c2.type === ConditionType.Deaths && isEud(c2.player) && !recognizeCondition(c2)) {
       const access = accessOf(c2.player, c2.unitId, c2.mask, c2.location);
-      out.push({ level: "info", text: `Reads memory at 0x${access.address.toString(16).toUpperCase()}, which the catalogue does not know.`, at });
+      out.push({ level: "info", text: t("Reads memory at 0x{hex}, which the catalogue does not know.", { hex: access.address.toString(16).toUpperCase() }), at });
     }
     if (c2.type === ConditionType.Deaths && !isEud(c2.player) && ctx.claimedCells && c2.unitId < 228) {
       for (const p of playerSlots(c2.player, own)) if (ctx.claimedCells.has(cellKey(p, c2.unitId))) {
-        out.push({ level: "warn", text: "This death counter is used by another plugin's generated triggers.", at });
+        out.push({ level: "warn", text: t("This death counter is used by another plugin's generated triggers."), at });
         break;
       }
     }
   });
   if (ctx.fileVersion !== void 0 && ctx.fileVersion < REMASTERED_VER) {
-    const text = `Only StarCraft: Remastered runs this row; the map is marked ${ctx.versionLabel ?? `VER ${ctx.fileVersion}`}, a revision 1.16.1 also plays.`;
+    const text = t("Only StarCraft: Remastered runs this row; the map is marked {revision}, a revision 1.16.1 also plays.", { revision: ctx.versionLabel ?? `VER ${ctx.fileVersion}` });
     conditions.forEach((c2, index) => {
       if (isConditionDisabled(c2)) return;
       if (c2.type === ConditionType.Deaths && isEud(c2.player) || ctx.magentaRow?.("condition", index)) out.push({ level: "info", code: "revision", text, at: { kind: "condition", index } });
@@ -7199,16 +7430,16 @@ var norm2 = (s) => s.toLowerCase().replace(/[^\p{L}\p{N} ]+/gu, " ").replace(/\s
 var stem = (w) => w.length > 3 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w;
 var startsWord = (token, w) => token.startsWith(w) || token.startsWith(stem(w)) || stem(token).startsWith(stem(w));
 function scoreText(text, query, words2) {
-  const t = norm2(text);
-  if (!t) return 0;
-  if (t === query || t === stem(query)) return 100;
-  if (t.startsWith(query) || t.startsWith(stem(query))) return 80;
-  const tw = t.split(" ");
+  const t2 = norm2(text);
+  if (!t2) return 0;
+  if (t2 === query || t2 === stem(query)) return 100;
+  if (t2.startsWith(query) || t2.startsWith(stem(query))) return 80;
+  const tw = t2.split(" ");
   if (words2.every((w) => tw.some((x) => startsWord(x, w)))) return 60 + Math.min(10, 10 * words2.length / tw.length);
-  if (t.includes(query)) return 40;
-  if (words2.every((w) => t.includes(w))) return 30;
+  if (t2.includes(query)) return 40;
+  if (words2.every((w) => t2.includes(w))) return 30;
   let i = 0;
-  for (const ch of t) if (ch === query[i]) i++;
+  for (const ch of t2) if (ch === query[i]) i++;
   if (i === query.length && query.length >= 3) return 10;
   return 0;
 }
@@ -7476,38 +7707,76 @@ var NATIVE_ALIASES = {
   "Score": ["points"],
   "Opponents": ["players remaining", "enemies left"]
 };
+var wordsOf = (template) => template.replace(/\{[^}]+\}/g, " ").replace(/\s+/g, " ").trim();
+var both = (english2) => {
+  const shown = translate(english2);
+  return shown === english2 ? [english2] : [english2, shown];
+};
 function entryAliases(e, kind) {
-  const sentence = (kind === "condition" ? e.sentence.condition : e.sentence.action) ?? "";
-  const words2 = sentence.replace(/\{[^}]+\}/g, " ").replace(/\s+/g, " ").trim();
-  return [...e.aliases ?? [], ...words2 ? [words2] : [], ...e.value?.choices?.map((c2) => c2.label) ?? [], ...e.args.some((a2) => a2.kind === "race") ? RACES.map((r) => r.label) : []];
+  const sentence3 = (kind === "condition" ? e.sentence.condition : e.sentence.action) ?? "";
+  const shown = translate(e.name);
+  return [
+    ...e.aliases ?? [],
+    ...shown !== e.name ? [e.name] : [],
+    ...sentence3 ? both(sentence3).map(wordsOf) : [],
+    ...e.value?.choices?.flatMap((c2) => both(c2.label)) ?? [],
+    ...e.args.some((a2) => a2.kind === "race") ? RACES.flatMap((r) => both(r.label)) : []
+  ];
 }
+var english = (label) => translate(label) === label ? [] : [label];
+function nativeAliases(name, template) {
+  const shown = template ? translate(template) : "";
+  const extra = shown && shown !== template ? [wordsOf(shown)] : [];
+  const list = [...NATIVE_ALIASES[name] ?? [], ...extra];
+  return list.length ? list : void 0;
+}
+var OWN_LABELS = {
+  compare: msg("Compare two counters"),
+  chat: msg("The chat said a command"),
+  key: msg("A player pressed a key (synced)"),
+  click: msg("A player clicked (synced)"),
+  mouseIn: msg("A player's mouse is over a location (synced)"),
+  scan: msg("Any unit of a kind has a stat below or above"),
+  text: msg("Show text with numbers in it"),
+  math: msg("Multiply, divide or randomize a counter"),
+  foreach: msg("For each unit of a kind"),
+  pick: msg("The weakest, strongest, nearest or a random unit of a kind"),
+  count: msg("Count units into a counter"),
+  read: msg("Read a unit's stat into a counter"),
+  setloc: msg("Move a location to coordinates or by an offset"),
+  copy: msg("Copy a counter into another"),
+  add: msg("Add a counter to another"),
+  subtract: msg("Subtract a counter from another")
+};
+var COUNTERS = msg("Counters");
+var BUILD = msg("Build");
 function paletteItems(kind) {
   const items = [];
   if (kind === "condition") for (const d of CONDITION_DEFS) {
-    if (d.type !== ConditionType.Briefing) items.push({ label: d.name, aliases: NATIVE_ALIASES[d.name], priority: 1, value: { kind: "native", type: d.type } });
+    if (d.type !== ConditionType.Briefing) items.push({ label: d.name, aliases: nativeAliases(d.name, CONDITION_TEMPLATES[d.type]), priority: 1, value: { kind: "native", type: d.type } });
   }
   else for (const d of ACTION_DEFS) {
-    if (d.type !== ActionType.None) items.push({ label: d.name, aliases: NATIVE_ALIASES[d.name], priority: 1, value: { kind: "native", type: d.type } });
+    if (d.type !== ActionType.None) items.push({ label: d.name, aliases: nativeAliases(d.name, ACTION_TEMPLATES[d.type]), priority: 1, value: { kind: "native", type: d.type } });
   }
-  for (const e of entriesFor(kind)) if (available(e)) items.push({ label: e.name, aliases: entryAliases(e, kind), group: e.group, value: { kind: "eud", entry: e } });
+  for (const e of entriesFor(kind)) if (available(e)) items.push({ label: translate(e.name), aliases: entryAliases(e, kind), group: translate(e.group), value: { kind: "eud", entry: e } });
   if (kind === "condition") {
-    items.push({ label: "Compare two counters", aliases: ["greater", "less", "equal", "variable"], group: "Counters", value: { kind: "expansion", what: "compare" } });
-    items.push({ label: "The chat said a command", aliases: ["chat", "typed", "command", "message", "-heal", "-set with a number", "argument"], group: "Build", value: { kind: "build", what: "chat" } });
-    items.push({ label: "A player pressed a key (synced)", aliases: ["keyboard", "hotkey", "press", "input"], group: "Build", value: { kind: "build", what: "key" } });
-    items.push({ label: "A player clicked (synced)", aliases: ["mouse button", "left click", "right click", "input"], group: "Build", value: { kind: "build", what: "click" } });
-    items.push({ label: "A player's mouse is over a location (synced)", aliases: ["hover", "cursor", "pointer", "mouse at"], group: "Build", value: { kind: "build", what: "mouseIn" } });
-    items.push({ label: "Any unit of a kind has a stat below or above", aliases: ["hp check", "low health", "any unit", "damaged", "scan", "is attacking", "under attack", "burrowed", "moving", "has a target", "percent", "below 30%", "hp %"], group: "Build", value: { kind: "build", what: "scan" } });
+    items.push({ label: translate(OWN_LABELS.compare), aliases: ["greater", "less", "equal", "variable", ...english(OWN_LABELS.compare)], group: translate(COUNTERS), value: { kind: "expansion", what: "compare" } });
+    items.push({ label: translate(OWN_LABELS.chat), aliases: ["chat", "typed", "command", "message", "-heal", "-set with a number", "argument", ...english(OWN_LABELS.chat)], group: translate(BUILD), value: { kind: "build", what: "chat" } });
+    items.push({ label: translate(OWN_LABELS.key), aliases: ["keyboard", "hotkey", "press", "input", ...english(OWN_LABELS.key)], group: translate(BUILD), value: { kind: "build", what: "key" } });
+    items.push({ label: translate(OWN_LABELS.click), aliases: ["mouse button", "left click", "right click", "input", ...english(OWN_LABELS.click)], group: translate(BUILD), value: { kind: "build", what: "click" } });
+    items.push({ label: translate(OWN_LABELS.mouseIn), aliases: ["hover", "cursor", "pointer", "mouse at", ...english(OWN_LABELS.mouseIn)], group: translate(BUILD), value: { kind: "build", what: "mouseIn" } });
+    items.push({ label: translate(OWN_LABELS.scan), aliases: ["hp check", "low health", "any unit", "damaged", "scan", "is attacking", "under attack", "burrowed", "moving", "has a target", "percent", "below 30%", "hp %", ...english(OWN_LABELS.scan)], group: translate(BUILD), value: { kind: "build", what: "scan" } });
   } else {
-    items.push({ label: "Show text with numbers in it", aliases: ["display counter", "print score", "dynamic text", "message with value"], group: "Build", value: { kind: "build", what: "text" } });
-    items.push({ label: "Multiply, divide or randomize a counter", aliases: ["times", "random", "modulo", "remainder", "maths"], group: "Build", value: { kind: "build", what: "math" } });
-    items.push({ label: "For each unit of a kind", aliases: ["all units", "every unit", "loop", "set hp of all", "give units with colour", "order all", "stun", "stim", "ensnare", "plague", "lockdown", "hold fire", "no-clip", "set minerals of field", "damage", "heal", "drain", "take hit points", "restore shields", "damage zone"], group: "Build", value: { kind: "build", what: "foreach" } });
-    items.push({ label: "The weakest, strongest, nearest or a random unit of a kind", aliases: ["pick", "lowest hp", "closest", "nearest", "most kills", "find unit", "one unit", "random unit", "lottery", "under the mouse", "clicked unit", "unit at the cursor"], group: "Build", value: { kind: "build", what: "pick" } });
-    items.push({ label: "Count units into a counter", aliases: ["number of", "how many", "tally"], group: "Build", value: { kind: "build", what: "count" } });
-    items.push({ label: "Read a unit's stat into a counter", aliases: ["get hp", "read health", "unit's kills", "position into", "what unit is at", "unit type at", "owner of"], group: "Build", value: { kind: "build", what: "read" } });
-    items.push({ label: "Move a location to coordinates or by an offset", aliases: ["set location", "place location", "location xy", "pixels", "move by", "shift location", "slide", "scroll location"], group: "Build", value: { kind: "build", what: "setloc" } });
-    items.push({ label: "Copy a counter into another", aliases: ["set variable", "assign", "transfer"], group: "Counters", value: { kind: "expansion", what: "copy" } });
-    items.push({ label: "Add a counter to another", aliases: ["sum", "plus", "variable"], group: "Counters", value: { kind: "expansion", what: "add" } });
-    items.push({ label: "Subtract a counter from another", aliases: ["minus", "difference", "variable"], group: "Counters", value: { kind: "expansion", what: "subtract" } });
+    items.push({ label: translate(OWN_LABELS.text), aliases: ["display counter", "print score", "dynamic text", "message with value", ...english(OWN_LABELS.text)], group: translate(BUILD), value: { kind: "build", what: "text" } });
+    items.push({ label: translate(OWN_LABELS.math), aliases: ["times", "random", "modulo", "remainder", "maths", ...english(OWN_LABELS.math)], group: translate(BUILD), value: { kind: "build", what: "math" } });
+    items.push({ label: translate(OWN_LABELS.foreach), aliases: ["all units", "every unit", "loop", "set hp of all", "give units with colour", "order all", "stun", "stim", "ensnare", "plague", "lockdown", "hold fire", "no-clip", "set minerals of field", "damage", "heal", "drain", "take hit points", "restore shields", "damage zone", ...english(OWN_LABELS.foreach)], group: translate(BUILD), value: { kind: "build", what: "foreach" } });
+    items.push({ label: translate(OWN_LABELS.pick), aliases: ["pick", "lowest hp", "closest", "nearest", "most kills", "find unit", "one unit", "random unit", "lottery", "under the mouse", "clicked unit", "unit at the cursor", ...english(OWN_LABELS.pick)], group: translate(BUILD), value: { kind: "build", what: "pick" } });
+    items.push({ label: translate(OWN_LABELS.count), aliases: ["number of", "how many", "tally", ...english(OWN_LABELS.count)], group: translate(BUILD), value: { kind: "build", what: "count" } });
+    items.push({ label: translate(OWN_LABELS.read), aliases: ["get hp", "read health", "unit's kills", "position into", "what unit is at", "unit type at", "owner of", ...english(OWN_LABELS.read)], group: translate(BUILD), value: { kind: "build", what: "read" } });
+    items.push({ label: translate(OWN_LABELS.setloc), aliases: ["set location", "place location", "location xy", "pixels", "move by", "shift location", "slide", "scroll location", ...english(OWN_LABELS.setloc)], group: translate(BUILD), value: { kind: "build", what: "setloc" } });
+    items.push({ label: translate(OWN_LABELS.copy), aliases: ["set variable", "assign", "transfer", ...english(OWN_LABELS.copy)], group: translate(COUNTERS), value: { kind: "expansion", what: "copy" } });
+    items.push({ label: translate(OWN_LABELS.add), aliases: ["sum", "plus", "variable", ...english(OWN_LABELS.add)], group: translate(COUNTERS), value: { kind: "expansion", what: "add" } });
+    items.push({ label: translate(OWN_LABELS.subtract), aliases: ["minus", "difference", "variable", ...english(OWN_LABELS.subtract)], group: translate(COUNTERS), value: { kind: "expansion", what: "subtract" } });
   }
   return items;
 }
@@ -7621,39 +7890,39 @@ function chipEl(api, label, className, color, title) {
   return b;
 }
 function choicesOf(api, kind) {
-  return api.triggers.defs.choices(kind).map((c2) => ({ value: c2.value, label: c2.label }));
+  return api.triggers.defs.choices(kind).map((c2) => ({ value: c2.value, label: translate(c2.label) }));
 }
 function renderRow(ctx, kind, index, record, problems, h) {
   const { api } = ctx;
   const el = api.ui.el;
   const disabled = kind === "condition" ? isConditionDisabled(record) : isActionDisabled(record);
-  const sentence = el("span", { className: "mg-sentence" });
+  const sentence3 = el("span", { className: "mg-sentence" });
   const eud = kind === "condition" ? recognizeCondition(record) : recognizeAction(record);
   const hh = h;
   const lower2 = (row) => kind === "condition" ? lowerCondition(row) : lowerAction(row);
-  if (eud) renderEud(ctx, kind, eud, sentence, (row) => hh.onChange(lower2(row)), (text, rowFor) => hh.onChangeWithText(text, (i) => lower2(rowFor(i))));
-  else if (kind === "condition") renderNative(ctx, "condition", record, describeCondition(record, ctx.namer).segments, sentence, h);
-  else renderNative(ctx, "action", record, describeAction(record, ctx.namer).segments, sentence, h);
-  return rowShell(ctx, kind, index, sentence, disabled, problems, h);
+  if (eud) renderEud(ctx, kind, eud, sentence3, (row) => hh.onChange(lower2(row)), (text, rowFor) => hh.onChangeWithText(text, (i) => lower2(rowFor(i))));
+  else if (kind === "condition") renderNative(ctx, "condition", record, describeCondition(record, ctx.namer).segments, sentence3, h);
+  else renderNative(ctx, "action", record, describeAction(record, ctx.namer).segments, sentence3, h);
+  return rowShell(ctx, kind, index, sentence3, disabled, problems, h);
 }
 function renderGroupRow(ctx, index, row, records, problems, h) {
-  const sentence = ctx.api.ui.el("span", { className: "mg-sentence" });
-  renderEud(ctx, "action", row, sentence, (next) => h.onChange(lowerActions(next)), (text, rowFor) => h.onChangeWithText(text, (i) => lowerActions(rowFor(i))));
-  return rowShell(ctx, "action", index, sentence, records.every(isActionDisabled), problems, h);
+  const sentence3 = ctx.api.ui.el("span", { className: "mg-sentence" });
+  renderEud(ctx, "action", row, sentence3, (next) => h.onChange(lowerActions(next)), (text, rowFor) => h.onChangeWithText(text, (i) => lowerActions(rowFor(i))));
+  return rowShell(ctx, "action", index, sentence3, records.every(isActionDisabled), problems, h);
 }
-function rowShell(ctx, kind, index, sentence, disabled, problems, h) {
+function rowShell(ctx, kind, index, sentence3, disabled, problems, h) {
   const { api } = ctx;
   const el = api.ui.el;
-  const t = api.i18n.t;
+  const t2 = api.i18n.t;
   const tools = el(
     "span",
     { className: "mg-tools" },
-    api.ui.widgets.button(disabled ? "\u2713" : "\u2298", { ghost: true, title: disabled ? t("Enable") : t("Disable"), onClick: () => h.onToggle() }),
-    api.ui.widgets.button("\u2191", { ghost: true, title: t("Move up (Alt+Up)"), onClick: () => h.onMove(-1) }),
-    api.ui.widgets.button("\u2193", { ghost: true, title: t("Move down (Alt+Down)"), onClick: () => h.onMove(1) }),
-    api.ui.widgets.button("\u2715", { ghost: true, title: t("Remove (Delete)"), onClick: () => h.onRemove() })
+    api.ui.widgets.button(disabled ? "\u2713" : "\u2298", { ghost: true, title: disabled ? t2("Enable") : t2("Disable"), onClick: () => h.onToggle() }),
+    api.ui.widgets.button("\u2191", { ghost: true, title: t2("Move up (Alt+Up)"), onClick: () => h.onMove(-1) }),
+    api.ui.widgets.button("\u2193", { ghost: true, title: t2("Move down (Alt+Down)"), onClick: () => h.onMove(1) }),
+    api.ui.widgets.button("\u2715", { ghost: true, title: t2("Remove (Delete)"), onClick: () => h.onRemove() })
   );
-  const row = el("div", { className: `mg-row${disabled ? " disabled" : ""}`, tabIndex: 0, "data-kind": kind, "data-index": index }, sentence, tools);
+  const row = el("div", { className: `mg-row${disabled ? " disabled" : ""}`, tabIndex: 0, "data-kind": kind, "data-index": index }, sentence3, tools);
   row.addEventListener("keydown", (e) => {
     if (e.target !== row) return;
     if (e.key === "Delete" || e.key === "Backspace") {
@@ -7678,7 +7947,7 @@ function rowShell(ctx, kind, index, sentence, disabled, problems, h) {
 }
 function renderNative(ctx, kind, record, segments, into, h) {
   const { api, host, store } = ctx;
-  const t = api.i18n.t;
+  const t2 = api.i18n.t;
   const set = (field, value) => h.onChange({ ...record, [field]: value });
   for (const seg of segments) {
     if (seg.kind === "text") {
@@ -7688,7 +7957,7 @@ function renderNative(ctx, kind, record, segments, into, h) {
     const { arg, value } = seg;
     const className = seg.role === "eud" ? "eud" : seg.role === "counter" ? "counter" : arg.kind === "text" ? "text" : "";
     const color = arg.kind === "player" ? ctx.namer.playerColor?.(value) ?? null : null;
-    const chip3 = chipEl(api, seg.label, className, color, arg.kind === "location" && value > 0 && value < 64 ? t("Click to change; hover to show on the map") : arg.label);
+    const chip3 = chipEl(api, seg.label, className, color, arg.kind === "location" && value > 0 && value < 64 ? t2("Click to change; hover to show on the map") : translate(arg.label));
     if (arg.kind === "location") {
       chip3.addEventListener("pointerenter", () => host.flashLocation(value));
     }
@@ -7718,25 +7987,25 @@ function renderNative(ctx, kind, record, segments, into, h) {
           pickSound(api, host, chip3, value, (v) => set(arg.field, v));
           break;
         case "text":
-          pickText(api, chip3, ctx.namer.string(value) ?? "", (text) => h.onChangeWithText(text, (i) => ({ ...record, [arg.field]: i })), { title: arg.label });
+          pickText(api, chip3, ctx.namer.string(value) ?? "", (text) => h.onChangeWithText(text, (i) => ({ ...record, [arg.field]: i })), { title: translate(arg.label) });
           break;
         case "aiScript":
           pickNamed(api, chip3, AI_SCRIPT_CHOICES.map((s) => ({ value: aiScriptCode(s.id), label: s.name, hint: s.id })), value, (v) => set(arg.field, v), 300);
           break;
         case "cuwp":
-          pickNumber(api, chip3, value, (v) => set(arg.field, v), { min: 0, max: 64, hint: t("A Unit Properties slot, 1 to 64; 0 for none") });
+          pickNumber(api, chip3, value, (v) => set(arg.field, v), { min: 0, max: 64, hint: t2("A Unit Properties slot, 1 to 64; 0 for none") });
           break;
         case "slot":
-          pickNumber(api, chip3, value + 1, (v) => set(arg.field, v - 1), { min: 1, max: 4, hint: t("Portrait slot, 1 to 4") });
+          pickNumber(api, chip3, value + 1, (v) => set(arg.field, v - 1), { min: 1, max: 4, hint: t2("Portrait slot, 1 to 4") });
           break;
         case "count":
-          pickNumber(api, chip3, value, (v) => set(arg.field, v), { min: 0, max: 255, hint: t("0 means all") });
+          pickNumber(api, chip3, value, (v) => set(arg.field, v), { min: 0, max: 255, hint: t2("0 means all") });
           break;
         case "percent":
           pickNumber(api, chip3, value, (v) => set(arg.field, v), { min: 0, max: 100, unit: "%" });
           break;
         case "duration":
-          pickNumber(api, chip3, value, (v) => set(arg.field, v), { min: 0, max: 4294967295, unit: arg.label === "Seconds" ? t("seconds") : "ms" });
+          pickNumber(api, chip3, value, (v) => set(arg.field, v), { min: 0, max: 4294967295, unit: arg.label === "Seconds" ? t2("seconds") : "ms" });
           break;
         case "number":
         case "amount":
@@ -7755,7 +8024,7 @@ function renderNative(ctx, kind, record, segments, into, h) {
   }
   const isDeaths = record.type === (kind === "condition" ? ConditionType.Deaths : ActionType.SetDeaths);
   if (isDeaths && record.player < 27 && !segments.some((s) => s.kind === "chip" && s.role === "counter")) {
-    const name = api.ui.el("button", { type: "button", className: "mg-chip", title: t("Give this death counter a name, and use it by name everywhere") }, t("name\u2026"));
+    const name = api.ui.el("button", { type: "button", className: "mg-chip", title: t2("Give this death counter a name, and use it by name everywhere") }, t2("name\u2026"));
     name.addEventListener("click", () => nameCounter(ctx, record.player, record.unitId));
     into.append(" ", name);
   }
@@ -7772,59 +8041,59 @@ function nameCounter(ctx, player, unit) {
 }
 function pickCounter(ctx, chip3, record, kind, h) {
   const { api, host, store } = ctx;
-  const t = api.i18n.t;
+  const t2 = api.i18n.t;
   const items = store.sidecar.counters.map((c2) => ({ value: cellKey(c2.player, c2.unit), label: c2.name, hint: `${ctx.namer.player(c2.player)} \xB7 ${ctx.namer.unit(c2.unit)}` }));
-  const current2 = cellKey(record.player, record.unitId);
+  const current3 = cellKey(record.player, record.unitId);
   pickChoice(api, chip3, items, (key) => {
     const c2 = store.sidecar.counters.find((x) => cellKey(x.player, x.unit) === key);
     if (c2) h.onChange({ ...record, player: c2.player, unitId: c2.unit });
   }, {
-    current: current2,
+    current: current3,
     width: 280,
     searchable: true,
     actions: [
-      { label: t("New counter\u2026"), run: (p) => {
+      { label: t2("New counter\u2026"), run: (p) => {
         p.close();
         const used = usage(store.list).cells;
         for (const c2 of store.sidecar.counters) used.add(cellKey(c2.player, c2.unit));
         const cell = allocate(used, host.placedUnitIds());
         if (!cell) {
-          api.ui.toast({ kind: "error", title: t("No free counter cell") });
+          api.ui.toast({ kind: "error", title: t2("No free counter cell") });
           return;
         }
-        void api.ui.prompt(t("Name for the new counter"), { title: t("New counter") }).then((name) => {
+        void api.ui.prompt(t2("Name for the new counter"), { title: t2("New counter") }).then((name) => {
           if (typeof name !== "string" || !name.trim()) return;
-          store.commit(t("New counter"), () => store.list.map((tr, i) => i !== ctx.triggerIndex ? tr : {
+          store.commit(t2("New counter"), () => store.list.map((tr, i) => i !== ctx.triggerIndex ? tr : {
             ...tr,
             conditions: kind === "condition" ? tr.conditions.map((c2) => c2 === record ? { ...c2, player: cell[0], unitId: cell[1] } : c2) : tr.conditions,
             actions: kind === "action" ? tr.actions.map((a2) => a2 === record ? { ...a2, player: cell[0], unitId: cell[1] } : a2) : tr.actions
           }), { sidecar: { counters: [...store.sidecar.counters, { player: cell[0], unit: cell[1], name: name.trim() }] } });
         });
       } },
-      { label: t("Rename\u2026"), run: (p) => {
+      { label: t2("Rename\u2026"), run: (p) => {
         p.close();
         nameCounter(ctx, record.player, record.unitId);
       } },
-      { label: t("Show as player and unit"), run: (p) => {
+      { label: t2("Show as player and unit"), run: (p) => {
         p.close();
-        store.updateSidecar(t("Unname counter"), { counters: store.sidecar.counters.filter((c2) => !(c2.player === record.player && c2.unit === record.unitId)) });
+        store.updateSidecar(t2("Unname counter"), { counters: store.sidecar.counters.filter((c2) => !(c2.player === record.player && c2.unit === record.unitId)) });
       } }
     ]
   });
 }
 function eudTitle(entry2, row) {
-  const address2 = entryAddress(entry2, row.args);
-  const rw = entry2.remastered.read && entry2.remastered.write ? "read and write" : entry2.remastered.read ? "read only" : "write only";
-  const where = entry2.parts?.length ? `${entry2.parts.length} records from 0x${address2.toString(16).toUpperCase()}` : `0x${address2.toString(16).toUpperCase()}, ${entry2.width === "bit" ? "one bit" : `${entry2.width} byte${entry2.width > 1 ? "s" : ""}`}`;
-  return [`${entry2.name} \u2014 ${where}, Remastered: ${rw}.`, entry2.note, entry2.verified ? "Seen working in Remastered." : "Not yet seen working in Remastered.", `Source: ${entry2.source}.`].filter(Boolean).join("\n");
+  const hex2 = entryAddress(entry2, row.args).toString(16).toUpperCase();
+  const rw = entry2.remastered.read && entry2.remastered.write ? t("read and write") : entry2.remastered.read ? t("read only") : t("write only");
+  const where = entry2.parts?.length ? t("{n} records from 0x{hex}", { n: entry2.parts.length, hex: hex2 }) : entry2.width === "bit" ? t("0x{hex}, one bit", { hex: hex2 }) : t("{n, plural, one {0x{hex}, # byte} other {0x{hex}, # bytes}}", { n: entry2.width, hex: hex2 });
+  return [t("{name} \u2014 {where}, Remastered: {access}.", { name: translate(entry2.name), where, access: rw }), entry2.note ? translate(entry2.note) : "", entry2.verified ? t("Seen working in Remastered.") : t("Not yet seen working in Remastered."), t("Source: {source}.", { source: entry2.source })].filter(Boolean).join("\n");
 }
 function renderEud(ctx, kind, row, into, onChange, onText) {
   const { api, host } = ctx;
-  const t = api.i18n.t;
+  const t2 = api.i18n.t;
   const placed = new Map(host.placedUnits().map((u) => [u.slot, u]));
   const extraWithSlots = { ...ctx.extra, slot: (n) => {
     const u = placed.get(n);
-    return u ? `${ctx.namer.unit(u.unitId)} (slot ${n})` : `slot ${n}`;
+    return u ? t2("{unit} (slot {n})", { unit: ctx.namer.unit(u.unitId), n }) : t2("slot {n}", { n });
   } };
   const segments = describeEud(row, kind, ctx.namer, extraWithSlots);
   const entry2 = row.entry;
@@ -7847,12 +8116,12 @@ function renderEud(ctx, kind, row, into, onChange, onText) {
       }
       if (seg.slot === "value") {
         const v = entry2.value;
-        if (v?.choices) pickChoice(api, chip3, v.choices, (value) => update({ value }), { current: row.value });
+        if (v?.choices) pickChoice(api, chip3, v.choices.map((c2) => ({ value: c2.value, label: translate(c2.label) })), (value) => update({ value }), { current: row.value });
         else if (v?.kind === "unit") pickUnitType(api, host, chip3, row.value, (value) => update({ value }), { classes: false });
         else if (v?.kind === "player") pickPlayer(api, host, chip3, row.value, (value) => update({ value }), { eud: false });
-        else if (v?.kind === "weapon") pickNamed(api, chip3, [...host.weapons(), { value: 130, label: t("No weapon") }], row.value, (value) => update({ value }));
-        else if (v?.kind === "string") pickText(api, chip3, ctx.namer.string(row.value) ?? "", (text) => onText?.(text, (index) => ({ ...row, value: index })), { title: entry2.name });
-        else pickNumber(api, chip3, row.value, (value) => update({ value }), { min: v?.min ?? 0, max: v?.max ?? 4294967295, unit: v?.unit, integer: (v?.scale ?? 1) === 1, step: (v?.scale ?? 1) === 1 ? 1 : 0.01, hint: entry2.note });
+        else if (v?.kind === "weapon") pickNamed(api, chip3, [...host.weapons(), { value: 130, label: t2("No weapon") }], row.value, (value) => update({ value }));
+        else if (v?.kind === "string") pickText(api, chip3, ctx.namer.string(row.value) ?? "", (text) => onText?.(text, (index) => ({ ...row, value: index })), { title: translate(entry2.name) });
+        else pickNumber(api, chip3, row.value, (value) => update({ value }), { min: v?.min ?? 0, max: v?.max ?? 4294967295, unit: v?.unit ? translate(v.unit) : void 0, integer: (v?.scale ?? 1) === 1, step: (v?.scale ?? 1) === 1 ? 1 : 0.01, hint: entry2.note ? translate(entry2.note) : void 0 });
         return;
       }
       const arg = seg.slot.arg;
@@ -7880,7 +8149,7 @@ function renderEud(ctx, kind, row, into, onChange, onText) {
           pickPlacedUnit(api, host, chip3, seg.value, setArg);
           break;
         case "race":
-          pickChoice(api, chip3, RACES, setArg, { current: seg.value });
+          pickChoice(api, chip3, RACES.map((r) => ({ value: r.value, label: translate(r.label) })), setArg, { current: seg.value });
           break;
         default:
           pickNumber(api, chip3, seg.value, setArg, { min: 0, max: arg.max - 1 });
@@ -7890,11 +8159,11 @@ function renderEud(ctx, kind, row, into, onChange, onText) {
   }
   const tag2 = api.ui.el("span", { className: `mg-tag${entry2.verified ? "" : " unverified"}`, title: eudTitle(entry2, row) }, "EUD");
   into.append(tag2);
-  if (kind === "action" && !entry2.remastered.write) into.append(api.ui.el("span", { className: "mg-tag ro", title: t("Remastered does not let a trigger write this address; the action does nothing in the game.") }, t("read only")));
+  if (kind === "action" && !entry2.remastered.write) into.append(api.ui.el("span", { className: "mg-tag ro", title: t2("Remastered does not let a trigger write this address; the action does nothing in the game.") }, t2("read only")));
 }
 
 // src/model/explain.ts
-var join = (parts, word) => parts.length <= 1 ? parts.join("") : `${parts.slice(0, -1).join(", ")} ${word} ${parts[parts.length - 1]}`;
+var join = (parts) => parts.length <= 1 ? parts.join("") : t("{list} and {last}", { list: parts.slice(0, -1).join(", "), last: parts[parts.length - 1] });
 var VERBS = /* @__PURE__ */ new Set(["show", "set", "end", "unpause", "run", "remove", "pause", "kill", "create", "center", "wait", "unmute", "play", "ping", "order", "mute", "move", "load", "give", "enable", "display", "disable", "add", "make", "name", "the", "vision", "invincibility", "placed", "copy", "subtract", "compare", "count", "read", "pick", "for", "every", "while"]);
 var lower = (s) => {
   const word = s.split(/\s/, 1)[0] ?? "";
@@ -7909,18 +8178,18 @@ function waitSeconds(trigger4) {
   }
   return Math.round(ms / 100) / 10;
 }
-var isPreserved = (t) => (t.flags & TriggerFlag.Preserve) !== 0 || liveActions(t).some((a2) => a2.type === ActionType.PreserveTrigger && !isActionDisabled(a2));
-function usesCurrentPlayer(t) {
-  return liveConditions(t).some((c2) => !isConditionDisabled(c2) && c2.player === PlayerGroup.CurrentPlayer) || liveActions(t).some((a2) => !isActionDisabled(a2) && (a2.player === PlayerGroup.CurrentPlayer || a2.type === ActionType.GiveUnits && a2.target === PlayerGroup.CurrentPlayer));
+var isPreserved = (t2) => (t2.flags & TriggerFlag.Preserve) !== 0 || liveActions(t2).some((a2) => a2.type === ActionType.PreserveTrigger && !isActionDisabled(a2));
+function usesCurrentPlayer(t2) {
+  return liveConditions(t2).some((c2) => !isConditionDisabled(c2) && c2.player === PlayerGroup.CurrentPlayer) || liveActions(t2).some((a2) => !isActionDisabled(a2) && (a2.player === PlayerGroup.CurrentPlayer || a2.type === ActionType.GiveUnits && a2.target === PlayerGroup.CurrentPlayer));
 }
 function explain(trigger4, index, list, input) {
   const lines = [];
   const own = owners(trigger4);
-  if (input.perPlayer) lines.push(`Runs once for each of ${join(input.perPlayer.players.map(input.player), "and")}, with ${input.player(input.perPlayer.placeholder)} standing for the player in every condition and action.`);
-  else if (own.length === 0) lines.push("No player owns this trigger, so it never runs.");
-  else if (own.length === 1 && own[0] === PlayerGroup.AllPlayers) lines.push("Every player runs this trigger, each on their own.");
-  else if (own.length === 1) lines.push(`${input.player(own[0])} runs this trigger.`);
-  else lines.push(`${join(own.map(input.player), "and")} each run this trigger on their own.`);
+  if (input.perPlayer) lines.push(t("Runs once for each of {players}, with {group} standing for the player in every condition and action.", { players: join(input.perPlayer.players.map(input.player)), group: input.player(input.perPlayer.placeholder) }));
+  else if (own.length === 0) lines.push(t("No player owns this trigger, so it never runs."));
+  else if (own.length === 1 && own[0] === PlayerGroup.AllPlayers) lines.push(t("Every player runs this trigger, each on their own."));
+  else if (own.length === 1) lines.push(t("{player} runs this trigger.", { player: input.player(own[0]) }));
+  else lines.push(t("{players} each run this trigger on their own.", { players: join(own.map(input.player)) }));
   const conditions = liveConditions(trigger4);
   const live = conditions.map((c2, i) => ({ c: c2, text: input.conditions[i] ?? "" })).filter(({ c: c2 }) => !isConditionDisabled(c2));
   const skipped = conditions.length - live.length;
@@ -7928,35 +8197,35 @@ function explain(trigger4, index, list, input) {
   const always2 = live.every(({ c: c2 }) => c2.type === ConditionType.Always);
   const actions = liveActions(trigger4);
   const does = actions.map((a2, i) => ({ a: a2, text: input.actions[i] ?? "" })).filter(({ a: a2, text }) => !isActionDisabled(a2) && a2.type !== ActionType.Comment && a2.type !== ActionType.PreserveTrigger && text);
-  if (never) lines.push("A Never condition means it never fires.");
+  if (never) lines.push(t("A Never condition means it never fires."));
   else {
-    if (always2) lines.push("It fires on the first cycle.");
+    if (always2) lines.push(t("It fires on the first cycle."));
     else {
       const when = live.filter(({ c: c2 }) => c2.type !== ConditionType.Always).map((x) => lower(x.text));
-      lines.push(`It fires when ${join(when, "and")}${when.length === 2 ? " both hold" : when.length > 2 ? " all hold" : ""}.`);
+      lines.push(t("{n, plural, one {It fires when {when}.} =2 {It fires when {when} both hold.} other {It fires when {when} all hold.}}", { n: when.length, when: join(when) }));
     }
-    lines.push(does.length ? `Then: ${does.map((d) => lower(d.text)).join("; ")}.` : "It does nothing when it fires.");
+    lines.push(does.length ? t("Then: {actions}.", { actions: does.map((d) => lower(d.text)).join("; ") }) : t("It does nothing when it fires."));
   }
-  if (skipped) lines.push(skipped === 1 ? "One disabled condition is ignored." : `${skipped} disabled conditions are ignored.`);
-  const clock = input.everyFrame ? "every frame" : "every two seconds";
+  if (skipped) lines.push(t("{n, plural, one {One disabled condition is ignored.} other {# disabled conditions are ignored.}}", { n: skipped }));
+  const clock = input.everyFrame ? t("every frame") : t("every two seconds");
   if (!never && own.length) {
-    if (isPreserved(trigger4)) lines.push(always2 ? `It is preserved, so it runs again every cycle (${clock}).` : `It is preserved, so it fires again on every cycle (${clock}) its conditions hold.`);
-    else lines.push(own.length > 1 || own[0] === PlayerGroup.AllPlayers || input.perPlayer ? "It fires once for each owner and then stops." : "It fires once and then stops.");
+    if (isPreserved(trigger4)) lines.push(always2 ? t("It is preserved, so it runs again every cycle ({clock}).", { clock }) : t("It is preserved, so it fires again on every cycle ({clock}) its conditions hold.", { clock }));
+    else lines.push(own.length > 1 || own[0] === PlayerGroup.AllPlayers || input.perPlayer ? t("It fires once for each owner and then stops.") : t("It fires once and then stops."));
   }
   const wait = waitSeconds(trigger4);
-  if (wait > 0) lines.push(`Its Waits hold the owner's other triggers for ${wait} second${wait === 1 ? "" : "s"} in all${isPreserved(trigger4) ? ", every time it fires" : ""}.`);
-  if (usesCurrentPlayer(trigger4) && (own.length > 1 || own[0] >= 12 || input.perPlayer)) lines.push("Current Player is whichever owner is running it.");
+  if (wait > 0) lines.push(isPreserved(trigger4) ? t("{n, plural, one {Its Waits hold the owner's other triggers for # second in all, every time it fires.} other {Its Waits hold the owner's other triggers for # seconds in all, every time it fires.}}", { n: wait }) : t("{n, plural, one {Its Waits hold the owner's other triggers for # second in all.} other {Its Waits hold the owner's other triggers for # seconds in all.}}", { n: wait }));
+  if (usesCurrentPlayer(trigger4) && (own.length > 1 || own[0] >= 12 || input.perPlayer)) lines.push(t("Current Player is whichever owner is running it."));
   return { lines, refs: refsOf(list, index, input.anchorOf) };
 }
 var merge = (a2, b) => a2 === void 0 || a2 === b ? b : "both";
-function touches(t) {
+function touches(t2) {
   const out = /* @__PURE__ */ new Map();
   const add = (kind, id, use) => {
     const key = `${kind}:${id}`;
     const old = out.get(key);
     out.set(key, { kind, id, use: merge(old?.use, use) });
   };
-  const own = owners(t);
+  const own = owners(t2);
   const counter = (player, unit, use) => {
     if (isEud(player)) {
       const k = player + unit * 12;
@@ -7967,7 +8236,7 @@ function touches(t) {
     if (unit >= 228) return;
     for (const p of playerSlots(player, own)) add("counter", cellKey(p, unit), use);
   };
-  for (const c2 of liveConditions(t)) {
+  for (const c2 of liveConditions(t2)) {
     if (isConditionDisabled(c2)) continue;
     if (c2.type === ConditionType.Switch) add("switch", c2.resource, "reads");
     else if (c2.type === ConditionType.Deaths) counter(c2.player, c2.unitId, "reads");
@@ -7980,7 +8249,7 @@ function touches(t) {
       }
     }
   }
-  for (const a2 of liveActions(t)) {
+  for (const a2 of liveActions(t2)) {
     if (isActionDisabled(a2)) continue;
     if (a2.type === ActionType.SetSwitch) add("switch", a2.target, "writes");
     else if (a2.type === ActionType.SetDeaths) counter(a2.player, a2.unitId, "writes");
@@ -8009,14 +8278,14 @@ function mergeInto(into, from) {
 function refsOf(list, index, anchorOf2 = (i) => i) {
   const mine = /* @__PURE__ */ new Map();
   const theirs = /* @__PURE__ */ new Map();
-  list.forEach((t, i) => {
+  list.forEach((t2, i) => {
     const at = anchorOf2(i);
     if (at === index) {
-      mergeInto(mine, touches(t));
+      mergeInto(mine, touches(t2));
       return;
     }
     const acc = theirs.get(at) ?? /* @__PURE__ */ new Map();
-    mergeInto(acc, touches(t));
+    mergeInto(acc, touches(t2));
     theirs.set(at, acc);
   });
   if (!mine.size) return [];
@@ -8045,7 +8314,7 @@ function conditionWords(api, host, store, index, trigger4) {
   const extra = host.extra();
   const cmp = compareOf(store, index, trigger4);
   return liveConditions(trigger4).map((c2, i) => {
-    if (cmp && cmp.rows.includes(i)) return i === cmp.rows[0] ? `${cellLabel(cmp.x.a, namer)} is ${RELATION_WORDS[cmp.relation]} ${cellLabel(cmp.x.b, namer)}` : "";
+    if (cmp && cmp.rows.includes(i)) return i === cmp.rows[0] ? compareText(cellLabel(cmp.x.a, namer), cmp.relation, cellLabel(cmp.x.b, namer)) : "";
     const brow = conditionRowOf(store, c2);
     if (brow) return rowWords(api, (into) => renderConditionRow(api, host, store, brow, into, () => {
     }));
@@ -8068,7 +8337,7 @@ function actionWords(api, host, store, trigger4) {
     }
     const x = s.group ? null : counterExpansionOf(store, a2);
     if (x) {
-      out[s.at] = x.kind === "copy" ? `Copy ${cellLabel(x.from, namer)} into ${cellLabel(x.to, namer)}` : x.kind === "add" ? `Add ${cellLabel(x.from, namer)} to ${cellLabel(x.to, namer)}` : `Subtract ${cellLabel(x.from, namer)} from ${cellLabel(x.to, namer)}`;
+      out[s.at] = stepText(x.kind, cellLabel(x.from, namer), cellLabel(x.to, namer));
       continue;
     }
     out[s.at] = s.text;
@@ -8089,11 +8358,11 @@ function titleOf(api, host, store, index) {
 function renderEditor(deps, root) {
   const { api, host, store } = deps;
   const el = api.ui.el;
-  const t = api.i18n.t;
+  const t2 = api.i18n.t;
   root.replaceChildren();
   const index = store.selected;
   if (index === null || !store.list[index]) {
-    root.append(el("div", { className: "mg-empty" }, store.list.length ? t("Pick a trigger on the left, or add one.") : t("This map has no triggers yet. Add one with New.")));
+    root.append(el("div", { className: "mg-empty" }, store.list.length ? t2("Pick a trigger on the left, or add one.") : t2("This map has no triggers yet. Add one with New.")));
     return;
   }
   const trigger4 = store.list[index];
@@ -8102,8 +8371,8 @@ function renderEditor(deps, root) {
     root.append(el(
       "div",
       { className: "mg-locked" },
-      el("div", {}, t("Generated by {what}: edit it there, not here.", { what: claim.label })),
-      el("div", { className: "row" }, api.ui.widgets.button(t("Open {plugin}", { plugin: claim.badge }), { onClick: () => api.commands.run(`${claim.pluginId}.open`, { index }) }))
+      el("div", {}, t2("Generated by {what}: edit it there, not here.", { what: claim.label })),
+      el("div", { className: "row" }, api.ui.widgets.button(t2("Open {plugin}", { plugin: claim.badge }), { onClick: () => api.commands.run(`${claim.pluginId}.open`, { index }) }))
     ));
     return;
   }
@@ -8150,11 +8419,11 @@ function renderEditor(deps, root) {
   const replace = (label, next) => store.replace(index, next, label);
   const ci = commentIndex(trigger4);
   const titleText = ci >= 0 ? namer.string(trigger4.actions[ci].text) ?? "" : "";
-  const title = el("input", { className: "input", type: "text", placeholder: t("Untitled trigger \u2014 type a name"), value: titleText, title: t("The trigger's name, kept as its Comment action so every editor shows it") });
+  const title = el("input", { className: "input", type: "text", placeholder: t2("Untitled trigger \u2014 type a name"), value: titleText, title: t2("The trigger's name, kept as its Comment action so every editor shows it") });
   const commitTitle = () => {
     const text = title.value.trim();
     if (text === titleText || !text && ci < 0) return;
-    store.commit(t("Rename trigger"), (intern) => store.list.map((tr, i) => {
+    store.commit(t2("Rename trigger"), (intern) => store.list.map((tr, i) => {
       if (i !== index) return tr;
       const actions2 = [...tr.actions];
       if (ci < 0) actions2.unshift({ ...api.triggers.newAction(ActionType.Comment), text: intern(text) });
@@ -8172,19 +8441,19 @@ function renderEditor(deps, root) {
   });
   root.append(el("div", { className: "mg-titlebar" }, title));
   const own = owners(trigger4);
-  const playersRow = el("div", { className: "mg-players" }, el("span", { className: "hint" }, t("Runs for")));
+  const playersRow = el("div", { className: "mg-players" }, el("span", { className: "hint" }, t2("Runs for")));
   const groups = host.playerGroups();
   const players = host.players();
   for (const g of own) {
-    const chip3 = el("button", { type: "button", className: "mg-chip", title: t("Click to remove") }, g < 12 && players[g]?.color ? el("span", { className: "mg-dot", style: `background:${players[g].color}` }) : null, groups.find((x2) => x2.value === g)?.label ?? String(g));
-    chip3.addEventListener("click", () => replace(t("Change owners"), setOwners(trigger4, own.filter((x2) => x2 !== g))));
+    const chip3 = el("button", { type: "button", className: "mg-chip", title: t2("Click to remove") }, g < 12 && players[g]?.color ? el("span", { className: "mg-dot", style: `background:${players[g].color}` }) : null, groups.find((x2) => x2.value === g)?.label ?? String(g));
+    chip3.addEventListener("click", () => replace(t2("Change owners"), setOwners(trigger4, own.filter((x2) => x2 !== g))));
     playersRow.append(chip3);
   }
-  const addOwner = el("button", { type: "button", className: "mg-chip", title: t("Add a player or group") }, "+");
-  addOwner.addEventListener("click", () => pickChoice(api, addOwner, groups.filter((g) => !own.includes(g.value)).map((g) => ({ value: g.value, label: g.label, color: g.value < 12 ? players[g.value]?.color ?? null : void 0 })), (v) => replace(t("Change owners"), setOwners(trigger4, [...own, v])), { width: 220 }));
+  const addOwner = el("button", { type: "button", className: "mg-chip", title: t2("Add a player or group") }, "+");
+  addOwner.addEventListener("click", () => pickChoice(api, addOwner, groups.filter((g) => !own.includes(g.value)).map((g) => ({ value: g.value, label: g.label, color: g.value < 12 ? players[g.value]?.color ?? null : void 0 })), (v) => replace(t2("Change owners"), setOwners(trigger4, [...own, v])), { width: 220 }));
   playersRow.append(addOwner);
   if (perPlayer) {
-    playersRow.replaceChildren(el("span", { className: "hint" }, t("Runs once for each of")), ...perPlayer.players.map((p) => el("span", { className: "mg-chip" }, players[p]?.color ? el("span", { className: "mg-dot", style: `background:${players[p].color}` }) : null, groups.find((x2) => x2.value === p)?.label ?? String(p))), el("span", { className: "hint" }, t("with {group} standing for the player", { group: groups.find((x2) => x2.value === perPlayer.placeholder)?.label ?? "" })));
+    playersRow.replaceChildren(el("span", { className: "hint" }, t2("Runs once for each of")), ...perPlayer.players.map((p) => el("span", { className: "mg-chip" }, players[p]?.color ? el("span", { className: "mg-dot", style: `background:${players[p].color}` }) : null, groups.find((x2) => x2.value === p)?.label ?? String(p))), el("span", { className: "hint" }, t2("with {group} standing for the player", { group: groups.find((x2) => x2.value === perPlayer.placeholder)?.label ?? "" })));
   }
   root.append(playersRow);
   for (const p of general) root.append(el("div", { className: `mg-problem ${p.level}`, style: "padding-left:6px" }, p.text));
@@ -8192,43 +8461,43 @@ function renderEditor(deps, root) {
     root.append(el(
       "div",
       { className: "mg-problem info mg-offer" },
-      el("span", {}, t("Set the revision to Remastered 1.21+ and older clients refuse the map instead of playing it without these rows.")),
-      api.ui.widgets.button(t("Set revision to Remastered"), { ghost: true, onClick: () => host.setRemastered() })
+      el("span", {}, t2("Set the revision to Remastered 1.21+ and older clients refuse the map instead of playing it without these rows.")),
+      api.ui.widgets.button(t2("Set revision to Remastered"), { ghost: true, onClick: () => host.setRemastered() })
     ));
   }
   const conditions = liveConditions(trigger4);
-  const condSection = el("div", { className: "mg-section" }, el("div", { className: "mg-section-head" }, t("Conditions"), el("span", { className: "grow" }), el("span", { className: "hint" }, `${conditions.length}/${MAX_CONDITIONS}`)));
+  const condSection = el("div", { className: "mg-section" }, el("div", { className: "mg-section-head" }, t2("Conditions"), el("span", { className: "grow" }), el("span", { className: "hint" }, `${conditions.length}/${MAX_CONDITIONS}`)));
   const writeConditions = (label, next) => replace(label, { ...trigger4, conditions: next });
   conditions.forEach((c2, i) => {
     const brow = conditionRowOf(store, c2);
     if (brow) {
-      const sentence = el("span", { className: "mg-sentence" });
-      renderConditionRow(api, host, store, brow, sentence, (next) => writeConditions(t("Edit condition"), conditions.map((x2, j) => j === i ? next : x2)));
+      const sentence3 = el("span", { className: "mg-sentence" });
+      renderConditionRow(api, host, store, brow, sentence3, (next) => writeConditions(t2("Edit condition"), conditions.map((x2, j) => j === i ? next : x2)));
       const ownRecord = brow.kind === "scan" && !sharedElsewhere(store.list, brow.record, index) ? brow.record.id : null;
-      const remove = api.ui.widgets.button("\u2715", { ghost: true, title: t("Remove"), onClick: () => store.commit(t("Remove condition"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, conditions: conditions.filter((_, k) => k !== i) }), ownRecord ? { sidecar: { builds: store.sidecar.builds.filter((b) => b.id !== ownRecord) } } : {}) });
-      condSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove)), ...problemLines(at("condition", i))));
+      const remove = api.ui.widgets.button("\u2715", { ghost: true, title: t2("Remove"), onClick: () => store.commit(t2("Remove condition"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, conditions: conditions.filter((_, k) => k !== i) }), ownRecord ? { sidecar: { builds: store.sidecar.builds.filter((b) => b.id !== ownRecord) } } : {}) });
+      condSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence3, el("span", { className: "mg-tools" }, remove)), ...problemLines(at("condition", i))));
       return;
     }
     if (cmp && cmp.rows.includes(i)) {
       if (i !== cmp.rows[0]) return;
-      const sentence = el("span", { className: "mg-sentence" });
-      renderCompare(api, host, store, index, trigger4, cmp, sentence);
-      const remove = api.ui.widgets.button("\u2715", { ghost: true, title: t("Remove"), onClick: () => store.commit(t("Remove comparison"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, conditions: conditions.filter((_, k) => !cmp.rows.includes(k)) }), { sidecar: { expansions: store.sidecar.expansions.filter((x2) => x2.id !== cmp.x.id) } }) });
-      condSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove)), ...problemLines(at("condition", i))));
+      const sentence3 = el("span", { className: "mg-sentence" });
+      renderCompare(api, host, store, index, trigger4, cmp, sentence3);
+      const remove = api.ui.widgets.button("\u2715", { ghost: true, title: t2("Remove"), onClick: () => store.commit(t2("Remove comparison"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, conditions: conditions.filter((_, k) => !cmp.rows.includes(k)) }), { sidecar: { expansions: store.sidecar.expansions.filter((x2) => x2.id !== cmp.x.id) } }) });
+      condSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence3, el("span", { className: "mg-tools" }, remove)), ...problemLines(at("condition", i))));
       return;
     }
     condSection.append(renderRow(ctx, "condition", i, c2, at("condition", i), {
-      onChange: (rec) => writeConditions(t("Edit condition"), conditions.map((x2, j) => j === i ? rec : x2)),
-      onChangeWithText: (text, apply) => store.commit(t("Edit condition"), (intern) => store.list.map((tr, j) => j !== index ? tr : { ...tr, conditions: conditions.map((x2, k) => k === i ? apply(intern(text)) : x2) })),
-      onRemove: () => writeConditions(t("Remove condition"), conditions.filter((_, j) => j !== i)),
+      onChange: (rec) => writeConditions(t2("Edit condition"), conditions.map((x2, j) => j === i ? rec : x2)),
+      onChangeWithText: (text, apply) => store.commit(t2("Edit condition"), (intern) => store.list.map((tr, j) => j !== index ? tr : { ...tr, conditions: conditions.map((x2, k) => k === i ? apply(intern(text)) : x2) })),
+      onRemove: () => writeConditions(t2("Remove condition"), conditions.filter((_, j) => j !== i)),
       onMove: (d) => {
         const to = i + d;
         if (to < 0 || to >= conditions.length) return;
         const next = [...conditions];
         [next[i], next[to]] = [next[to], next[i]];
-        writeConditions(t("Move condition"), next);
+        writeConditions(t2("Move condition"), next);
       },
-      onToggle: () => writeConditions(t("Toggle condition"), conditions.map((x2, j) => j === i ? setConditionDisabled(x2, !(x2.flags & 2)) : x2))
+      onToggle: () => writeConditions(t2("Toggle condition"), conditions.map((x2, j) => j === i ? setConditionDisabled(x2, !(x2.flags & 2)) : x2))
     }));
   });
   if (conditions.length < MAX_CONDITIONS) condSection.append(addRow(api, "condition", ({ pick, entities, query }) => {
@@ -8239,49 +8508,49 @@ function renderEditor(deps, root) {
         const message = /^"?(.+?)"?$/.exec(query.replace(/^(the )?chat (said|command)\s*/i, "").replace(/\b(with|followed by) a (number|argument|amount|value)\b/i, "").trim())?.[1];
         const made = newChat(host, store, message && message !== query.trim() ? message : withNumber ? "-set" : void 0, withNumber ? "number" : null);
         if (!made) {
-          api.ui.toast({ kind: "error", title: t("No free counter cell for the chat command") });
+          api.ui.toast({ kind: "error", title: t2("No free counter cell for the chat command") });
           return;
         }
-        insert(t("Add chat command"), made.condition, { builds: made.builds, chat: made.chat, ...made.counters ? { counters: made.counters } : {} });
+        insert(t2("Add chat command"), made.condition, { builds: made.builds, chat: made.chat, ...made.counters ? { counters: made.counters } : {} });
       } else if (pick.what === "scan") {
         const made = newScan(host, store, query, entities.find((e) => e.kind === "unit")?.value ?? 0);
         if (!made) {
-          api.ui.toast({ kind: "error", title: t("No free counter cell for the check") });
+          api.ui.toast({ kind: "error", title: t2("No free counter cell for the check") });
           return;
         }
-        insert(t("Add unit check"), made.condition, { builds: made.builds });
+        insert(t2("Add unit check"), made.condition, { builds: made.builds });
       } else if (pick.what === "key" || pick.what === "click" || pick.what === "mouseIn") {
         const key = entities.find((e) => e.kind === "key");
         const loc = entities.find((e) => e.kind === "location");
         const made = newInput(host, store, pick.what, { code: key?.value, button: /right/i.test(query) ? "R" : "L", location: loc?.value });
         if (!made) {
-          api.ui.toast({ kind: "error", title: t("No room for synced input"), detail: t("It needs a free counter unit and, for the mouse, nine free location slots.") });
+          api.ui.toast({ kind: "error", title: t2("No room for synced input"), detail: t2("It needs a free counter unit and, for the mouse, nine free location slots.") });
           return;
         }
-        insert(t("Add input"), made.condition, { msqc: made.msqc });
+        insert(t2("Add input"), made.condition, { msqc: made.msqc });
       }
       return;
     }
     if (pick.kind === "expansion") {
       if (cmp) {
-        api.ui.toast({ kind: "info", title: t("One comparison per trigger"), detail: t("Put a second comparison in another trigger.") });
+        api.ui.toast({ kind: "info", title: t2("One comparison per trigger"), detail: t2("Put a second comparison in another trigger.") });
         return;
       }
       const made = newCompare(store, host, index, trigger4);
       if (!made) {
-        api.ui.toast({ kind: "error", title: t("No free counter cells for the comparison") });
+        api.ui.toast({ kind: "error", title: t2("No free counter cells for the comparison") });
         return;
       }
-      store.commit(t("Add comparison"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, conditions: [...conditions, ...made.conditions] }), { sidecar: { expansions: [...store.sidecar.expansions, made.expansion] } });
+      store.commit(t2("Add comparison"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, conditions: [...conditions, ...made.conditions] }), { sidecar: { expansions: [...store.sidecar.expansions, made.expansion] } });
       return;
     }
-    writeConditions(t("Add condition"), [...conditions, newCondition(api, pick, entities, query)]);
+    writeConditions(t2("Add condition"), [...conditions, newCondition(api, pick, entities, query)]);
   }, { names: () => host.parseNames() }));
   root.append(condSection);
   const actions = liveActions(trigger4);
   const spans = actionSpans(actions).filter((s) => s.at !== ci);
   const shownActions = spans.map((s) => ({ a: actions[s.at], i: s.at, span: s }));
-  const actSection = el("div", { className: "mg-section" }, el("div", { className: "mg-section-head" }, t("Actions"), el("span", { className: "grow" }), el("span", { className: "hint" }, `${actions.length}/${MAX_ACTIONS}`)));
+  const actSection = el("div", { className: "mg-section" }, el("div", { className: "mg-section-head" }, t2("Actions"), el("span", { className: "grow" }), el("span", { className: "hint" }, `${actions.length}/${MAX_ACTIONS}`)));
   const writeActions = (label, next) => replace(label, { ...trigger4, actions: next });
   const moveSpan = (pos, d) => {
     const to = pos + d;
@@ -8289,43 +8558,43 @@ function renderEditor(deps, root) {
     const a2 = shownActions[Math.min(pos, to)].span, b = shownActions[Math.max(pos, to)].span;
     if (a2.at + a2.count !== b.at) return;
     const next = [...actions.slice(0, a2.at), ...actions.slice(b.at, b.at + b.count), ...actions.slice(a2.at, a2.at + a2.count), ...actions.slice(b.at + b.count)];
-    writeActions(t("Move action"), next);
+    writeActions(t2("Move action"), next);
   };
   for (const [pos, { a: a2, i, span }] of shownActions.entries()) {
     if (span.group) {
       const records = actions.slice(i, i + span.count);
       const splice = (next) => [...actions.slice(0, i), ...next, ...actions.slice(i + span.count)];
       actSection.append(renderGroupRow(ctx, i, span.group, records, at("action", i), {
-        onChange: (recs) => writeActions(t("Edit action"), splice(recs)),
-        onChangeWithText: (text, apply) => store.commit(t("Edit action"), (intern) => store.list.map((tr, j) => j !== index ? tr : { ...tr, actions: splice(apply(intern(text))) })),
-        onRemove: () => writeActions(t("Remove action"), splice([])),
+        onChange: (recs) => writeActions(t2("Edit action"), splice(recs)),
+        onChangeWithText: (text, apply) => store.commit(t2("Edit action"), (intern) => store.list.map((tr, j) => j !== index ? tr : { ...tr, actions: splice(apply(intern(text))) })),
+        onRemove: () => writeActions(t2("Remove action"), splice([])),
         onMove: (d) => moveSpan(pos, d),
-        onToggle: () => writeActions(t("Toggle action"), splice(records.map((x2) => setActionDisabled(x2, !records.every((r) => r.flags & 2)))))
+        onToggle: () => writeActions(t2("Toggle action"), splice(records.map((x2) => setActionDisabled(x2, !records.every((r) => r.flags & 2)))))
       }));
       continue;
     }
     const hook = hookOf(store, a2);
     if (hook) {
-      const sentence = el("span", { className: "mg-sentence" });
-      renderHook(api, host, store, hook, sentence);
-      const remove = api.ui.widgets.button("\u2715", { ghost: true, title: t("Remove"), onClick: () => store.commit(t("Remove build row"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, actions: actions.filter((_, j2) => j2 !== i) }), sharedElsewhere(store.list, hook, index) ? {} : { sidecar: { builds: store.sidecar.builds.filter((b) => b.id !== hook.id) } }) });
-      actSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove)), ...problemLines(at("action", i))));
+      const sentence3 = el("span", { className: "mg-sentence" });
+      renderHook(api, host, store, hook, sentence3);
+      const remove = api.ui.widgets.button("\u2715", { ghost: true, title: t2("Remove"), onClick: () => store.commit(t2("Remove build row"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, actions: actions.filter((_, j2) => j2 !== i) }), sharedElsewhere(store.list, hook, index) ? {} : { sidecar: { builds: store.sidecar.builds.filter((b) => b.id !== hook.id) } }) });
+      actSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence3, el("span", { className: "mg-tools" }, remove)), ...problemLines(at("action", i))));
       continue;
     }
     const cx = counterExpansionOf(store, a2);
     if (cx) {
-      const sentence = el("span", { className: "mg-sentence" });
-      renderCounterExpansion(api, host, store, cx, sentence);
-      const remove = api.ui.widgets.button("\u2715", { ghost: true, title: t("Remove"), onClick: () => writeActions(t("Remove counter step"), actions.filter((_, j) => j !== i)) });
-      actSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence, el("span", { className: "mg-tools" }, remove)), ...problemLines(at("action", i))));
+      const sentence3 = el("span", { className: "mg-sentence" });
+      renderCounterExpansion(api, host, store, cx, sentence3);
+      const remove = api.ui.widgets.button("\u2715", { ghost: true, title: t2("Remove"), onClick: () => writeActions(t2("Remove counter step"), actions.filter((_, j) => j !== i)) });
+      actSection.append(el("div", {}, el("div", { className: "mg-row", tabIndex: 0 }, sentence3, el("span", { className: "mg-tools" }, remove)), ...problemLines(at("action", i))));
       continue;
     }
     actSection.append(renderRow(ctx, "action", i, a2, at("action", i), {
-      onChange: (rec) => writeActions(t("Edit action"), actions.map((x2, j) => j === i ? rec : x2)),
-      onChangeWithText: (text, apply) => store.commit(t("Edit action"), (intern) => store.list.map((tr, j) => j !== index ? tr : { ...tr, actions: actions.map((x2, k) => k === i ? apply(intern(text)) : x2) })),
-      onRemove: () => writeActions(t("Remove action"), actions.filter((_, j) => j !== i)),
+      onChange: (rec) => writeActions(t2("Edit action"), actions.map((x2, j) => j === i ? rec : x2)),
+      onChangeWithText: (text, apply) => store.commit(t2("Edit action"), (intern) => store.list.map((tr, j) => j !== index ? tr : { ...tr, actions: actions.map((x2, k) => k === i ? apply(intern(text)) : x2) })),
+      onRemove: () => writeActions(t2("Remove action"), actions.filter((_, j) => j !== i)),
       onMove: (d) => moveSpan(pos, d),
-      onToggle: () => writeActions(t("Toggle action"), actions.map((x2, j) => j === i ? setActionDisabled(x2, !(x2.flags & 2)) : x2))
+      onToggle: () => writeActions(t2("Toggle action"), actions.map((x2, j) => j === i ? setActionDisabled(x2, !(x2.flags & 2)) : x2))
     }));
   }
   if (actions.length < MAX_ACTIONS) actSection.append(addRow(api, "action", ({ pick, entities, query }) => {
@@ -8333,39 +8602,39 @@ function renderEditor(deps, root) {
       if (pick.what === "chat" || pick.what === "scan" || pick.what === "key" || pick.what === "click" || pick.what === "mouseIn") return;
       const made2 = newHook(host, store, pick.what, query, { unit: entities.find((e) => e.kind === "unit")?.value, location: entities.find((e) => e.kind === "location")?.value });
       if (!made2) {
-        api.ui.toast({ kind: "error", title: t("No free counter cell for the build row") });
+        api.ui.toast({ kind: "error", title: t2("No free counter cell for the build row") });
         return;
       }
-      store.commit(t("Add build row"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, actions: [...actions, made2.action] }), { sidecar: { builds: made2.builds } });
+      store.commit(t2("Add build row"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, actions: [...actions, made2.action] }), { sidecar: { builds: made2.builds } });
       return;
     }
     if (pick.kind === "expansion") {
       if (pick.what === "compare") return;
       const made2 = newCounterStep(store, host, pick.what);
       if (!made2) {
-        api.ui.toast({ kind: "error", title: t("No free counter cells for the step") });
+        api.ui.toast({ kind: "error", title: t2("No free counter cells for the step") });
         return;
       }
-      store.commit(t("Add counter step"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, actions: [...actions, flagAction({ cell: made2.flag })] }), { sidecar: { expansions: [...store.sidecar.expansions, made2.expansion] } });
+      store.commit(t2("Add counter step"), () => store.list.map((tr, j) => j !== index ? tr : { ...tr, actions: [...actions, flagAction({ cell: made2.flag })] }), { sidecar: { expansions: [...store.sidecar.expansions, made2.expansion] } });
       return;
     }
     if (pick.kind === "native" && pick.type === ActionType.Comment) {
-      void api.ui.prompt(ci < 0 ? t("The trigger's name, shown by every trigger editor") : t("A note on this trigger; the game does nothing with it"), { title: t("Comment") }).then((text) => {
+      void api.ui.prompt(ci < 0 ? t2("The trigger's name, shown by every trigger editor") : t2("A note on this trigger; the game does nothing with it"), { title: t2("Comment") }).then((text) => {
         if (!text?.trim()) return;
-        store.commit(t("Add action"), (intern) => store.list.map((tr, j) => j !== index ? tr : { ...tr, actions: [...liveActions(tr), { ...api.triggers.newAction(ActionType.Comment), text: intern(text.trim()) }] }));
+        store.commit(t2("Add action"), (intern) => store.list.map((tr, j) => j !== index ? tr : { ...tr, actions: [...liveActions(tr), { ...api.triggers.newAction(ActionType.Comment), text: intern(text.trim()) }] }));
       });
       return;
     }
     const made = newActions(api, pick, entities, query);
     if (actions.length + made.length > MAX_ACTIONS) {
-      api.ui.toast({ kind: "info", title: t("No room for this row"), detail: t("It writes {n} records and the trigger has {free} action slots left.", { n: made.length, free: MAX_ACTIONS - actions.length }) });
+      api.ui.toast({ kind: "info", title: t2("No room for this row"), detail: t2("It writes {n} records and the trigger has {free} action slots left.", { n: made.length, free: MAX_ACTIONS - actions.length }) });
       return;
     }
-    writeActions(t("Add action"), [...actions, ...made]);
+    writeActions(t2("Add action"), [...actions, ...made]);
   }, { names: () => host.parseNames() }));
   root.append(actSection);
   const w = api.ui.widgets;
-  const fold = w.fold({ text: t("In plain words"), open: store.showExplain });
+  const fold = w.fold({ text: t2("In plain words"), open: store.showExplain });
   fold.addEventListener("toggle", () => {
     store.showExplain = fold.open;
   });
@@ -8383,12 +8652,12 @@ function renderEditor(deps, root) {
     const refs2 = el("div", { className: "mg-refs" });
     for (const r of shared) refs2.append(refLine(r));
     words2.append(refs2);
-  } else if (x.refs.length) words2.append(el("div", { className: "mg-refs" }, el("span", {}, t("No other trigger uses the switches, counters or locations this one touches."))));
+  } else if (x.refs.length) words2.append(el("div", { className: "mg-refs" }, el("span", {}, t2("No other trigger uses the switches, counters or locations this one touches."))));
   fold.body.append(words2);
   root.append(fold);
   function refLine(r) {
-    const label = r.kind === "switch" ? namer.switch(r.id) : r.kind === "counter" ? cellLabel(cellOf(r.id), namer) : r.kind === "location" ? namer.location(r.id) : r.kind === "timer" ? t("The countdown timer") : t("memory at 0x{addr}", { addr: r.id.toString(16).toUpperCase() });
-    const verbs = r.kind === "switch" || r.kind === "timer" ? { writes: t("set by"), reads: t("read by"), both: t("set and read by") } : r.kind === "location" ? { writes: t("moved by"), reads: t("used by"), both: t("moved and used by") } : { writes: t("changed by"), reads: t("read by"), both: t("changed and read by") };
+    const label = r.kind === "switch" ? namer.switch(r.id) : r.kind === "counter" ? cellLabel(cellOf(r.id), namer) : r.kind === "location" ? namer.location(r.id) : r.kind === "timer" ? t2("The countdown timer") : t2("memory at 0x{addr}", { addr: r.id.toString(16).toUpperCase() });
+    const verbs = r.kind === "switch" || r.kind === "timer" ? { writes: t2("set by"), reads: t2("read by"), both: t2("set and read by") } : r.kind === "location" ? { writes: t2("moved by"), reads: t2("used by"), both: t2("moved and used by") } : { writes: t2("changed by"), reads: t2("read by"), both: t2("changed and read by") };
     const line = el("div", { className: "mg-ref" }, el("b", {}, label));
     for (const use of ["writes", "reads", "both"]) {
       const who = r.others.filter((o) => o.use === use);
@@ -8450,14 +8719,14 @@ function itemInfo(deps, index, trigger4) {
 function renderList(deps, root, onMove) {
   const { api, store } = deps;
   const el = api.ui.el;
-  const t = api.i18n.t;
+  const t2 = api.i18n.t;
   root.replaceChildren();
   const q = deps.query().trim().toLowerCase();
   const infos = store.list.map((tr, i) => store.isRun(i) ? null : itemInfo(deps, i, tr)).filter((x) => x !== null);
   const filter = deps.filter();
   const visible = infos.filter((info) => (!q || `${info.title} ${info.summary} ${info.ownersText}`.toLowerCase().includes(q)) && (filter === "all" || (filter === "eud" ? info.eud : info.problems !== null)));
   if (!visible.length) {
-    root.append(el("div", { className: "mg-empty" }, store.list.length ? t("Nothing matches.") : t("No triggers.")));
+    root.append(el("div", { className: "mg-empty" }, store.list.length ? t2("Nothing matches.") : t2("No triggers.")));
     return;
   }
   const folderName = (id) => store.sidecar.folders.find((f) => f.id === id);
@@ -8473,8 +8742,8 @@ function renderList(deps, root, onMove) {
         { className: "mg-badges" },
         info.locked ? el("span", { className: "mg-badge lock" }, info.locked) : null,
         info.eud ? el("span", { className: "mg-badge eud" }, "EUD") : null,
-        info.generated ? el("span", { className: "mg-badge", title: t("Triggers Magenta generates for this one") }, `+${info.generated}`) : null,
-        info.build ? el("span", { className: "mg-badge eud", title: t("Needs a Build to work in the game") }, "BUILD") : null,
+        info.generated ? el("span", { className: "mg-badge", title: t2("Triggers Magenta generates for this one") }, `+${info.generated}`) : null,
+        info.build ? el("span", { className: "mg-badge eud", title: t2("Needs a Build to work in the game") }, "BUILD") : null,
         info.problems ? el("span", { className: `mg-badge ${info.problems}` }, "!") : null,
         el("span", { className: "mg-badge" }, info.ownersText)
       ),
@@ -8509,10 +8778,10 @@ function renderList(deps, root, onMove) {
       if (folder !== null) {
         const f = folderName(folder);
         const count = infos.filter((x) => store.folders.get(x.index) === folder).length;
-        const head = el("div", { className: "mg-folder", title: t("Double-click to rename; drop a trigger here to put it in the folder") }, el("span", {}, f?.closed ? "\u25B8" : "\u25BE"), el("span", {}, f?.name ?? folder), el("span", { className: "mg-count" }, String(count)));
+        const head = el("div", { className: "mg-folder", title: t2("Double-click to rename; drop a trigger here to put it in the folder") }, el("span", {}, f?.closed ? "\u25B8" : "\u25BE"), el("span", {}, f?.name ?? folder), el("span", { className: "mg-count" }, String(count)));
         head.addEventListener("click", () => {
           const folders = store.sidecar.folders.map((x) => x.id === folder ? { ...x, closed: !x.closed } : x);
-          store.updateSidecar(t("Fold"), { folders });
+          store.updateSidecar(t2("Fold"), { folders });
         });
         head.addEventListener("dblclick", (e) => {
           e.preventDefault();
@@ -8550,15 +8819,15 @@ function renderList(deps, root, onMove) {
 // src/ui/settings.ts
 var PREFERENCES_PAGE = "plugin:magenta";
 function registerPreferencesPage(api, onLayoutChange) {
-  const t = api.i18n.t;
+  const t2 = api.i18n.t;
   const w = api.ui.widgets;
   let dock = null;
   api.ui.preferencesPage({
     mount(body) {
-      dock = w.select([{ value: "float", label: t("Floating over the map") }, { value: "right", label: t("Docked on the right") }], { value: layout(api).dock });
+      dock = w.select([{ value: "float", label: t2("Floating over the map") }, { value: "right", label: t2("Docked on the right") }], { value: layout(api).dock });
       body.append(
-        w.form([{ label: t("Panel"), field: dock }]),
-        w.hint(t("A floating panel is dragged about and resized from its corner; a docked one sits in the right dock with the Layers and Properties panels and stacks the list over the trigger."))
+        w.form([{ label: t2("Panel"), field: dock }]),
+        w.hint(t2("A floating panel is dragged about and resized from its corner; a docked one sits in the right dock with the Layers and Properties panels and stacks the list over the trigger."))
       );
       return () => {
         dock = null;
@@ -8618,20 +8887,20 @@ function newState(world = DEFAULT_WORLD) {
     rand: 625341585
   };
 }
-function slotsOf2(group, current2, s, world) {
+function slotsOf2(group, current3, s, world) {
   if (group < SLOTS) return [group];
   if (group >= 27) return [];
   const active = (p) => world.active[p];
   switch (group) {
     case PlayerGroup.CurrentPlayer:
-      return [current2];
+      return [current3];
     case PlayerGroup.AllPlayers:
       return Array.from({ length: SLOTS }, (_, p) => p);
     case PlayerGroup.Foes:
     case PlayerGroup.NonAlliedVictoryPlayers:
-      return range(SLOTS).filter((p) => p !== current2 && active(p) && !s.allied[current2][p]);
+      return range(SLOTS).filter((p) => p !== current3 && active(p) && !s.allied[current3][p]);
     case PlayerGroup.Allies:
-      return range(SLOTS).filter((p) => p === current2 || active(p) && s.allied[current2][p]);
+      return range(SLOTS).filter((p) => p === current3 || active(p) && s.allied[current3][p]);
     case PlayerGroup.NeutralPlayers:
       return [11];
     case PlayerGroup.Force1:
@@ -8644,10 +8913,10 @@ function slotsOf2(group, current2, s, world) {
   }
 }
 var range = (n) => Array.from({ length: n }, (_, i) => i);
-function runsFor(t, player, world) {
-  if (t.players[player] || t.players[PlayerGroup.AllPlayers]) return true;
+function runsFor(t2, player, world) {
+  if (t2.players[player] || t2.players[PlayerGroup.AllPlayers]) return true;
   const f = world.force[player];
-  return f >= 0 && !!t.players[PlayerGroup.Force1 + f];
+  return f >= 0 && !!t2.players[PlayerGroup.Force1 + f];
 }
 function matchesUnit(world, unitId, wanted) {
   if (wanted < UnitClass.Any) return unitId === wanted;
@@ -8711,15 +8980,15 @@ function random(s) {
   s.rand = x;
   return x;
 }
-function cells(player, unit, current2, s, world) {
+function cells(player, unit, current3, s, world) {
   if (player >= 27) return [player + unit * 12];
-  return slotsOf2(player, current2, s, world).map((p) => flat(p, unit));
+  return slotsOf2(player, current3, s, world).map((p) => flat(p, unit));
 }
-var most = (world, current2, value, least) => {
-  const mine = value(current2);
-  return range(HUMAN_PLAYERS2).every((p) => p === current2 || !world.active[p] || (least ? value(p) >= mine : value(p) <= mine));
+var most = (world, current3, value, least) => {
+  const mine = value(current3);
+  return range(HUMAN_PLAYERS2).every((p) => p === current3 || !world.active[p] || (least ? value(p) >= mine : value(p) <= mine));
 };
-function evaluate(c2, current2, s, world, key) {
+function evaluate(c2, current3, s, world, key) {
   const assume = () => ({ ok: s.assumptions.get(key) ?? false, known: false, key });
   const count = (slots, location) => unitsOf(s, world, slots, c2.unitId, location).length;
   const commanded = (p, location) => unitsOf(s, world, [p], c2.unitId, location).length;
@@ -8732,7 +9001,7 @@ function evaluate(c2, current2, s, world, key) {
     case ConditionType.Switch:
       return { ok: c2.comparison === SwitchState.Set === s.switches.has(c2.resource), known: true };
     case ConditionType.Deaths: {
-      const list = cells(c2.player, c2.unitId, current2, s, world);
+      const list = cells(c2.player, c2.unitId, current3, s, world);
       if (list.some((cell) => world.unknownCells.has(cell))) return assume();
       if (isEud(c2.player) && !list.every((cell) => s.deaths.has(cell))) return assume();
       const mask = c2.mask === MASK_MARKER ? c2.location >>> 0 : 4294967295;
@@ -8748,85 +9017,85 @@ function evaluate(c2, current2, s, world, key) {
       return { ok: compare(c2.comparison, have, c2.amount), known: true, have };
     }
     case ConditionType.Accumulate: {
-      const have = slotsOf2(c2.player, current2, s, world).reduce((n, p) => n + resourcesOf(s.players[p], c2.resource), 0);
+      const have = slotsOf2(c2.player, current3, s, world).reduce((n, p) => n + resourcesOf(s.players[p], c2.resource), 0);
       return { ok: compare(c2.comparison, have, c2.amount), known: true, have };
     }
     case ConditionType.Score: {
-      const have = slotsOf2(c2.player, current2, s, world).reduce((n, p) => n + scoreOf(s.players[p], c2.resource), 0);
+      const have = slotsOf2(c2.player, current3, s, world).reduce((n, p) => n + scoreOf(s.players[p], c2.resource), 0);
       return { ok: compare(c2.comparison, have, c2.amount), known: true, have };
     }
     case ConditionType.Bring: {
       if (c2.location === 0) return { ok: false, known: true, have: 0 };
-      const have = count(slotsOf2(c2.player, current2, s, world), c2.location);
+      const have = count(slotsOf2(c2.player, current3, s, world), c2.location);
       return { ok: compare(c2.comparison, have, c2.amount), known: true, have };
     }
     case ConditionType.Command: {
-      const have = count(slotsOf2(c2.player, current2, s, world), null);
+      const have = count(slotsOf2(c2.player, current3, s, world), null);
       return { ok: compare(c2.comparison, have, c2.amount), known: true, have };
     }
     case ConditionType.Kill: {
-      const have = slotsOf2(c2.player, current2, s, world).reduce((n, p) => n + (s.kills.get(flat(p, c2.unitId)) ?? 0), 0);
+      const have = slotsOf2(c2.player, current3, s, world).reduce((n, p) => n + (s.kills.get(flat(p, c2.unitId)) ?? 0), 0);
       return { ok: compare(c2.comparison, have, c2.amount), known: true, have };
     }
     case ConditionType.Opponents: {
-      const me = slotsOf2(c2.player, current2, s, world)[0] ?? current2;
+      const me = slotsOf2(c2.player, current3, s, world)[0] ?? current3;
       const have = range(HUMAN_PLAYERS2).filter((p) => p !== me && world.active[p] && !s.allied[me][p] && s.players[p].result === null).length;
       return { ok: compare(c2.comparison, have, c2.amount), known: true, have };
     }
     case ConditionType.CommandTheMost:
-      return { ok: most(world, current2, (p) => commanded(p, null), false), known: true, have: commanded(current2, null) };
+      return { ok: most(world, current3, (p) => commanded(p, null), false), known: true, have: commanded(current3, null) };
     case ConditionType.CommandTheLeast:
-      return { ok: most(world, current2, (p) => commanded(p, null), true), known: true, have: commanded(current2, null) };
+      return { ok: most(world, current3, (p) => commanded(p, null), true), known: true, have: commanded(current3, null) };
     case ConditionType.CommandTheMostAt:
-      return { ok: most(world, current2, (p) => commanded(p, c2.location), false), known: true, have: commanded(current2, c2.location) };
+      return { ok: most(world, current3, (p) => commanded(p, c2.location), false), known: true, have: commanded(current3, c2.location) };
     case ConditionType.CommandTheLeastAt:
-      return { ok: most(world, current2, (p) => commanded(p, c2.location), true), known: true, have: commanded(current2, c2.location) };
+      return { ok: most(world, current3, (p) => commanded(p, c2.location), true), known: true, have: commanded(current3, c2.location) };
     case ConditionType.MostKills:
-      return { ok: most(world, current2, (p) => s.kills.get(flat(p, c2.unitId)) ?? 0, false), known: true, have: s.kills.get(flat(current2, c2.unitId)) ?? 0 };
+      return { ok: most(world, current3, (p) => s.kills.get(flat(p, c2.unitId)) ?? 0, false), known: true, have: s.kills.get(flat(current3, c2.unitId)) ?? 0 };
     case ConditionType.LeastKills:
-      return { ok: most(world, current2, (p) => s.kills.get(flat(p, c2.unitId)) ?? 0, true), known: true, have: s.kills.get(flat(current2, c2.unitId)) ?? 0 };
+      return { ok: most(world, current3, (p) => s.kills.get(flat(p, c2.unitId)) ?? 0, true), known: true, have: s.kills.get(flat(current3, c2.unitId)) ?? 0 };
     case ConditionType.HighestScore:
-      return { ok: most(world, current2, (p) => scoreOf(s.players[p], c2.resource), false), known: true, have: scoreOf(s.players[current2], c2.resource) };
+      return { ok: most(world, current3, (p) => scoreOf(s.players[p], c2.resource), false), known: true, have: scoreOf(s.players[current3], c2.resource) };
     case ConditionType.LowestScore:
-      return { ok: most(world, current2, (p) => scoreOf(s.players[p], c2.resource), true), known: true, have: scoreOf(s.players[current2], c2.resource) };
+      return { ok: most(world, current3, (p) => scoreOf(s.players[p], c2.resource), true), known: true, have: scoreOf(s.players[current3], c2.resource) };
     case ConditionType.MostResources:
-      return { ok: most(world, current2, (p) => resourcesOf(s.players[p], c2.resource), false), known: true, have: resourcesOf(s.players[current2], c2.resource) };
+      return { ok: most(world, current3, (p) => resourcesOf(s.players[p], c2.resource), false), known: true, have: resourcesOf(s.players[current3], c2.resource) };
     case ConditionType.LeastResources:
-      return { ok: most(world, current2, (p) => resourcesOf(s.players[p], c2.resource), true), known: true, have: resourcesOf(s.players[current2], c2.resource) };
+      return { ok: most(world, current3, (p) => resourcesOf(s.players[p], c2.resource), true), known: true, have: resourcesOf(s.players[current3], c2.resource) };
     default:
       return assume();
   }
 }
 var assumptionKey = (trigger4, condition) => `${trigger4}:${condition}`;
 function verdicts(list, index, player, s, world) {
-  const t = list[index];
-  if (!t) return [];
-  return liveConditions(t).map((c2, i) => ({ condition: i, verdict: isConditionDisabled(c2) ? { ok: true, known: true } : evaluate(c2, player, s, world, assumptionKey(index, i)) }));
+  const t2 = list[index];
+  if (!t2) return [];
+  return liveConditions(t2).map((c2, i) => ({ condition: i, verdict: isConditionDisabled(c2) ? { ok: true, known: true } : evaluate(c2, player, s, world, assumptionKey(index, i)) }));
 }
-function runAction(a2, i, current2, s, world) {
-  const note = (text2) => s.log.push({ cycle: s.cycle, player: current2, trigger: i, kind: "note", text: text2 });
-  const slots = (group) => slotsOf2(group, current2, s, world);
+function runAction(a2, i, current3, s, world) {
+  const note = (text2) => s.log.push({ cycle: s.cycle, player: current3, trigger: i, kind: "note", text: text2 });
+  const slots = (group) => slotsOf2(group, current3, s, world);
   const text = (index) => world.string(index) ?? "";
   switch (a2.type) {
     case ActionType.Victory:
     case ActionType.Defeat:
     case ActionType.Draw: {
       const result = a2.type === ActionType.Victory ? "victory" : a2.type === ActionType.Defeat ? "defeat" : "draw";
-      s.players[current2].result = result;
-      s.log.push({ cycle: s.cycle, player: current2, trigger: i, kind: "end", result });
+      s.players[current3].result = result;
+      s.log.push({ cycle: s.cycle, player: current3, trigger: i, kind: "end", result });
       return {};
     }
     case ActionType.Wait:
       return { wait: a2.time / 1e3 };
     case ActionType.Transmission: {
-      if (a2.text) s.log.push({ cycle: s.cycle, player: current2, trigger: i, kind: "text", text: text(a2.text) });
+      if (a2.text) s.log.push({ cycle: s.cycle, player: current3, trigger: i, kind: "text", text: text(a2.text) });
       return { wait: modify(a2.modifier, a2.time, a2.target) / 1e3 };
     }
     case ActionType.DisplayText:
-      s.log.push({ cycle: s.cycle, player: current2, trigger: i, kind: "text", text: text(a2.text) });
+      s.log.push({ cycle: s.cycle, player: current3, trigger: i, kind: "text", text: text(a2.text) });
       return {};
     case ActionType.SetMissionObjectives:
-      s.log.push({ cycle: s.cycle, player: current2, trigger: i, kind: "objectives", text: text(a2.text) });
+      s.log.push({ cycle: s.cycle, player: current3, trigger: i, kind: "objectives", text: text(a2.text) });
       return {};
     case ActionType.SetSwitch: {
       if (a2.modifier === SwitchAction.Set) s.switches.add(a2.target);
@@ -8851,7 +9120,7 @@ function runAction(a2, i, current2, s, world) {
       return {};
     case ActionType.SetDeaths: {
       const mask = a2.mask === MASK_MARKER ? a2.location >>> 0 : 4294967295;
-      for (const cell of cells(a2.player, a2.unitId, current2, s, world)) {
+      for (const cell of cells(a2.player, a2.unitId, current3, s, world)) {
         const old = s.deaths.get(cell) ?? 0;
         const field = (old & mask) >>> 0;
         let next;
@@ -8859,7 +9128,7 @@ function runAction(a2, i, current2, s, world) {
         else if (a2.modifier === SetModifier.Add) next = field + a2.target >>> 0 & mask;
         else next = Math.max(0, field - a2.target) & mask;
         s.deaths.set(cell, (old & ~mask | next) >>> 0);
-        if (world.hookCells.has(cell)) note("A build row runs here in the game; the dry run skips it.");
+        if (world.hookCells.has(cell)) note(t("A build row runs here in the game; the dry run skips it."));
       }
       return {};
     }
@@ -8926,30 +9195,30 @@ function runAction(a2, i, current2, s, world) {
       return {};
     }
     case ActionType.SetAllianceStatus: {
-      for (const p of slots(a2.player)) if (p !== current2) s.allied[current2][p] = a2.unitId !== AllianceStatus.Enemy;
+      for (const p of slots(a2.player)) if (p !== current3) s.allied[current3][p] = a2.unitId !== AllianceStatus.Enemy;
       return {};
     }
     case ActionType.RunAiScript:
     case ActionType.RunAiScriptAt:
-      note("An AI script runs here in the game; the dry run does not have one.");
+      note(t("An AI script runs here in the game; the dry run does not have one."));
       return {};
     case ActionType.Order:
-      note("An order is given here; the dry run does not move units.");
+      note(t("An order is given here; the dry run does not move units."));
       return {};
     case ActionType.SetNextScenario:
-      note(`The next scenario is set to "${text(a2.text)}".`);
+      note(t('The next scenario is set to "{name}".', { name: text(a2.text) }));
       return {};
     case ActionType.PlayWav:
-      note("A sound plays here.");
+      note(t("A sound plays here."));
       return {};
     default:
       return {};
   }
 }
-var isPreserved2 = (t) => (t.flags & TriggerFlag.Preserve) !== 0 || liveActions(t).some((a2) => a2.type === ActionType.PreserveTrigger && !isActionDisabled(a2));
+var isPreserved2 = (t2) => (t2.flags & TriggerFlag.Preserve) !== 0 || liveActions(t2).some((a2) => a2.type === ActionType.PreserveTrigger && !isActionDisabled(a2));
 function runActions(list, i, from, player, s, world) {
-  const t = list[i];
-  const actions = liveActions(t);
+  const t2 = list[i];
+  const actions = liveActions(t2);
   for (let j = from; j < actions.length; j++) {
     const a2 = actions[j];
     if (isActionDisabled(a2)) continue;
@@ -8976,10 +9245,10 @@ function runPlayer(list, player, s, world) {
     start = trigger4 + 1;
   }
   for (let i = start; i < list.length; i++) {
-    const t = list[i];
-    if (!runsFor(t, player, world) || s.spent.has(i * 16 + player)) continue;
+    const t2 = list[i];
+    if (!runsFor(t2, player, world) || s.spent.has(i * 16 + player)) continue;
     let ok = true;
-    liveConditions(t).forEach((c2, k) => {
+    liveConditions(t2).forEach((c2, k) => {
       if (!ok || isConditionDisabled(c2)) return;
       const key = assumptionKey(i, k);
       const v = evaluate(c2, player, s, world, key);
@@ -8989,7 +9258,7 @@ function runPlayer(list, player, s, world) {
     if (!ok) continue;
     fired.push(i);
     s.log.push({ cycle: s.cycle, player, trigger: i, kind: "fired" });
-    if (!isPreserved2(t)) s.spent.add(i * 16 + player);
+    if (!isPreserved2(t2)) s.spent.add(i * 16 + player);
     if (runActions(list, i, 0, player, s, world)) return fired;
   }
   return fired;
@@ -9229,7 +9498,7 @@ function createSimulator(api, host, store, everyFrame) {
   };
   function mount(body) {
     const el = api.ui.el;
-    const t = api.i18n.t;
+    const t2 = api.i18n.t;
     const w = api.ui.widgets;
     let world;
     let state;
@@ -9266,24 +9535,24 @@ function createSimulator(api, host, store, everyFrame) {
       const bar = el(
         "div",
         { className: "mg-head" },
-        w.button(t("Step"), { primary: true, title: t("Run one trigger cycle"), disabled: stale || over, onClick: () => step(1) }),
-        w.button(t("Run 10"), { disabled: stale || over, onClick: () => step(10) }),
-        w.button(t("Run on"), { title: t("Up to 500 cycles: until someone wins or loses, or nothing has happened for 50 cycles"), disabled: stale || over, onClick: () => step(500) }),
-        w.button(t("Reset"), { ghost: true, title: t("Start over from the map as it is now"), onClick: () => {
+        w.button(t2("Step"), { primary: true, title: t2("Run one trigger cycle"), disabled: stale || over, onClick: () => step(1) }),
+        w.button(t2("Run 10"), { disabled: stale || over, onClick: () => step(10) }),
+        w.button(t2("Run on"), { title: t2("Up to 500 cycles: until someone wins or loses, or nothing has happened for 50 cycles"), disabled: stale || over, onClick: () => step(500) }),
+        w.button(t2("Reset"), { ghost: true, title: t2("Start over from the map as it is now"), onClick: () => {
           reset();
           render();
         } }),
         el("span", { className: "grow" }),
-        el("span", { className: "mg-sim-clock", title: t("Triggers run {clock}", { clock: world.everyFrame ? t("every frame") : t("every two seconds") }) }, t("cycle {n} \xB7 {s} s", { n: state.cycle, s: seconds(Math.round(state.seconds * 10) / 10) }))
+        el("span", { className: "mg-sim-clock", title: t2("Triggers run {clock}", { clock: world.everyFrame ? t2("every frame") : t2("every two seconds") }) }, t2("cycle {n} \xB7 {s} s", { n: state.cycle, s: seconds(Math.round(state.seconds * 10) / 10) }))
       );
       root.append(bar);
-      if (stale) root.append(el("div", { className: "mg-problem warn" }, t("The triggers changed since this run started. Reset to run the list as it is now.")));
-      else if (over) root.append(el("div", { className: "mg-note" }, t("The game is over for every player.")));
+      if (stale) root.append(el("div", { className: "mg-problem warn" }, t2("The triggers changed since this run started. Reset to run the list as it is now.")));
+      else if (over) root.append(el("div", { className: "mg-note" }, t2("The game is over for every player.")));
       const scroll = el("div", { className: "mg-sim-body" });
       root.append(scroll);
       const index = store.selected;
       const trigger4 = index !== null ? list[index] : null;
-      const watched = el("div", { className: "mg-section" }, el("div", { className: "mg-section-head" }, t("Selected trigger")));
+      const watched = el("div", { className: "mg-section" }, el("div", { className: "mg-section-head" }, t2("Selected trigger")));
       if (trigger4 && index !== null) {
         const owners2 = Array.from({ length: 8 }, (_, p) => p).filter((p) => world.active[p] && runsFor(trigger4, p, world));
         if (!owners2.includes(owner)) owner = owners2[0] ?? 0;
@@ -9293,18 +9562,18 @@ function createSimulator(api, host, store, everyFrame) {
             owner = Number(v);
             render();
           } });
-          head.append(el("span", { className: "hint" }, t("as")), sel);
-        } else if (owners2.length === 1) head.append(el("span", { className: "hint" }, t("as {player}", { player: playerLabel(owners2[0]) })));
+          head.append(el("span", { className: "hint" }, t2("as")), sel);
+        } else if (owners2.length === 1) head.append(el("span", { className: "hint" }, t2("as {player}", { player: playerLabel(owners2[0]) })));
         watched.append(head);
-        if (!owners2.length) watched.append(el("div", { className: "mg-note" }, t("No active player runs this trigger, so it cannot fire.")));
+        if (!owners2.length) watched.append(el("div", { className: "mg-note" }, t2("No active player runs this trigger, so it cannot fire.")));
         else {
           const fired = state.log.filter((e) => e.kind === "fired" && e.trigger === index && e.player === owner).length;
           const p = state.players[owner];
-          const status = p.wait && p.wait.trigger === index ? t("waiting inside its actions") : state.spent.has(index * 16 + owner) ? t("fired and done") : fired ? t("fired {n} times so far", { n: fired }) : t("has not fired yet");
+          const status = p.wait && p.wait.trigger === index ? t2("waiting inside its actions") : state.spent.has(index * 16 + owner) ? t2("fired and done") : fired ? t2("fired {n} times so far", { n: fired }) : t2("has not fired yet");
           watched.append(el("div", { className: "mg-note" }, status));
           const words2 = conditionWords(api, host, store, index, trigger4);
           const rows = verdicts(list, index, owner, state, world);
-          if (!rows.length) watched.append(el("div", { className: "mg-note" }, t("No conditions: it fires on the first cycle.")));
+          if (!rows.length) watched.append(el("div", { className: "mg-note" }, t2("No conditions: it fires on the first cycle.")));
           for (const { condition, verdict } of rows) {
             if (!words2[condition]) continue;
             const c2 = liveConditions(trigger4)[condition];
@@ -9312,33 +9581,33 @@ function createSimulator(api, host, store, everyFrame) {
             const mark = disabled ? "\u2013" : !verdict.known ? "?" : verdict.ok ? "\u2713" : "\u2717";
             const kind = disabled ? "" : !verdict.known ? "unknown" : verdict.ok ? "ok" : "no";
             const row = el("div", { className: `mg-sim-verdict ${kind}` }, el("span", { className: "mg-sim-mark" }, mark), el("span", { className: "grow" }, words2[condition]));
-            if (verdict.have !== void 0 && !disabled) row.append(el("span", { className: "hint" }, t("has {n}", { n: verdict.have })));
+            if (verdict.have !== void 0 && !disabled) row.append(el("span", { className: "hint" }, t2("has {n}", { n: verdict.have })));
             if (!verdict.known && verdict.key) row.append(assumeBox(verdict.key));
             watched.append(row);
           }
         }
-      } else watched.append(el("div", { className: "mg-note" }, t("Pick a trigger in the Magenta panel to see its conditions decided here.")));
+      } else watched.append(el("div", { className: "mg-note" }, t2("Pick a trigger in the Magenta panel to see its conditions decided here.")));
       scroll.append(watched);
       const unknown = [...state.unknown.values()].filter((u) => !hidden(u.trigger));
       if (unknown.length) {
-        const sec = el("div", { className: "mg-section" }, el("div", { className: "mg-section-head" }, t("Cannot tell"), el("span", { className: "grow" }), el("span", { className: "hint" }, t("tick to pretend it holds"))));
+        const sec = el("div", { className: "mg-section" }, el("div", { className: "mg-section-head" }, t2("Cannot tell"), el("span", { className: "grow" }), el("span", { className: "hint" }, t2("tick to pretend it holds"))));
         for (const u of unknown) {
           const tr = list[u.trigger];
           if (!tr) continue;
-          const text = conditionWords(api, host, store, u.trigger, tr)[u.condition] || t("condition {n}", { n: u.condition + 1 });
+          const text = conditionWords(api, host, store, u.trigger, tr)[u.condition] || t2("condition {n}", { n: u.condition + 1 });
           const row = el("div", { className: "mg-sim-verdict unknown" }, assumeBox(u.key), el("span", { className: "grow" }, text), el("button", { type: "button", className: "mg-sim-link", onclick: () => store.select(u.trigger) }, titleOf(api, host, store, u.trigger)));
           sec.append(row);
         }
         scroll.append(sec);
       }
-      const st = el("div", { className: "mg-section" }, el("div", { className: "mg-section-head" }, t("State"), el("span", { className: "grow" }), el("span", { className: "hint" }, t("click a value to change it"))));
-      const sw = el("div", { className: "mg-sim-line" }, el("span", { className: "mg-sim-label" }, t("Switches set")));
+      const st = el("div", { className: "mg-section" }, el("div", { className: "mg-section-head" }, t2("State"), el("span", { className: "grow" }), el("span", { className: "hint" }, t2("click a value to change it"))));
+      const sw = el("div", { className: "mg-sim-line" }, el("span", { className: "mg-sim-label" }, t2("Switches set")));
       const names = namer();
-      for (const i of [...state.switches].sort((a2, b) => a2 - b)) sw.append(el("button", { type: "button", className: "mg-chip", title: t("Click to clear"), onclick: () => {
+      for (const i of [...state.switches].sort((a2, b) => a2 - b)) sw.append(el("button", { type: "button", className: "mg-chip", title: t2("Click to clear"), onclick: () => {
         state.switches.delete(i);
         render();
       } }, names.switch(i)));
-      const addSwitch = el("button", { type: "button", className: "mg-chip", title: t("Set a switch") }, "+");
+      const addSwitch = el("button", { type: "button", className: "mg-chip", title: t2("Set a switch") }, "+");
       addSwitch.addEventListener("click", () => pickSwitch(api, host, addSwitch, 0, (i) => {
         state.switches.add(i);
         render();
@@ -9347,54 +9616,54 @@ function createSimulator(api, host, store, everyFrame) {
       st.append(sw);
       const used = usage(list).cells;
       const cells2 = [...state.deaths.entries()].filter(([k, v]) => v !== 0 || used.has(k)).sort((a2, b) => a2[0] - b[0]);
-      const ct = el("div", { className: "mg-sim-line" }, el("span", { className: "mg-sim-label" }, t("Counters")));
+      const ct = el("div", { className: "mg-sim-line" }, el("span", { className: "mg-sim-label" }, t2("Counters")));
       for (const [k, v] of cells2) {
         const label = k < 228 * 12 ? `${cellLabel(cellOf(k), names)} = ${v}` : memoryCellText(k, v, names, host.extra());
-        const chip3 = el("button", { type: "button", className: "mg-chip counter", title: t("Click to change") }, label);
+        const chip3 = el("button", { type: "button", className: "mg-chip counter", title: t2("Click to change") }, label);
         chip3.addEventListener("click", () => pickNumber(api, chip3, v, (n) => {
           state.deaths.set(k, n >>> 0);
           render();
         }, { min: 0, integer: true }));
         ct.append(chip3);
       }
-      const addCell = el("button", { type: "button", className: "mg-chip", title: t("Set a counter") }, "+");
+      const addCell = el("button", { type: "button", className: "mg-chip", title: t2("Set a counter") }, "+");
       addCell.addEventListener("click", () => pickCell(api, host, store, addCell, [0, 0], (cell) => pickNumber(api, addCell, state.deaths.get(flat(cell[0], cell[1])) ?? 0, (n) => {
         state.deaths.set(flat(cell[0], cell[1]), n >>> 0);
         render();
       }, { min: 0, integer: true })));
       ct.append(addCell);
       st.append(ct);
-      const timer = el("button", { type: "button", className: "mg-chip", title: t("Click to change") }, `${seconds(Math.floor(state.countdown))} s${state.countdownPaused ? ` (${t("paused")})` : ""}`);
+      const timer = el("button", { type: "button", className: "mg-chip", title: t2("Click to change") }, state.countdownPaused ? t2("{s} s (paused)", { s: seconds(Math.floor(state.countdown)) }) : t2("{s} s", { s: seconds(Math.floor(state.countdown)) }));
       timer.addEventListener("click", () => pickNumber(api, timer, Math.floor(state.countdown), (n) => {
         state.countdown = n;
         render();
       }, { min: 0, integer: true, unit: "s" }));
-      st.append(el("div", { className: "mg-sim-line" }, el("span", { className: "mg-sim-label" }, t("Countdown timer")), timer, el("span", { className: "hint" }, world.everyFrame ? t("24 cycles a second") : t("a cycle is {s} s", { s: seconds(secondsPerCycle(world)) }))));
+      st.append(el("div", { className: "mg-sim-line" }, el("span", { className: "mg-sim-label" }, t2("Countdown timer")), timer, el("span", { className: "hint" }, world.everyFrame ? t2("24 cycles a second") : t2("a cycle is {s} s", { s: seconds(secondsPerCycle(world)) }))));
       for (let p = 0; p < 8; p++) {
         if (!world.active[p]) continue;
         const pl = state.players[p];
         const line = el("div", { className: "mg-sim-line" }, el("span", { className: "mg-sim-label" }, playerLabel(p)));
         const res = (label, get, set) => {
-          const chip3 = el("button", { type: "button", className: "mg-chip", title: t("Click to change") }, `${label} ${get()}`);
+          const chip3 = el("button", { type: "button", className: "mg-chip", title: t2("Click to change") }, `${label} ${get()}`);
           chip3.addEventListener("click", () => pickNumber(api, chip3, get(), (n) => {
             set(n);
             render();
           }, { min: 0, integer: true }));
           return chip3;
         };
-        line.append(res(t("minerals"), () => pl.minerals, (n) => {
+        line.append(res(t2("minerals"), () => pl.minerals, (n) => {
           pl.minerals = n;
-        }), res(t("gas"), () => pl.gas, (n) => {
+        }), res(t2("gas"), () => pl.gas, (n) => {
           pl.gas = n;
         }));
         const count = state.units.filter((u) => u.owner === p).length;
-        line.append(el("span", { className: "hint" }, t("{n} units", { n: count })));
-        if (pl.result) line.append(el("span", { className: `mg-badge ${pl.result === "victory" ? "eud" : "error"}` }, pl.result === "victory" ? t("won") : pl.result === "defeat" ? t("lost") : t("draw")));
-        else if (pl.wait) line.append(el("span", { className: "mg-badge" }, t("waiting until {s} s", { s: seconds(Math.round(pl.wait.until * 10) / 10) })));
+        line.append(el("span", { className: "hint" }, t2("{n} units", { n: count })));
+        if (pl.result) line.append(el("span", { className: `mg-badge ${pl.result === "victory" ? "eud" : "error"}` }, pl.result === "victory" ? t2("won") : pl.result === "defeat" ? t2("lost") : t2("draw")));
+        else if (pl.wait) line.append(el("span", { className: "mg-badge" }, t2("waiting until {s} s", { s: seconds(Math.round(pl.wait.until * 10) / 10) })));
         st.append(line);
       }
       const put = { owner: 0, unit: 0, location: host.locations()[0]?.value ?? 64, count: 1 };
-      const putLine = el("div", { className: "mg-sim-line" }, el("span", { className: "mg-sim-label" }, t("Put units")));
+      const putLine = el("div", { className: "mg-sim-line" }, el("span", { className: "mg-sim-label" }, t2("Put units")));
       const ownerChip = el("button", { type: "button", className: "mg-chip" }, playerLabel(put.owner));
       ownerChip.addEventListener("click", () => {
         const items = Array.from({ length: 12 }, (_, p) => ({ value: p, label: playerLabel(p) }));
@@ -9419,15 +9688,15 @@ function createSimulator(api, host, store, everyFrame) {
         put.location = v;
         locChip.textContent = names.location(v);
       }));
-      putLine.append(countChip, unitChip, el("span", { className: "hint" }, t("for")), ownerChip, el("span", { className: "hint" }, t("at")), locChip, w.button(t("Add"), { onClick: () => {
+      putLine.append(...compose(t2("{count} {unit} for {player} at {location}"), { count: countChip, unit: unitChip, player: ownerChip, location: locChip }, (n) => n.textContent ?? ""), w.button(t2("Add"), { onClick: () => {
         putUnits(state, world, put.owner, put.unit, put.count, put.location);
         render();
       } }));
       st.append(putLine);
       scroll.append(st);
       const events = state.log.filter((e) => !hidden(e.trigger));
-      const log = el("div", { className: "mg-section" }, el("div", { className: "mg-section-head" }, t("Log"), el("span", { className: "grow" }), el("span", { className: "hint" }, events.length > LOG_LINES ? t("last {n} of {total}", { n: LOG_LINES, total: events.length }) : String(events.length))));
-      if (!events.length) log.append(el("div", { className: "mg-note" }, t("Nothing has happened yet. Step runs one cycle.")));
+      const log = el("div", { className: "mg-section" }, el("div", { className: "mg-section-head" }, t2("Log"), el("span", { className: "grow" }), el("span", { className: "hint" }, events.length > LOG_LINES ? t2("last {n} of {total}", { n: LOG_LINES, total: events.length }) : String(events.length))));
+      if (!events.length) log.append(el("div", { className: "mg-note" }, t2("Nothing has happened yet. Step runs one cycle.")));
       for (const e of events.slice(-LOG_LINES)) log.append(logLine(e, list));
       scroll.append(log);
       setTimeout(() => {
@@ -9442,23 +9711,23 @@ function createSimulator(api, host, store, everyFrame) {
     }
     function logLine(e, list) {
       const who = playerLabel(e.player);
-      const link = list[e.trigger] ? el("button", { type: "button", className: "mg-sim-link", onclick: () => store.select(e.trigger) }, titleOf(api, host, store, e.trigger)) : el("span", {}, t("trigger {n}", { n: e.trigger + 1 }));
+      const link = list[e.trigger] ? el("button", { type: "button", className: "mg-sim-link", onclick: () => store.select(e.trigger) }, titleOf(api, host, store, e.trigger)) : el("span", {}, t2("trigger {n}", { n: e.trigger + 1 }));
       const line = el("div", { className: `mg-sim-log ${e.kind}` }, el("span", { className: "mg-sim-cycle" }, String(e.cycle)), el("span", { className: "mg-sim-who" }, who));
       switch (e.kind) {
         case "fired":
-          line.append(t("fires"), " ", link);
+          line.append(...compose(t2("fires {trigger}"), { trigger: link }, (n) => n.textContent ?? ""));
           break;
         case "text":
           line.append(el("span", { className: "mg-sim-text" }, `\u201C${e.text}\u201D`));
           break;
         case "objectives":
-          line.append(t("objectives:"), " ", el("span", { className: "mg-sim-text" }, e.text));
+          line.append(t2("objectives:"), " ", el("span", { className: "mg-sim-text" }, e.text));
           break;
         case "end":
-          line.append(el("b", {}, e.result === "victory" ? t("wins") : e.result === "defeat" ? t("loses") : t("draws")), " \xB7 ", link);
+          line.append(el("b", {}, e.result === "victory" ? t2("wins") : e.result === "defeat" ? t2("loses") : t2("draws")), " \xB7 ", link);
           break;
         case "wait":
-          line.append(t("waits {s} s", { s: seconds(e.seconds) }), " \xB7 ", link);
+          line.append(t2("waits {s} s", { s: seconds(e.seconds) }), " \xB7 ", link);
           break;
         case "note":
           line.append(el("span", { className: "hint" }, e.text), " \xB7 ", link);
@@ -9467,9 +9736,11 @@ function createSimulator(api, host, store, everyFrame) {
       return line;
     }
     const unsubscribe = store.subscribe(render);
+    const offLang = api.events.on("language", render);
     render();
     return () => {
       unsubscribe();
+      offLang.dispose();
     };
   }
   return { open, close: () => handle?.close(), isOpen: () => handle?.isOpen() ?? false };
@@ -9540,7 +9811,7 @@ var Store = class {
   stale() {
     const list = this.host.triggers();
     if (list.length !== this.prints.length) return true;
-    return list.some((t, i) => fingerprint(t) !== this.prints[i]);
+    return list.some((t2, i) => fingerprint(t2) !== this.prints[i]);
   }
   select(index) {
     this.selected = index === null ? null : this.anchorOf(index);
@@ -9548,8 +9819,8 @@ var Store = class {
   }
   /** Whether the trigger at `index` is one of Magenta's generated runs. */
   isRun(index) {
-    const t = this.list[index];
-    return !!t && markerOf(t, (i) => this.host.string(i)) !== null;
+    const t2 = this.list[index];
+    return !!t2 && markerOf(t2, (i) => this.host.string(i)) !== null;
   }
   /** The index of a trigger in the list without Magenta's runs — how the sidecar's anchors count. */
   cleanIndex(index) {
@@ -9567,8 +9838,8 @@ var Store = class {
     const text = (i) => this.host.string(i);
     const runs = [];
     let open = null;
-    list.forEach((t, i) => {
-      const m = markerOf(t, text);
+    list.forEach((t2, i) => {
+      const m = markerOf(t2, text);
       if (!m) return;
       if (m.edge === "begin") open = { id: m.id, start: i };
       if (m.edge === "end" && open && open.id === m.id) {
@@ -9607,7 +9878,7 @@ var Store = class {
         const built = build(intern, strings);
         const toClean = [];
         let c2 = 0;
-        for (const t of built) toClean.push(markerOf(t, (i) => strings[i] ?? text(i)) ? -1 : c2++);
+        for (const t2 of built) toClean.push(markerOf(t2, (i) => strings[i] ?? text(i)) ? -1 : c2++);
         synced = sync(built, merged.expansions, (i) => strings[i] ?? text(i), intern);
         const mapped = /* @__PURE__ */ new Map();
         for (const [i, f] of folders) {
@@ -9639,8 +9910,8 @@ var Store = class {
     this.notify();
   }
   /** Replace one trigger. */
-  replace(index, trigger4, label = "Edit trigger") {
-    this.commit(label, () => this.list.map((t, i) => i === index ? trigger4 : t));
+  replace(index, trigger4, label) {
+    this.commit(label ?? this.host.api.i18n.t("Edit trigger"), () => this.list.map((t2, i) => i === index ? trigger4 : t2));
   }
   /** Change the sidecar only (a counter name, a folder rename, a setting). */
   updateSidecar(label, patch) {
@@ -9709,26 +9980,26 @@ function createPanel(api, hooks = {}) {
   };
   function mount(body, close) {
     const el = api.ui.el;
-    const t = api.i18n.t;
+    const t2 = api.i18n.t;
     const w = api.ui.widgets;
     host = new Host(api);
-    store = new Store(host, { afterCommit: hooks.afterCommit, onBlocked: () => api.ui.toast({ kind: "error", title: t("Magenta cannot change this map yet"), detail: t("Its Magenta data could not be read. Start over from the notice at the top of the panel, or update Magenta.") }) });
+    store = new Store(host, { afterCommit: hooks.afterCommit, onBlocked: () => api.ui.toast({ kind: "error", title: t2("Magenta cannot change this map yet"), detail: t2("Its Magenta data could not be read. Start over from the notice at the top of the panel, or update Magenta.") }) });
     const s = store, h = host;
     const sim = createSimulator(api, h, s, () => everyFrame());
     if (pendingIndex !== null) s.selected = s.anchorOf(pendingIndex);
     else if (s.selected === null && s.list.length) s.selected = 0;
-    const search2 = el("input", { className: "input", type: "text", placeholder: t("Search triggers\u2026") });
+    const search2 = el("input", { className: "input", type: "text", placeholder: t2("Search triggers\u2026") });
     let filter = "all";
-    const newButton = w.button(t("New"), { primary: true, title: t("A new trigger after the selected one (Ctrl+N)"), onClick: () => newTrigger() });
-    const recipeButton = w.button(t("Recipes\u2026"), { title: t("Start from a whole trigger: a beacon shop, a countdown, a respawn\u2026"), onClick: () => recipes(recipeButton) });
-    const menuButton = w.button("\u22EF", { ghost: true, title: t("More"), onClick: () => menu(menuButton) });
-    const buildButton = w.button("", { ghost: true, title: t("Where the map stands against its last build; click for Build EUD map\u2026"), onClick: () => openBuildDialog(api, h, s, everyFrame()) });
-    const listButton = w.button("\u2630", { ghost: true, title: t("Show or hide the trigger list"), onClick: () => {
+    const newButton = w.button(t2("New"), { primary: true, title: t2("A new trigger after the selected one (Ctrl+N)"), onClick: () => newTrigger() });
+    const recipeButton = w.button(t2("Recipes\u2026"), { title: t2("Start from a whole trigger: a beacon shop, a countdown, a respawn\u2026"), onClick: () => recipes(recipeButton) });
+    const menuButton = w.button("\u22EF", { ghost: true, title: t2("More"), onClick: () => menu(menuButton) });
+    const buildButton = w.button("", { ghost: true, title: t2("Where the map stands against its last build; click for Build EUD map\u2026"), onClick: () => openBuildDialog(api, h, s, everyFrame()) });
+    const listButton = w.button("\u2630", { ghost: true, title: t2("Show or hide the trigger list"), onClick: () => {
       setLayout(api, { listHidden: !layout(api).listHidden });
       applyLayout();
     } });
     const listEl = el("div", { className: "mg-list", tabIndex: 0 });
-    const divider = el("div", { className: "mg-divider", title: t("Drag to resize the list; double-click to hide it") });
+    const divider = el("div", { className: "mg-divider", title: t2("Drag to resize the list; double-click to hide it") });
     const editorEl = el("div", { className: "mg-editor" });
     const notice = el("div", { className: "mg-notice", hidden: true });
     const root = el("div", { className: `mg${layout(api).dock === "right" ? " docked" : ""}` }, el("style", {}, STYLE), el("div", { className: "mg-head" }, listButton, search2, newButton, recipeButton, buildButton, menuButton), notice, el("div", { className: "mg-split" }, listEl, divider, editorEl));
@@ -9771,8 +10042,8 @@ function createPanel(api, hooks = {}) {
       const st = buildStatus(h, s);
       buildButton.hidden = st.triggers === 0 && st.freshness === "never";
       if (buildButton.hidden) return;
-      const state = st.freshness === "fresh" ? t("built") : st.freshness === "stale" ? t("stale") : t("not built");
-      buildButton.textContent = t("Build \xB7 {n} \xB7 {state}", { n: st.triggers, state });
+      const state = st.freshness === "fresh" ? t2("built") : st.freshness === "stale" ? t2("stale") : t2("not built");
+      buildButton.textContent = t2("Build \xB7 {n} \xB7 {state}", { n: st.triggers, state });
       buildButton.classList.toggle("warn", st.freshness !== "fresh");
     };
     const renderNotice = () => {
@@ -9780,9 +10051,9 @@ function createPanel(api, hooks = {}) {
       notice.hidden = !problem;
       notice.replaceChildren();
       if (!problem) return;
-      const what = problem.kind === "newer" ? t("This map's Magenta data was written by a newer Magenta (version {v}). Its folders, counter names and build rows are hidden, and the triggers cannot be changed here until Magenta is updated or the data is dropped.", { v: problem.version ?? "?" }) : t("This map's Magenta data could not be read ({detail}). Its folders, counter names and build rows are hidden, and the triggers cannot be changed here until the data is dropped.", { detail: problem.detail ?? "" });
-      notice.append(el("span", {}, what), w.button(t("Drop it and start over"), { onClick: () => {
-        void api.ui.confirm(t("Every build row's sentence, every folder and every counter name in it is lost; the triggers themselves stay as they are in the map. Continue?"), { title: t("Drop Magenta's data") }).then((ok) => {
+      const what = problem.kind === "newer" ? t2("This map's Magenta data was written by a newer Magenta (version {v}). Its folders, counter names and build rows are hidden, and the triggers cannot be changed here until Magenta is updated or the data is dropped.", { v: problem.version ?? "?" }) : t2("This map's Magenta data could not be read ({detail}). Its folders, counter names and build rows are hidden, and the triggers cannot be changed here until the data is dropped.", { detail: problem.detail ?? "" });
+      notice.append(el("span", {}, what), w.button(t2("Drop it and start over"), { onClick: () => {
+        void api.ui.confirm(t2("Every build row's sentence, every folder and every counter name in it is lost; the triggers themselves stay as they are in the map. Continue?"), { title: t2("Drop Magenta's data") }).then((ok) => {
           if (!ok) return;
           h.discardSidecar();
           s.reload();
@@ -9803,7 +10074,7 @@ function createPanel(api, hooks = {}) {
     render();
     offerStart = (starters2) => {
       const items = starters2.map((st, i) => ({ value: i, label: st.label }));
-      pickChoice(api, newButton, items, (i) => insertTriggers(t("New trigger from the map"), (intern) => starters2[i].build(intern)), { width: 320, placeholder: t("Start from\u2026") });
+      pickChoice(api, newButton, items, (i) => insertTriggers(t2("New trigger from the map"), (intern) => starters2[i].build(intern)), { width: 320, placeholder: t2("Start from\u2026") });
     };
     if (pendingStart) {
       const st = pendingStart;
@@ -9823,7 +10094,7 @@ function createPanel(api, hooks = {}) {
         s.reload();
       }
     });
-    const offLang = api.events.on("language", render);
+    const offLang = api.events.on("language", () => setTimeout(relayout, 0));
     const offSettings = api.events.on("settings", render);
     const resize = new ResizeObserver(() => {
       root.classList.toggle("narrow", root.clientWidth < NARROW);
@@ -9842,7 +10113,7 @@ function createPanel(api, hooks = {}) {
       const folders = /* @__PURE__ */ new Map();
       for (const [i, f] of s.folders) folders.set(i >= at ? i + 1 : i, f);
       if (folder !== void 0) folders.set(at, folder);
-      s.commit(t("New trigger"), () => [...s.list.slice(0, at), fresh, ...s.list.slice(at)], { folders, select: at });
+      s.commit(t2("New trigger"), () => [...s.list.slice(0, at), fresh, ...s.list.slice(at)], { folders, select: at });
       setTimeout(() => editorEl.querySelector("input")?.focus(), 0);
     }
     function insertTriggers(label, make, sidecar) {
@@ -9857,7 +10128,7 @@ function createPanel(api, hooks = {}) {
       return true;
     }
     function recipes(anchor) {
-      const items = RECIPES.map((r, i) => ({ value: i, label: r.label, hint: r.needsBuild ? "BUILD" : r.everyFrame ? "EUD" : void 0 }));
+      const items = RECIPES.map((r, i) => ({ value: i, label: translate(r.label), hint: r.needsBuild ? "BUILD" : r.everyFrame ? "EUD" : void 0 }));
       pickChoice(api, anchor, items, (i) => {
         const r = RECIPES[i];
         const locations = h.locations().map((l) => l.value).filter((n) => n !== 64);
@@ -9871,13 +10142,13 @@ function createPanel(api, hooks = {}) {
           memo.set(key, made?.condition ?? null);
           return made?.condition ?? null;
         };
-        const ok = insertTriggers(t("Add recipe"), (intern) => r.build(recipeContext(intern, locations, input)), () => msqc !== s.sidecar.msqc ? { msqc } : {});
+        const ok = insertTriggers(t2("Add recipe"), (intern) => r.build(recipeContext(intern, locations, input)), () => msqc !== s.sidecar.msqc ? { msqc } : {});
         if (!ok) {
-          api.ui.toast({ kind: "error", title: t("No room for synced input"), detail: t("It needs a free counter unit and a free location slot.") });
+          api.ui.toast({ kind: "error", title: t2("No room for synced input"), detail: t2("It needs a free counter unit and a free location slot.") });
           return;
         }
-        api.ui.toast({ kind: "info", title: r.label, detail: r.description + (r.everyFrame && !everyFrame() ? " " + t("Turn on Run triggers every frame in the \u22EF menu for this one.") : "") });
-      }, { width: 300, searchable: true, placeholder: t("Recipe\u2026") });
+        api.ui.toast({ kind: "info", title: translate(r.label), detail: translate(r.description) + (r.everyFrame && !everyFrame() ? " " + t2("Turn on Run triggers every frame in the \u22EF menu for this one.") : "") });
+      }, { width: 300, searchable: true, placeholder: t2("Recipe\u2026") });
     }
     function moveTrigger(from, to, folder) {
       const list = [...s.list];
@@ -9893,7 +10164,7 @@ function createPanel(api, hooks = {}) {
       });
       if (folder === null) folders.delete(dest);
       else folders.set(dest, folder);
-      s.commit(t("Move trigger"), () => list, { folders, select: dest });
+      s.commit(t2("Move trigger"), () => list, { folders, select: dest });
     }
     function detachAll(triggers) {
       let builds = s.sidecar.builds, expansions = s.sidecar.expansions, stuck = 0;
@@ -9914,8 +10185,8 @@ function createPanel(api, hooks = {}) {
       const f = s.folders.get(i);
       if (f !== void 0) folders.set(i + 1, f);
       const d = detachAll([clone(s.list[i])]);
-      if (d.stuck) api.ui.toast({ kind: "error", title: t("No free counter cell for the copy's build rows"), detail: t("{n, plural, one {# row is} other {# rows are}} shared with the original: editing it in one changes the other.", { n: d.stuck }) });
-      s.commit(t("Duplicate trigger"), () => [...s.list.slice(0, i + 1), ...d.triggers, ...s.list.slice(i + 1)], { folders, select: i + 1, sidecar: d.sidecar });
+      if (d.stuck) api.ui.toast({ kind: "error", title: t2("No free counter cell for the copy's build rows"), detail: t2("{n, plural, one {# row is} other {# rows are}} shared with the original: editing it in one changes the other.", { n: d.stuck }) });
+      s.commit(t2("Duplicate trigger"), () => [...s.list.slice(0, i + 1), ...d.triggers, ...s.list.slice(i + 1)], { folders, select: i + 1, sidecar: d.sidecar });
     }
     function remove() {
       if (s.selected === null) return;
@@ -9923,12 +10194,12 @@ function createPanel(api, hooks = {}) {
       const folders = /* @__PURE__ */ new Map();
       for (const [k, f] of s.folders) if (k !== i) folders.set(k > i ? k - 1 : k, f);
       const builds = prune(s.sidecar.builds, s.list, [i]);
-      s.commit(t("Delete trigger"), () => s.list.filter((_, k) => k !== i), { folders, select: Math.min(i, s.list.length - 2) < 0 ? null : Math.min(i, s.list.length - 2), sidecar: builds.length !== s.sidecar.builds.length ? { builds } : {} });
+      s.commit(t2("Delete trigger"), () => s.list.filter((_, k) => k !== i), { folders, select: Math.min(i, s.list.length - 2) < 0 ? null : Math.min(i, s.list.length - 2), sidecar: builds.length !== s.sidecar.builds.length ? { builds } : {} });
     }
     function toggleDisabled() {
       if (s.selected === null) return;
       const tr = s.list[s.selected];
-      s.replace(s.selected, setTriggerDisabled(tr, !isTriggerDisabled(tr)), t("Toggle trigger"));
+      s.replace(s.selected, setTriggerDisabled(tr, !isTriggerDisabled(tr)), t2("Toggle trigger"));
     }
     function move(delta) {
       if (s.selected === null) return;
@@ -9939,21 +10210,21 @@ function createPanel(api, hooks = {}) {
     async function copyText() {
       if (s.selected === null) return;
       await navigator.clipboard.writeText(api.triggers.text.one(s.list[s.selected]));
-      api.ui.toast({ kind: "info", title: t("Copied as text") });
+      api.ui.toast({ kind: "info", title: t2("Copied as text") });
     }
     async function pasteText() {
       let text = "";
       try {
         text = await navigator.clipboard.readText();
       } catch {
-        api.ui.toast({ kind: "error", title: t("The browser did not allow reading the clipboard") });
+        api.ui.toast({ kind: "error", title: t2("The browser did not allow reading the clipboard") });
         return;
       }
       let parsed;
       try {
         parsed = api.triggers.text.parse(text);
       } catch (e) {
-        api.ui.toast({ kind: "error", title: t("That is not trigger text"), detail: String(e.message ?? e) });
+        api.ui.toast({ kind: "error", title: t2("That is not trigger text"), detail: String(e.message ?? e) });
         return;
       }
       if (!parsed.length) return;
@@ -9961,15 +10232,15 @@ function createPanel(api, hooks = {}) {
       const folders = /* @__PURE__ */ new Map();
       for (const [i, f] of s.folders) folders.set(i >= at ? i + parsed.length : i, f);
       const d = detachAll(parsed.map((p) => p.trigger));
-      s.commit(t("Paste triggers"), () => [...s.list.slice(0, at), ...d.triggers, ...s.list.slice(at)], { folders, select: at, sidecar: d.sidecar });
+      s.commit(t2("Paste triggers"), () => [...s.list.slice(0, at), ...d.triggers, ...s.list.slice(at)], { folders, select: at, sidecar: d.sidecar });
     }
     function newFolder() {
-      void api.ui.prompt(t("Folder name"), { title: t("New folder") }).then((name) => {
+      void api.ui.prompt(t2("Folder name"), { title: t2("New folder") }).then((name) => {
         if (!name?.trim()) return;
         const folder = { id: `f${Date.now().toString(36)}`, name: name.trim(), triggers: [] };
         const folders = new Map(s.folders);
         if (s.selected !== null) folders.set(s.selected, folder.id);
-        s.commit(t("New folder"), () => s.list, { folders, sidecar: { folders: [...s.sidecar.folders, folder] } });
+        s.commit(t2("New folder"), () => s.list, { folders, sidecar: { folders: [...s.sidecar.folders, folder] } });
       });
     }
     function folderMenu(anchor, id) {
@@ -9978,16 +10249,16 @@ function createPanel(api, hooks = {}) {
       openPopover(anchor, (p) => [
         el("button", { type: "button", className: "mg-menu-item", onclick: () => {
           p.close();
-          void api.ui.prompt(t("Folder name"), { title: t("Rename folder"), value: f.name }).then((name) => {
-            if (name?.trim()) s.updateSidecar(t("Rename folder"), { folders: s.sidecar.folders.map((x) => x.id === id ? { ...x, name: name.trim() } : x) });
+          void api.ui.prompt(t2("Folder name"), { title: t2("Rename folder"), value: f.name }).then((name) => {
+            if (name?.trim()) s.updateSidecar(t2("Rename folder"), { folders: s.sidecar.folders.map((x) => x.id === id ? { ...x, name: name.trim() } : x) });
           });
-        } }, t("Rename\u2026")),
+        } }, t2("Rename\u2026")),
         el("button", { type: "button", className: "mg-menu-item", onclick: () => {
           p.close();
           const folders = new Map(s.folders);
           for (const [i, x] of s.folders) if (x === id) folders.delete(i);
-          s.commit(t("Remove folder"), () => s.list, { folders, sidecar: { folders: s.sidecar.folders.filter((x) => x.id !== id) } });
-        } }, t("Remove folder (keep triggers)"))
+          s.commit(t2("Remove folder"), () => s.list, { folders, sidecar: { folders: s.sidecar.folders.filter((x) => x.id !== id) } });
+        } }, t2("Remove folder (keep triggers)"))
       ], { width: 200, menu: true });
     }
     const timerEntry = entry("game.triggerTimer");
@@ -9997,13 +10268,13 @@ function createPanel(api, hooks = {}) {
     function setEveryFrame(on) {
       if (on === everyFrame()) return;
       if (on) {
-        s.commit(t("Run triggers every frame"), (intern) => {
+        s.commit(t2("Run triggers every frame"), (intern) => {
           const tr = api.triggers.newTrigger([PlayerGroup.AllPlayers]);
           tr.conditions = [api.triggers.newCondition(ConditionType.Always)];
           tr.actions = [{ ...api.triggers.newAction(ActionType.Comment), text: intern("Magenta: run triggers every frame") }, lowerAction({ entry: timerEntry, args: {}, value: 0, op: SetModifier.SetTo }), api.triggers.newAction(ActionType.PreserveTrigger)];
           return [...s.list, tr];
         }, { sidecar: { settings: { ...s.sidecar.settings, everyFrame: true } } });
-        void api.ui.alert(t("A trigger at the end of the list now sets the trigger timer to 0 every cycle, so the whole list runs every frame instead of every two seconds. Every Wait and every preserved trigger in the map now runs on that clock: a counter that added 1 per cycle adds 24 a second."), { title: t("Triggers run every frame") });
+        void api.ui.alert(t2("A trigger at the end of the list now sets the trigger timer to 0 every cycle, so the whole list runs every frame instead of every two seconds. Every Wait and every preserved trigger in the map now runs on that clock: a counter that added 1 per cycle adds 24 a second."), { title: t2("Triggers run every frame") });
       } else {
         const folders = /* @__PURE__ */ new Map();
         let removed = 0;
@@ -10014,7 +10285,7 @@ function createPanel(api, hooks = {}) {
             if (f !== void 0) folders.set(i - removed, f);
           }
         });
-        s.commit(t("Run triggers every two seconds"), () => s.list.filter((tr) => !isFrameTrigger(tr)), { folders, sidecar: { settings: { ...s.sidecar.settings, everyFrame: false } } });
+        s.commit(t2("Run triggers every two seconds"), () => s.list.filter((tr) => !isFrameTrigger(tr)), { folders, sidecar: { settings: { ...s.sidecar.settings, everyFrame: false } } });
       }
     }
     function menu(anchor) {
@@ -10028,39 +10299,39 @@ function createPanel(api, hooks = {}) {
       };
       const sep = () => el("div", { className: "mg-menu-sep" });
       openPopover(anchor, () => [
-        item(t("Undo {what}", { what: s.canUndo() ?? "" }), () => s.undo(), { shortcut: "Ctrl+Z", disabled: !s.canUndo() }),
-        item(t("Redo {what}", { what: s.canRedo() ?? "" }), () => s.redo(), { shortcut: "Ctrl+Y", disabled: !s.canRedo() }),
+        item(t2("Undo {what}", { what: s.canUndo() ?? "" }), () => s.undo(), { shortcut: "Ctrl+Z", disabled: !s.canUndo() }),
+        item(t2("Redo {what}", { what: s.canRedo() ?? "" }), () => s.redo(), { shortcut: "Ctrl+Y", disabled: !s.canRedo() }),
         sep(),
-        item(t("Duplicate trigger"), duplicate, { shortcut: "Ctrl+D", disabled: s.selected === null }),
-        item(t("Disable / enable trigger"), toggleDisabled, { shortcut: "Ctrl+/", disabled: s.selected === null }),
-        item(t("Delete trigger"), remove, { shortcut: "Del", disabled: s.selected === null }),
-        item(t("New folder\u2026"), newFolder),
+        item(t2("Duplicate trigger"), duplicate, { shortcut: "Ctrl+D", disabled: s.selected === null }),
+        item(t2("Disable / enable trigger"), toggleDisabled, { shortcut: "Ctrl+/", disabled: s.selected === null }),
+        item(t2("Delete trigger"), remove, { shortcut: "Del", disabled: s.selected === null }),
+        item(t2("New folder\u2026"), newFolder),
         sep(),
-        item(t("Copy trigger as text"), () => void copyText(), { shortcut: "Ctrl+C", disabled: s.selected === null }),
-        item(t("Paste triggers from text"), () => void pasteText(), { shortcut: "Ctrl+V" }),
+        item(t2("Copy trigger as text"), () => void copyText(), { shortcut: "Ctrl+C", disabled: s.selected === null }),
+        item(t2("Paste triggers from text"), () => void pasteText(), { shortcut: "Ctrl+V" }),
         sep(),
         perPlayerItem(),
         sep(),
-        item(t("Run triggers every frame"), () => setEveryFrame(!everyFrame()), { checked: everyFrame() }),
-        item(t("Counters\u2026"), () => countersDialog()),
+        item(t2("Run triggers every frame"), () => setEveryFrame(!everyFrame()), { checked: everyFrame() }),
+        item(t2("Counters\u2026"), () => countersDialog()),
         sep(),
-        item(t("Dry run\u2026"), () => sim.open()),
-        item(t("Build EUD map\u2026"), () => openBuildDialog(api, h, s, everyFrame())),
-        item(t("Dock on the right"), () => {
+        item(t2("Dry run\u2026"), () => sim.open()),
+        item(t2("Build EUD map\u2026"), () => openBuildDialog(api, h, s, everyFrame())),
+        item(t2("Dock on the right"), () => {
           setLayout(api, { dock: layout(api).dock === "right" ? "float" : "right" });
           relayout();
         }, { checked: layout(api).dock === "right" }),
-        item(t("Settings\u2026"), () => openSettings(api)),
+        item(t2("Settings\u2026"), () => openSettings(api)),
         sep(),
-        item(t("Show every trigger"), () => {
+        item(t2("Show every trigger"), () => {
           filter = "all";
           render();
         }, { checked: filter === "all" }),
-        item(t("Show only triggers with a problem"), () => {
+        item(t2("Show only triggers with a problem"), () => {
           filter = "problems";
           render();
         }, { checked: filter === "problems" }),
-        item(t("Show only EUD triggers"), () => {
+        item(t2("Show only EUD triggers"), () => {
           filter = "eud";
           render();
         }, { checked: filter === "eud" })
@@ -10069,30 +10340,30 @@ function createPanel(api, hooks = {}) {
     function perPlayerItem() {
       const i = s.selected;
       const existing = i === null ? null : s.sidecar.expansions.find((x) => x.kind === "forEachPlayer" && x.anchor.i === s.cleanIndex(i));
-      const b = el("button", { type: "button", className: "mg-menu-item", disabled: i === null }, existing ? t("Stop running for each player") : t("Run this trigger for each player\u2026"));
+      const b = el("button", { type: "button", className: "mg-menu-item", disabled: i === null }, existing ? t2("Stop running for each player") : t2("Run this trigger for each player\u2026"));
       b.addEventListener("click", () => {
         closePopover();
         if (i === null) return;
         if (existing && existing.kind === "forEachPlayer") {
-          s.commit(t("Stop running for each player"), () => s.list.map((tr, k) => k === i ? setOwners(tr, existing.players) : tr), { sidecar: { expansions: s.sidecar.expansions.filter((x) => x.id !== existing.id) } });
+          s.commit(t2("Stop running for each player"), () => s.list.map((tr, k) => k === i ? setOwners(tr, existing.players) : tr), { sidecar: { expansions: s.sidecar.expansions.filter((x) => x.id !== existing.id) } });
           return;
         }
         const boxes = HUMAN_PLAYERS.map((p) => w.checkbox(api.names.playerGroup(p), { value: true }));
-        const placeholder = w.select(api.names.playerGroups().filter((g) => g.value >= 12).map((g) => ({ value: g.value, label: g.label })), { value: DEFAULT_PLACEHOLDER });
+        const placeholder2 = w.select(api.names.playerGroups().filter((g) => g.value >= 12).map((g) => ({ value: g.value, label: g.label })), { value: DEFAULT_PLACEHOLDER });
         api.ui.dialog({
-          title: t("Run for each player"),
+          title: t2("Run for each player"),
           size: "sm",
           mount(body2) {
-            body2.append(w.hint(t("One copy of this trigger per player ticked, owned by that player, with the group below replaced by the player in every condition and action. This trigger becomes the template and stops running itself.")), w.column(...boxes), w.form([{ label: t("Stands for the player"), field: placeholder }]));
+            body2.append(w.hint(t2("One copy of this trigger per player ticked, owned by that player, with the group below replaced by the player in every condition and action. This trigger becomes the template and stops running itself.")), w.column(...boxes), w.form([{ label: t2("Stands for the player"), field: placeholder2 }]));
           },
           buttons: [
-            { label: t("OK"), primary: true, run: () => {
+            { label: t2("OK"), primary: true, run: () => {
               const players = HUMAN_PLAYERS.filter((_, k) => boxes[k].input.checked);
               if (!players.length) return;
               const tr = s.list[i];
-              s.commit(t("Run for each player"), () => s.list, { sidecar: { expansions: [...s.sidecar.expansions, { id: `p${Date.now().toString(36)}`, kind: "forEachPlayer", placeholder: Number(placeholder.value), players, anchor: { i: s.cleanIndex(i), h: fingerprint(tr) } }] } });
+              s.commit(t2("Run for each player"), () => s.list, { sidecar: { expansions: [...s.sidecar.expansions, { id: `p${Date.now().toString(36)}`, kind: "forEachPlayer", placeholder: Number(placeholder2.value), players, anchor: { i: s.cleanIndex(i), h: fingerprint(tr) } }] } });
             } },
-            { label: t("Cancel") }
+            { label: t2("Cancel") }
           ]
         });
       });
@@ -10102,11 +10373,11 @@ function createPanel(api, hooks = {}) {
       const rows = s.sidecar.counters;
       const namer = h.namer(s.sidecar);
       api.ui.dialog({
-        title: t("Named counters"),
+        title: t2("Named counters"),
         size: "md",
         mount(body2) {
           if (!rows.length) {
-            body2.append(w.hint(t("No counter has a name yet. Name one from a Deaths row's name\u2026 chip, or from a counter chip's New counter\u2026")));
+            body2.append(w.hint(t2("No counter has a name yet. Name one from a Deaths row's name\u2026 chip, or from a counter chip's New counter\u2026")));
             return;
           }
           body2.append(w.list(rows.map((c2) => ({ label: c2.name, value: c2, hint: `${namer.player(c2.player)} \xB7 ${namer.unit(c2.unit)}` }))));
@@ -10204,58 +10475,1179 @@ function starters(subject) {
     const owner = ownerOf(u.owner);
     out.push({
       id: "unit-dies",
-      label: `When this ${u.name} dies`,
-      hint: `${u.ownerName}'s deaths of ${u.name} reach 1 (any ${u.name} of theirs, not only this one)`,
+      label: t("When this {unit} dies", { unit: u.name }),
+      hint: t("{owner}'s deaths of {unit} reach 1 (any {unit} of theirs, not only this one)", { owner: u.ownerName, unit: u.name }),
       build: (intern) => [trigger3(intern, `When the ${u.name} dies`, [owner], [cond2(C3.Deaths, { player: u.owner < 12 ? u.owner : P2.CurrentPlayer, unitId: u.unitId, comparison: Comparison.AtLeast, amount: 1 })], [display2(intern, `The ${u.name} is gone.`)])]
     });
     if (l) out.push({
       id: "unit-brought",
-      label: `When this ${u.name} is at ${l.name}`,
-      hint: `${u.ownerName} brings at least 1 ${u.name} to ${l.name}`,
+      label: t("When this {unit} is at {location}", { unit: u.name, location: l.name }),
+      hint: t("{owner} brings at least 1 {unit} to {location}", { owner: u.ownerName, unit: u.name, location: l.name }),
       build: (intern) => [trigger3(intern, `${u.name} at ${l.name}`, [owner], [cond2(C3.Bring, { player: u.owner < 12 ? u.owner : P2.CurrentPlayer, unitId: u.unitId, location: l.number, comparison: Comparison.AtLeast, amount: 1 })], [display2(intern, `The ${u.name} is at ${l.name}.`), act2(A3.PreserveTrigger)])]
     });
     out.push({
       id: "unit-give",
-      label: `Give this ${u.name} to the player who comes`,
-      hint: l ? `Whoever brings a unit to ${l.name} gets the ${u.name}` : "Needs a location under the unit",
+      label: t("Give this {unit} to the player who comes", { unit: u.name }),
+      hint: l ? t("Whoever brings a unit to {location} gets the {unit}", { location: l.name, unit: u.name }) : t("Needs a location under the unit"),
       build: (intern) => [trigger3(intern, `Give the ${u.name}`, [P2.AllPlayers], [cond2(C3.Bring, { player: P2.CurrentPlayer, unitId: UnitClass.Any, location: l?.number ?? 0, comparison: Comparison.AtLeast, amount: 1 })], [act2(A3.GiveUnits, { player: u.owner < 12 ? u.owner : P2.NeutralPlayers, target: P2.CurrentPlayer, unitId: u.unitId, modifier: 1, location: l?.number ?? 0 }), act2(A3.PreserveTrigger)])]
     });
     const hp = entry("cunit.hp");
     if (hp) out.push({
       id: "unit-hp",
-      label: `Set this ${u.name}'s hit points (EUD)`,
-      hint: `Placed unit slot ${u.slot}: the game fills the slots in map order, so the number stays right while no unit is added before it`,
+      label: t("Set this {unit}'s hit points (EUD)", { unit: u.name }),
+      hint: t("Placed unit slot {n}: the game fills the slots in map order, so the number stays right while no unit is added before it", { n: u.slot }),
       build: (intern) => [trigger3(intern, `${u.name}'s hit points`, [P2.Player1], [cond2(C3.Always)], [lowerAction({ entry: hp, args: { index: u.slot }, value: 100, op: SetModifier.SetTo })])]
     });
   }
   if (l) {
     out.push({
       id: "loc-comes",
-      label: `When a unit comes to ${l.name}`,
-      hint: "Any player, any unit; fires again each time",
+      label: t("When a unit comes to {location}", { location: l.name }),
+      hint: t("Any player, any unit; fires again each time"),
       build: (intern) => [trigger3(intern, `A unit at ${l.name}`, [P2.AllPlayers], [cond2(C3.Bring, { player: P2.CurrentPlayer, unitId: UnitClass.Any, location: l.number, comparison: Comparison.AtLeast, amount: 1 })], [display2(intern, `Something is at ${l.name}.`), act2(A3.PreserveTrigger)])]
     });
     out.push({
       id: "loc-create",
-      label: `Create units at ${l.name}`,
-      hint: "One Marine for Player 1 at the start; change the unit, the count and the player",
+      label: t("Create units at {location}", { location: l.name }),
+      hint: t("One Marine for Player 1 at the start; change the unit, the count and the player"),
       build: (intern) => [trigger3(intern, `Units at ${l.name}`, [P2.Player1], [cond2(C3.Always)], [act2(A3.CreateUnit, { player: P2.Player1, unitId: MARINE2, modifier: 1, location: l.number })])]
     });
     out.push({
       id: "loc-clear",
-      label: `Kill everything at ${l.name}`,
-      hint: "Every player's units in the location, on the first cycle",
+      label: t("Kill everything at {location}", { location: l.name }),
+      hint: t("Every player's units in the location, on the first cycle"),
       build: (intern) => [trigger3(intern, `Clear ${l.name}`, [P2.Player1], [cond2(C3.Always)], [act2(A3.KillUnitAt, { player: P2.AllPlayers, unitId: UnitClass.Any, modifier: 0, location: l.number })])]
     });
   }
   return out;
 }
 
+// ko.ts
+var KO = {
+  " (each cycle)": " (\uB9E4 \uC8FC\uAE30)",
+  "(no text)": "(\uD14D\uC2A4\uD2B8 \uC5C6\uC74C)",
+  "0 for any distance": "0\uC774\uBA74 \uAC70\uB9AC \uC81C\uD55C \uC5C6\uC74C",
+  "0 means all": "0\uC740 \uBAA8\uB450",
+  "0x{hex}, one bit": "0x{hex}, 1\uBE44\uD2B8",
+  "16-bit (up to 65,535)": "16\uBE44\uD2B8 (65,535\uAE4C\uC9C0)",
+  "24 cycles a second": "1\uCD08\uC5D0 24\uC8FC\uAE30",
+  "32-bit (any count)": "32\uBE44\uD2B8 (\uC81C\uD55C \uC5C6\uC74C)",
+  "A build row names location {n}, which the map no longer has.": "\uBE4C\uB4DC \uD589\uC774 \uB9F5\uC5D0\uC11C \uC5C6\uC5B4\uC9C4 \uB85C\uCF00\uC774\uC158 {n}\uC744(\uB97C) \uAC00\uB9AC\uD0B5\uB2C8\uB2E4.",
+  "A build row no trigger uses is still in the map's Magenta data; it is sent, and never fires.": "\uC5B4\uB290 \uD2B8\uB9AC\uAC70\uB3C4 \uC4F0\uC9C0 \uC54A\uB294 \uBE4C\uB4DC \uD589\uC774 \uB9F5\uC758 Magenta \uB370\uC774\uD130\uC5D0 \uB0A8\uC544 \uC788\uC2B5\uB2C8\uB2E4. \uBE4C\uB4DC\uC5D0 \uB4E4\uC5B4\uAC00\uC9C0\uB9CC \uC2E4\uD589\uB418\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
+  "A build row runs here in the game; the dry run skips it.": "\uAC8C\uC784\uC5D0\uC11C\uB294 \uC5EC\uAE30\uC11C \uBE4C\uB4DC \uD589\uC774 \uC2E4\uD589\uB429\uB2C8\uB2E4. \uBAA8\uC758 \uC2E4\uD589\uC740 \uAC74\uB108\uB701\uB2C8\uB2E4.",
+  "a computer": "\uCEF4\uD4E8\uD130",
+  "a computer (lobby)": "\uCEF4\uD4E8\uD130 (\uB85C\uBE44)",
+  "a cycle is {s} s": "\uD55C \uC8FC\uAE30\uB294 {s}\uCD08",
+  "a defensive matrix": "\uB514\uD39C\uC2DC\uBE0C \uB9E4\uD2B8\uB9AD\uC2A4",
+  "a detector": "\uD0D0\uC9C0\uAE30",
+  "A floating panel is dragged about and resized from its corner; a docked one sits in the right dock with the Layers and Properties panels and stacks the list over the trigger.": "\uB744\uC6B4 \uD328\uB110\uC740 \uB04C\uC5B4\uC11C \uC62E\uAE30\uACE0 \uBAA8\uC11C\uB9AC\uB85C \uD06C\uAE30\uB97C \uC870\uC808\uD569\uB2C8\uB2E4. \uB3C4\uD0B9\uD55C \uD328\uB110\uC740 \uB808\uC774\uC5B4, \uC18D\uC131 \uD328\uB110\uACFC \uD568\uAED8 \uC624\uB978\uCABD \uB3C4\uD06C\uC5D0 \uB193\uC774\uBA70 \uBAA9\uB85D\uC744 \uD2B8\uB9AC\uAC70 \uC704\uC5D0 \uC313\uC544 \uBCF4\uC5EC \uC90D\uB2C8\uB2E4.",
+  "a hero": "\uC601\uC6C5",
+  "a human": "\uC0AC\uB78C",
+  "A key gives minerals": "\uD0A4\uB97C \uB204\uB974\uBA74 \uBBF8\uB124\uB784",
+  "a location": "\uB85C\uCF00\uC774\uC158",
+  "A message cannot contain : or =.": "\uBA54\uC2DC\uC9C0\uC5D0\uB294 : \uC774\uB098 = \uB97C \uC4F8 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.",
+  "A Never condition means it never fires.": "Never \uC870\uAC74\uC774 \uC788\uC5B4\uC11C \uC2E4\uD589\uB418\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
+  "A Never condition means this trigger never fires.": "Never \uC870\uAC74\uC774 \uC788\uC5B4\uC11C \uC774 \uD2B8\uB9AC\uAC70\uB294 \uC2E4\uD589\uB418\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
+  "A new trigger after the selected one (Ctrl+N)": "\uC120\uD0DD\uD55C \uD2B8\uB9AC\uAC70 \uB4A4\uC5D0 \uC0C8 \uD2B8\uB9AC\uAC70 (Ctrl+N)",
+  "A note on this trigger; the game does nothing with it": "\uC774 \uD2B8\uB9AC\uAC70\uC5D0 \uB300\uD55C \uBA54\uBAA8. \uAC8C\uC784\uC5D0\uC11C\uB294 \uC544\uBB34 \uC77C\uB3C4 \uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4",
+  "A number instead of a counter": "\uCE74\uC6B4\uD130 \uB300\uC2E0 \uC22B\uC790",
+  "A pattern is ^start.*end$ or ^start.*middle.*end$.": "\uD328\uD134\uC740 ^\uC2DC\uC791.*\uB05D$ \uB610\uB294 ^\uC2DC\uC791.*\uC911\uAC04.*\uB05D$ \uD615\uC2DD\uC785\uB2C8\uB2E4.",
+  "A player clicked (synced)": "\uD50C\uB808\uC774\uC5B4\uAC00 \uD074\uB9AD\uD568 (\uB3D9\uAE30\uD654)",
+  "A player pressed a key (synced)": "\uD50C\uB808\uC774\uC5B4\uAC00 \uD0A4\uB97C \uB204\uB984 (\uB3D9\uAE30\uD654)",
+  "A player who brings a unit to the location is given the units standing on it. Change the location, the unit and its owner.": "\uB85C\uCF00\uC774\uC158\uC5D0 \uC720\uB2DB\uC744 \uAC00\uC838\uC628 \uD50C\uB808\uC774\uC5B4\uAC00 \uADF8 \uC704\uC5D0 \uC788\uB294 \uC720\uB2DB\uC744 \uBC1B\uC2B5\uB2C8\uB2E4. \uB85C\uCF00\uC774\uC158, \uC720\uB2DB, \uC18C\uC720\uC790\uB97C \uBC14\uAFB8\uC138\uC694.",
+  "A player with a unit at the location for thirty seconds wins. Uses a switch as the clock; change the location and the seconds.": "\uB85C\uCF00\uC774\uC158\uC5D0 30\uCD08 \uB3D9\uC548 \uC720\uB2DB\uC744 \uB454 \uD50C\uB808\uC774\uC5B4\uAC00 \uC2B9\uB9AC\uD569\uB2C8\uB2E4. \uC2A4\uC704\uCE58\uB97C \uC2DC\uACC4\uB85C \uC501\uB2C8\uB2E4. \uB85C\uCF00\uC774\uC158\uACFC \uCD08\uB97C \uBC14\uAFB8\uC138\uC694.",
+  "A player with no units and no buildings left is defeated.": "\uC720\uB2DB\uACFC \uAC74\uBB3C\uC774 \uD558\uB098\uB3C4 \uB0A8\uC9C0 \uC54A\uC740 \uD50C\uB808\uC774\uC5B4\uAC00 \uD328\uBC30\uD569\uB2C8\uB2E4.",
+  "A player's mouse is over a location (synced)": "\uD50C\uB808\uC774\uC5B4\uC758 \uB9C8\uC6B0\uC2A4\uAC00 \uB85C\uCF00\uC774\uC158 \uC704\uC5D0 \uC788\uC74C (\uB3D9\uAE30\uD654)",
+  "A player's mouse\u2026": "\uD50C\uB808\uC774\uC5B4 \uB9C8\uC6B0\uC2A4\u2026",
+  "a random number below": "\uB2E4\uC74C \uBBF8\uB9CC\uC758 \uBB34\uC791\uC704 \uC218",
+  "A small box is centred on the unit once this cycle's triggers have all run, so a trigger in the next cycle can act on it through the location. A row below this one in the same trigger still sees the location where it was.": "\uC774\uBC88 \uC8FC\uAE30\uC758 \uD2B8\uB9AC\uAC70\uAC00 \uBAA8\uB450 \uC2E4\uD589\uB41C \uB4A4 \uC791\uC740 \uC0C1\uC790\uAC00 \uC720\uB2DB \uC911\uC2EC\uC5D0 \uB193\uC774\uBBC0\uB85C, \uB2E4\uC74C \uC8FC\uAE30\uC758 \uD2B8\uB9AC\uAC70\uAC00 \uADF8 \uB85C\uCF00\uC774\uC158\uC73C\uB85C \uC720\uB2DB\uC744 \uB2E4\uB8F0 \uC218 \uC788\uC2B5\uB2C8\uB2E4. \uAC19\uC740 \uD2B8\uB9AC\uAC70\uC5D0\uC11C \uC774 \uD589 \uC544\uB798\uC5D0 \uC788\uB294 \uD589\uC740 \uC544\uC9C1 \uC6D0\uB798 \uC790\uB9AC\uC758 \uB85C\uCF00\uC774\uC158\uC744 \uBD05\uB2C8\uB2E4.",
+  "A sound plays here.": "\uC5EC\uAE30\uC11C \uC0AC\uC6B4\uB4DC\uAC00 \uC7AC\uC0DD\uB429\uB2C8\uB2E4.",
+  "A ten-minute countdown, then victory for everyone still in. Change the seconds, or Victory to Defeat.": "10\uBD84 \uCE74\uC6B4\uD2B8\uB2E4\uC6B4\uC774 \uB05D\uB098\uBA74 \uB0A8\uC544 \uC788\uB294 \uBAA8\uB450\uAC00 \uC2B9\uB9AC\uD569\uB2C8\uB2E4. \uCD08\uB97C \uBC14\uAFB8\uAC70\uB098 Victory\uB97C Defeat\uB85C \uBC14\uAFB8\uC138\uC694.",
+  "A trigger at the end of the list now sets the trigger timer to 0 every cycle, so the whole list runs every frame instead of every two seconds. Every Wait and every preserved trigger in the map now runs on that clock: a counter that added 1 per cycle adds 24 a second.": "\uC774\uC81C \uBAA9\uB85D \uB05D\uC758 \uD2B8\uB9AC\uAC70\uAC00 \uB9E4 \uC8FC\uAE30 \uD2B8\uB9AC\uAC70 \uD0C0\uC774\uBA38\uB97C 0\uC73C\uB85C \uC124\uC815\uD558\uBBC0\uB85C, \uBAA9\uB85D \uC804\uCCB4\uAC00 2\uCD08\uB9C8\uB2E4\uAC00 \uC544\uB2C8\uB77C \uB9E4 \uD504\uB808\uC784 \uC2E4\uD589\uB429\uB2C8\uB2E4. \uB9F5\uC758 \uBAA8\uB4E0 Wait\uACFC \uBCF4\uC874\uB41C \uD2B8\uB9AC\uAC70\uAC00 \uC774 \uC2DC\uACC4\uB85C \uC2E4\uD589\uB429\uB2C8\uB2E4. \uC8FC\uAE30\uB9C8\uB2E4 1\uC529 \uB354\uD558\uB358 \uCE74\uC6B4\uD130\uB294 1\uCD08\uC5D0 24\uC529 \uB354\uD569\uB2C8\uB2E4.",
+  "A unit check no trigger uses is still in the map's Magenta data; it is sent, and never fires.": "\uC5B4\uB290 \uD2B8\uB9AC\uAC70\uB3C4 \uC4F0\uC9C0 \uC54A\uB294 \uC720\uB2DB \uAC80\uC0AC\uAC00 \uB9F5\uC758 Magenta \uB370\uC774\uD130\uC5D0 \uB0A8\uC544 \uC788\uC2B5\uB2C8\uB2E4. \uBE4C\uB4DC\uC5D0 \uB4E4\uC5B4\uAC00\uC9C0\uB9CC \uC2E4\uD589\uB418\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
+  "A Unit Properties slot, 1 to 64; 0 for none": "\uC720\uB2DB \uC18D\uC131 \uC2AC\uB86F, 1\u201364. 0\uC774\uBA74 \uC5C6\uC74C",
+  "A units.dat flag, bit 14. Verified as a write and read (probe 9); what the game does with it for a type that never had it was not checked \u2014 the flag alone gives no button.": "units.dat \uD50C\uB798\uADF8, \uBE44\uD2B8 14. \uC4F0\uAE30\uC640 \uC77D\uAE30\uB97C \uD655\uC778\uD588\uC2B5\uB2C8\uB2E4 (probe 9). \uC6D0\uB798 \uC774 \uD50C\uB798\uADF8\uAC00 \uC5C6\uB358 \uC885\uB958\uC5D0 \uAC8C\uC784\uC774 \uBB34\uC5C7\uC744 \uD558\uB294\uC9C0\uB294 \uD655\uC778\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4. \uD50C\uB798\uADF8\uB9CC\uC73C\uB85C\uB294 \uBC84\uD2BC\uC774 \uC0DD\uAE30\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
+  "A units.dat flag, bit 20. Verified as a write and read (probe 9); what the game does with it for a type that never had it was not checked \u2014 the flag alone gives no button.": "units.dat \uD50C\uB798\uADF8, \uBE44\uD2B8 20. \uC4F0\uAE30\uC640 \uC77D\uAE30\uB97C \uD655\uC778\uD588\uC2B5\uB2C8\uB2E4 (probe 9). \uC6D0\uB798 \uC774 \uD50C\uB798\uADF8\uAC00 \uC5C6\uB358 \uC885\uB958\uC5D0 \uAC8C\uC784\uC774 \uBB34\uC5C7\uC744 \uD558\uB294\uC9C0\uB294 \uD655\uC778\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4. \uD50C\uB798\uADF8\uB9CC\uC73C\uB85C\uB294 \uBC84\uD2BC\uC774 \uC0DD\uAE30\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
+  "A units.dat flag, bit 6. Verified as a write and read (probe 9); what the game does with it for a type that never had it was not checked \u2014 the flag alone gives no button.": "units.dat \uD50C\uB798\uADF8, \uBE44\uD2B8 6. \uC4F0\uAE30\uC640 \uC77D\uAE30\uB97C \uD655\uC778\uD588\uC2B5\uB2C8\uB2E4 (probe 9). \uC6D0\uB798 \uC774 \uD50C\uB798\uADF8\uAC00 \uC5C6\uB358 \uC885\uB958\uC5D0 \uAC8C\uC784\uC774 \uBB34\uC5C7\uC744 \uD558\uB294\uC9C0\uB294 \uD655\uC778\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4. \uD50C\uB798\uADF8\uB9CC\uC73C\uB85C\uB294 \uBC84\uD2BC\uC774 \uC0DD\uAE30\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
+  "A units.dat flag, bit 9. Verified as a write and read (probe 9); what the game does with it for a type that never had it was not checked \u2014 the flag alone gives no button.": "units.dat \uD50C\uB798\uADF8, \uBE44\uD2B8 9. \uC4F0\uAE30\uC640 \uC77D\uAE30\uB97C \uD655\uC778\uD588\uC2B5\uB2C8\uB2E4 (probe 9). \uC6D0\uB798 \uC774 \uD50C\uB798\uADF8\uAC00 \uC5C6\uB358 \uC885\uB958\uC5D0 \uAC8C\uC784\uC774 \uBB34\uC5C7\uC744 \uD558\uB294\uC9C0\uB294 \uD655\uC778\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4. \uD50C\uB798\uADF8\uB9CC\uC73C\uB85C\uB294 \uBC84\uD2BC\uC774 \uC0DD\uAE30\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
+  "A units.dat flag. Units of the type see cloaked and burrowed units in their sight range.": "units.dat \uD50C\uB798\uADF8. \uC774 \uC885\uB958\uC758 \uC720\uB2DB\uC774 \uC2DC\uC57C \uC548\uC758 \uC740\uD3D0 \uC720\uB2DB\uACFC \uBC84\uB85C\uC6B0 \uC720\uB2DB\uC744 \uBD05\uB2C8\uB2E4.",
+  "A units.dat flag. Verified on marines already on the map: their hit points climbed at once (probe 8).": "units.dat \uD50C\uB798\uADF8. \uC774\uBBF8 \uB9F5\uC5D0 \uC788\uB294 \uB9C8\uB9B0\uC73C\uB85C \uD655\uC778: \uCCB4\uB825\uC774 \uBC14\uB85C \uCC28\uC62C\uB790\uC2B5\uB2C8\uB2E4 (probe 8).",
+  "A units.dat flag. Verified: a medic healed a vulture flagged organic (probe 9), one already on the map.": "units.dat \uD50C\uB798\uADF8. \uD655\uC778\uB428: \uBA54\uB515\uC774 \uC0DD\uCCB4 \uD50C\uB798\uADF8\uB97C \uBD99\uC778 \uBC8C\uCC98\uB97C \uCE58\uB8CC\uD588\uC2B5\uB2C8\uB2E4 (probe 9). \uC774\uBBF8 \uB9F5\uC5D0 \uC788\uB358 \uBC8C\uCC98\uC785\uB2C8\uB2E4.",
+  "A units.dat flag. Verified: an SCV could repair a marine flagged mechanical (probe 9), one already on the map.": "units.dat \uD50C\uB798\uADF8. \uD655\uC778\uB428: SCV\uAC00 \uAE30\uACC4 \uD50C\uB798\uADF8\uB97C \uBD99\uC778 \uB9C8\uB9B0\uC744 \uC218\uB9AC\uD560 \uC218 \uC788\uC5C8\uC2B5\uB2C8\uB2E4 (probe 9). \uC774\uBBF8 \uB9F5\uC5D0 \uC788\uB358 \uB9C8\uB9B0\uC785\uB2C8\uB2E4.",
+  "A units.dat flag: units made after this cannot be hurt; the ones already on the map keep what they were made with (probe 8).": "units.dat \uD50C\uB798\uADF8: \uC774\uD6C4\uC5D0 \uB9CC\uB4E0 \uC720\uB2DB\uC740 \uD53C\uD574\uB97C \uC785\uC9C0 \uC54A\uACE0, \uC774\uBBF8 \uB9F5\uC5D0 \uC788\uB294 \uC720\uB2DB\uC740 \uB9CC\uB4E4\uC5B4\uC9C8 \uB54C\uC758 \uAC12\uC744 \uC720\uC9C0\uD569\uB2C8\uB2E4 (probe 8).",
+  "A units.dat flag: units made after this have it; the ones already on the map keep what they were made with.": "units.dat \uD50C\uB798\uADF8: \uC774\uD6C4\uC5D0 \uB9CC\uB4E0 \uC720\uB2DB\uC5D0 \uC801\uC6A9\uB418\uACE0, \uC774\uBBF8 \uB9F5\uC5D0 \uC788\uB294 \uC720\uB2DB\uC740 \uB9CC\uB4E4\uC5B4\uC9C8 \uB54C\uC758 \uAC12\uC744 \uC720\uC9C0\uD569\uB2C8\uB2E4.",
+  "A Wait in a preserved trigger holds up every other trigger of its owner while it waits, every cycle.": "\uBCF4\uC874\uB41C \uD2B8\uB9AC\uAC70\uC758 Wait\uC740 \uAE30\uB2E4\uB9AC\uB294 \uB3D9\uC548 \uB9E4 \uC8FC\uAE30 \uC18C\uC720\uC790\uC758 \uB2E4\uB978 \uD2B8\uB9AC\uAC70\uB97C \uBAA8\uB450 \uBA48\uCDA5\uB2C8\uB2E4.",
+  "able to burrow": "\uBC84\uB85C\uC6B0 \uAC00\uB2A5",
+  "able to cloak": "\uC740\uD3D0 \uAC00\uB2A5",
+  "About 24 a second at Fastest, 15 at Normal. Verified: a line at 10 s (probe 8).": "\uAC00\uC7A5 \uBE60\uB984\uC5D0\uC11C 1\uCD08\uC5D0 \uC57D 24, \uBCF4\uD1B5\uC5D0\uC11C 15. \uD655\uC778\uB428: 10\uCD08\uC5D0 \uD55C \uC904 (probe 8).",
+  "above": "\uCD08\uACFC",
+  "Action": "\uC561\uC158",
+  "Action {n}": "\uC561\uC158 {n}",
+  "Actions": "\uC561\uC158",
+  "Add": "\uCD94\uAC00",
+  "Add a condition\u2026": "\uC870\uAC74 \uCD94\uAC00\u2026",
+  "Add a counter to another": "\uCE74\uC6B4\uD130\uB97C \uB2E4\uB978 \uCE74\uC6B4\uD130\uC5D0 \uB354\uD558\uAE30",
+  "Add a player or group": "\uD50C\uB808\uC774\uC5B4\uB098 \uADF8\uB8F9 \uCD94\uAC00",
+  "Add action": "\uC561\uC158 \uCD94\uAC00",
+  "Add an action\u2026": "\uC561\uC158 \uCD94\uAC00\u2026",
+  "Add build row": "\uBE4C\uB4DC \uD589 \uCD94\uAC00",
+  "Add chat command": "\uCC44\uD305 \uBA85\uB839 \uCD94\uAC00",
+  "Add comparison": "\uBE44\uAD50 \uCD94\uAC00",
+  "Add condition": "\uC870\uAC74 \uCD94\uAC00",
+  "Add counter step": "\uCE74\uC6B4\uD130 \uB2E8\uACC4 \uCD94\uAC00",
+  "Add input": "\uC785\uB825 \uCD94\uAC00",
+  "Add recipe": "\uB808\uC2DC\uD53C \uCD94\uAC00",
+  "Add unit check": "\uC720\uB2DB \uAC80\uC0AC \uCD94\uAC00",
+  "Add {Amount} to the hangar of {Count} {Unit} owned by {Player} at {Location}": "{Location}\uC5D0 \uC788\uB294 {Player}\uC758 {Unit} {Count}\uC758 \uACA9\uB0A9\uACE0\uC5D0 {Amount} \uCD94\uAC00",
+  "Add {from} to {to}": "{to}\uC5D0 {from} \uB354\uD558\uAE30",
+  "Add {name}": "{name} \uCD94\uAC00",
+  "Address 0x{hex}\u2026": "\uC8FC\uC18C 0x{hex}\u2026",
+  "Air units pass through one another": "\uACF5\uC911 \uC720\uB2DB\uB07C\uB9AC \uACB9\uCCD0 \uC9C0\uB098\uAC10",
+  "Air weapon of a unit type": "\uC720\uB2DB \uC885\uB958\uC758 \uACF5\uC911 \uBB34\uAE30",
+  "all": "\uBAA8\uB450",
+  "All 16 condition slots are used.": "\uC870\uAC74 16\uCE78\uC744 \uBAA8\uB450 \uC37C\uC2B5\uB2C8\uB2E4.",
+  "All 64 action slots are used.": "\uC561\uC158 64\uCE78\uC744 \uBAA8\uB450 \uC37C\uC2B5\uB2C8\uB2E4.",
+  "Alliance of a player toward another": "\uB2E4\uB978 \uD50C\uB808\uC774\uC5B4\uC5D0 \uB300\uD55C \uB3D9\uB9F9 \uAD00\uACC4",
+  "Allied Victory": "\uB3D9\uB9F9 \uC2B9\uB9AC",
+  "allied victory": "\uB3D9\uB9F9 \uC2B9\uB9AC",
+  "Ally": "\uB3D9\uB9F9",
+  "ally": "\uB3D9\uB9F9",
+  "Always": "\uD56D\uC0C1",
+  "Always Display": "\uD56D\uC0C1 \uD45C\uC2DC",
+  "Amount": "\uC591",
+  "An AI script runs here in the game; the dry run does not have one.": "\uAC8C\uC784\uC5D0\uC11C\uB294 \uC5EC\uAE30\uC11C AI \uC2A4\uD06C\uB9BD\uD2B8\uAC00 \uC2E4\uD589\uB429\uB2C8\uB2E4. \uBAA8\uC758 \uC2E4\uD589\uC5D0\uB294 AI\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.",
+  "An order is given here; the dry run does not move units.": "\uC5EC\uAE30\uC11C \uBA85\uB839\uC774 \uB0B4\uB824\uC9D1\uB2C8\uB2E4. \uBAA8\uC758 \uC2E4\uD589\uC740 \uC720\uB2DB\uC744 \uC6C0\uC9C1\uC774\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
+  "Animate the portrait in {Slot} for {Duration} ms": "{Slot}\uC758 \uCD08\uC0C1\uD654\uB97C {Duration}ms \uB3D9\uC548 \uC6C0\uC9C1\uC784",
+  "Answered by a run of generated triggers before this one, every cycle; they are hidden here and locked in the other editors.": "\uB9E4 \uC8FC\uAE30 \uC774 \uD2B8\uB9AC\uAC70 \uC55E\uC5D0\uC11C \uB9CC\uB4E4\uC5B4\uC9C4 \uD2B8\uB9AC\uAC70\uB4E4\uC774 \uB2F5\uC744 \uB0C5\uB2C8\uB2E4. \uC5EC\uAE30\uC11C\uB294 \uC228\uACA8\uC9C0\uACE0 \uB2E4\uB978 \uD3B8\uC9D1\uAE30\uC5D0\uC11C\uB294 \uC7A0\uAE41\uB2C8\uB2E4.",
+  "any distance": "\uAC70\uB9AC \uC81C\uD55C \uC5C6\uC74C",
+  "Any player, any unit; fires again each time": "\uBAA8\uB4E0 \uD50C\uB808\uC774\uC5B4, \uBAA8\uB4E0 \uC720\uB2DB. \uC62C \uB54C\uB9C8\uB2E4 \uB2E4\uC2DC \uC2E4\uD589\uB429\uB2C8\uB2E4",
+  "any unit": "\uBAA8\uB4E0 \uC720\uB2DB",
+  "Any unit of a kind has a stat below or above": "\uC5B4\uB5A4 \uC885\uB958\uC758 \uC720\uB2DB \uD558\uB098\uB77C\uB3C4 \uB2A5\uB825\uCE58\uAC00 \uAE30\uC900 \uBBF8\uB9CC \uB610\uB294 \uCD08\uACFC",
+  "Any {units} has {field} {cmp} {value}": "{units} \uC911 \uD558\uB098\uB77C\uB3C4 {field} {value} {cmp}",
+  "Any {units} {is} {field}": "{units} \uC911 \uD558\uB098\uB77C\uB3C4 {field}: {is}",
+  "anyone": "\uB204\uAD6C\uB4E0",
+  "anywhere": "\uC5B4\uB514\uB4E0",
+  "apply a spell effect": "\uB9C8\uBC95 \uD6A8\uACFC \uAC78\uAE30",
+  "Armor of a unit type": "\uC720\uB2DB \uC885\uB958\uC758 \uBC29\uC5B4\uB825",
+  "as": "\uD50C\uB808\uC774\uC5B4:",
+  "As a condition this reads what Set Alliance Status wrote; the game has no native way to test it. Verified both ways in probe 9. The catalogue had this at 0x58D6F8 until 2026-09-14, which is the game clock.": "\uC870\uAC74\uC73C\uB85C\uB294 Set Alliance Status\uAC00 \uC4F4 \uAC12\uC744 \uC77D\uC2B5\uB2C8\uB2E4. \uAC8C\uC784\uC5D0\uB294 \uC774\uAC83\uC744 \uAC80\uC0AC\uD558\uB294 \uAE30\uBCF8 \uBC29\uBC95\uC774 \uC5C6\uC2B5\uB2C8\uB2E4. probe 9\uC5D0\uC11C \uC591\uCABD \uBAA8\uB450 \uD655\uC778\uD588\uC2B5\uB2C8\uB2E4. \uCE74\uD0C8\uB85C\uADF8\uB294 2026-09-14\uAE4C\uC9C0 \uC774\uAC83\uC744 \uAC8C\uC784 \uC2DC\uACC4\uC778 0x58D6F8\uB85C \uC798\uBABB \uB450\uC5C8\uC2B5\uB2C8\uB2E4.",
+  "as {player}": "\uD50C\uB808\uC774\uC5B4: {player}",
+  "At least": "\uC774\uC0C1",
+  "at least": "\uC774\uC0C1",
+  "At most": "\uC774\uD558",
+  "at most": "\uC774\uD558",
+  "at random": "\uBB34\uC791\uC704",
+  "At the start, set the Marine's max hit points to 80 and its armor to 2. EUD writes; add rows for other stats.": "\uC2DC\uC791\uD560 \uB54C \uB9C8\uB9B0\uC758 \uCD5C\uB300 \uCCB4\uB825\uC744 80, \uBC29\uC5B4\uB825\uC744 2\uB85C \uC124\uC815\uD569\uB2C8\uB2E4. EUD \uC4F0\uAE30\uC785\uB2C8\uB2E4. \uB2E4\uB978 \uB2A5\uB825\uCE58\uB294 \uD589\uC744 \uCD94\uAC00\uD558\uC138\uC694.",
+  "attack": "\uACF5\uACA9",
+  "being downloaded": "\uB2E4\uC6B4\uB85C\uB4DC \uC911",
+  "below": "\uBBF8\uB9CC",
+  "blue": "\uD30C\uB791",
+  "brown": "\uAC08\uC0C9",
+  "Build": "\uBE4C\uB4DC",
+  "Build EUD map": "EUD \uB9F5 \uBE4C\uB4DC",
+  "Build EUD map\u2026": "EUD \uB9F5 \uBE4C\uB4DC\u2026",
+  "Build options": "\uBE4C\uB4DC \uC635\uC158",
+  "Build time of a unit type": "\uC720\uB2DB \uC885\uB958\uC758 \uC0DD\uC0B0 \uC2DC\uAC04",
+  "Build \xB7 {n} \xB7 {state}": "\uBE4C\uB4DC \xB7 {n} \xB7 {state}",
+  "Buildings": "\uAC74\uBB3C",
+  "Building\u2026": "\uBE4C\uB4DC \uC911\u2026",
+  "Builds run with eudplib {eudplib} and euddraft {euddraft}, {where}.": "\uBE4C\uB4DC\uB294 eudplib {eudplib}\uACFC(\uC640) euddraft {euddraft}(\uC73C)\uB85C \uC2E4\uD589\uB429\uB2C8\uB2E4. {where}.",
+  "Build\u2026": "\uBE4C\uB4DC\u2026",
+  "built": "\uBE4C\uB4DC\uB428",
+  "Built from the map as it is now, {when}{file}.": "\uC9C0\uAE08\uC758 \uB9F5\uC73C\uB85C \uBE4C\uB4DC\uD588\uC2B5\uB2C8\uB2E4. {when}{file}.",
+  "Built, but not saved.": "\uBE4C\uB4DC\uD588\uC9C0\uB9CC \uC800\uC7A5\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.",
+  "Built: {name}, {kb} KB in {s} s.": "\uBE4C\uB4DC \uC644\uB8CC: {name}, {kb} KB, {s}\uCD08.",
+  "Burrow ability flag of a unit type": "\uC720\uB2DB \uC885\uB958\uC758 \uBC84\uB85C\uC6B0 \uB2A5\uB825 \uD50C\uB798\uADF8",
+  "burrowed": "\uBC84\uB85C\uC6B0 \uC0C1\uD0DC",
+  "Cancel": "\uCDE8\uC18C",
+  "Cannot tell": "\uC54C \uC218 \uC5C6\uC74C",
+  "center a location on it": "\uB85C\uCF00\uC774\uC158\uC744 \uC720\uB2DB \uC911\uC2EC\uC5D0",
+  "Center the view on {Location}": "\uD654\uBA74\uC744 {Location|\uC73C\uB85C} \uC774\uB3D9",
+  "Center {Move} on {Unit} owned by {Player} at {Unit at}": "{Move|\uC744} {Unit at}\uC5D0 \uC788\uB294 {Player}\uC758 {Unit} \uC911\uC2EC\uC73C\uB85C \uC62E\uAE40",
+  "Change a unit type's stats": "\uC720\uB2DB \uC885\uB958 \uB2A5\uB825\uCE58 \uBC14\uAFB8\uAE30",
+  "Change button": "\uBC84\uD2BC \uBC14\uAFB8\uAE30",
+  "Change key": "\uD0A4 \uBC14\uAFB8\uAE30",
+  "Change location": "\uB85C\uCF00\uC774\uC158 \uBC14\uAFB8\uAE30",
+  "Change owners": "\uC18C\uC720\uC790 \uBC14\uAFB8\uAE30",
+  "changed and read by": "\uBC14\uAFB8\uACE0 \uC77D\uB294 \uD2B8\uB9AC\uAC70:",
+  "changed by": "\uBC14\uAFB8\uB294 \uD2B8\uB9AC\uAC70:",
+  "Changes the owner byte only: the unit turns hostile or friendly at once, but keeps its old colour (that lives on its sprite) and its selection and control groups. Give Units is the clean way. Verified in Remastered 2026-09-12. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out. Start locations take no slot; nor does a unit of a human player who is not in the game (it is removed at load), so slots after one shift by one when that player is missing.": "\uC18C\uC720\uC790 \uBC14\uC774\uD2B8\uB9CC \uBC14\uAFC9\uB2C8\uB2E4. \uC720\uB2DB\uC740 \uBC14\uB85C \uC801\uC774\uB098 \uC544\uAD70\uC774 \uB418\uC9C0\uB9CC, \uC608\uC804 \uC0C9(\uC2A4\uD504\uB77C\uC774\uD2B8\uC5D0 \uC788\uC74C)\uACFC \uC120\uD0DD, \uBD80\uB300 \uC9C0\uC815\uC740 \uADF8\uB300\uB85C\uC785\uB2C8\uB2E4. \uAE54\uB054\uD558\uAC8C \uD558\uB824\uBA74 Give Units\uB97C \uC4F0\uC138\uC694. 2026-09-12 Remastered\uC5D0\uC11C \uD655\uC778\uB428. \uC2AC\uB86F: \uCC98\uC74C \uBC30\uCE58\uB41C \uC720\uB2DB\uC774 \uC2AC\uB86F 0\uC774\uACE0 \uADF8 \uB4A4\uB85C\uB294 1699\uBD80\uD130 \uAC70\uAFB8\uB85C \uC149\uB2C8\uB2E4 (2026-09-12 Remastered\uC5D0\uC11C \uD655\uC778). \uCE69\uC5D0\uC11C \uB9F5\uC758 \uC720\uB2DB\uC744 \uACE0\uB974\uBA74 \uC2AC\uB86F\uC744 \uACC4\uC0B0\uD574 \uC90D\uB2C8\uB2E4. \uC2DC\uC791 \uC704\uCE58\uB294 \uC2AC\uB86F\uC744 \uCC28\uC9C0\uD558\uC9C0 \uC54A\uACE0, \uAC8C\uC784\uC5D0 \uC5C6\uB294 \uC0AC\uB78C \uD50C\uB808\uC774\uC5B4\uC758 \uC720\uB2DB\uB3C4 \uBD88\uB7EC\uC62C \uB54C \uC9C0\uC6CC\uC9C0\uBBC0\uB85C \uCC28\uC9C0\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4. \uADF8\uB798\uC11C \uADF8 \uD50C\uB808\uC774\uC5B4\uAC00 \uC5C6\uC73C\uBA74 \uB4A4\uC758 \uC2AC\uB86F\uC774 \uD558\uB098\uC529 \uBC00\uB9BD\uB2C8\uB2E4.",
+  "chat messageexactly": "\uADF8\uB300\uB85C",
+  "Classes": "\uBD84\uB958",
+  "clear": "\uD574\uC81C",
+  "Click a location": "\uB85C\uCF00\uC774\uC158\uC744 \uD074\uB9AD\uD558\uC138\uC694",
+  "Click a placed unit": "\uBC30\uCE58\uB41C \uC720\uB2DB\uC744 \uD074\uB9AD\uD558\uC138\uC694",
+  "Click a unit to take its type": "\uC885\uB958\uB97C \uAC00\uC838\uC62C \uC720\uB2DB\uC744 \uD074\uB9AD\uD558\uC138\uC694",
+  "click a value to change it": "\uAC12\uC744 \uD074\uB9AD\uD574\uC11C \uBC14\uAFB8\uAE30",
+  "Click to change": "\uD074\uB9AD\uD574\uC11C \uBC14\uAFB8\uAE30",
+  "Click to change; hover to show on the map": "\uD074\uB9AD\uD574\uC11C \uBC14\uAFB8\uAE30, \uAC00\uB9AC\uD0A4\uBA74 \uB9F5\uC5D0 \uD45C\uC2DC",
+  "Click to clear": "\uD074\uB9AD\uD574\uC11C \uB044\uAE30",
+  "Click to remove": "\uD074\uB9AD\uD574\uC11C \uC81C\uAC70",
+  "Cloak ability flag of a unit type": "\uC720\uB2DB \uC885\uB958\uC758 \uC740\uD3D0 \uB2A5\uB825 \uD50C\uB798\uADF8",
+  "Cloak state of a placed unit": "\uBC30\uCE58\uB41C \uC720\uB2DB\uC758 \uC740\uD3D0 \uC0C1\uD0DC",
+  "Close": "\uB2EB\uAE30",
+  "closed": "\uB2EB\uD798",
+  "collide again": "\uB2E4\uC2DC \uCDA9\uB3CC",
+  "Colour of a player": "\uD50C\uB808\uC774\uC5B4\uC758 \uC0C9",
+  "Comment": "\uC8FC\uC11D",
+  "Comment {Text}": "\uC8FC\uC11D {Text}",
+  "Compare two counters": "\uB450 \uCE74\uC6B4\uD130 \uBE44\uAD50",
+  "Comparison": "\uBE44\uAD50",
+  "comparisonexactly": "\uC77C\uCE58",
+  "Condition {n}": "\uC870\uAC74 {n}",
+  "condition {n}": "\uC870\uAC74 {n}",
+  "Conditions": "\uC870\uAC74",
+  "Conditions {a} and {b} contradict each other: at least {lo} and at most {hi}.": "\uC870\uAC74 {a}\uACFC(\uC640) {b}\uC774(\uAC00) \uC11C\uB85C \uBAA8\uC21C\uB429\uB2C8\uB2E4: {lo} \uC774\uC0C1\uC774\uBA74\uC11C {hi} \uC774\uD558\uC785\uB2C8\uB2E4.",
+  "Conditions {a} and {b} contradict each other: exactly {x} and exactly {y}.": "\uC870\uAC74 {a}\uACFC(\uC640) {b}\uC774(\uAC00) \uC11C\uB85C \uBAA8\uC21C\uB429\uB2C8\uB2E4: \uC815\uD655\uD788 {x}\uC774\uBA74\uC11C \uC815\uD655\uD788 {y}\uC785\uB2C8\uB2E4.",
+  "Cooldown of a weapon": "\uBB34\uAE30\uC758 \uC7AC\uC0AC\uC6A9 \uB300\uAE30\uC2DC\uAC04",
+  "Copied as text": "\uD14D\uC2A4\uD2B8\uB85C \uBCF5\uC0AC\uD588\uC2B5\uB2C8\uB2E4",
+  "Copy a counter into another": "\uCE74\uC6B4\uD130\uB97C \uB2E4\uB978 \uCE74\uC6B4\uD130\uC5D0 \uBCF5\uC0AC",
+  "Copy trigger as text": "\uD2B8\uB9AC\uAC70\uB97C \uD14D\uC2A4\uD2B8\uB85C \uBCF5\uC0AC",
+  "Copy {from} into {to}": "{from|\uC744} {to}\uC5D0 \uBCF5\uC0AC",
+  "Count": "\uC218",
+  "Count units into a counter": "\uC720\uB2DB \uC218\uB97C \uCE74\uC6B4\uD130\uC5D0 \uC138\uAE30",
+  "Countdown that ends the game": "\uAC8C\uC784\uC744 \uB05D\uB0B4\uB294 \uCE74\uC6B4\uD2B8\uB2E4\uC6B4",
+  "Countdown timer": "\uCE74\uC6B4\uD2B8\uB2E4\uC6B4 \uD0C0\uC774\uBA38",
+  "Countdown timer is {Comparison} {Amount} seconds": "\uCE74\uC6B4\uD2B8\uB2E4\uC6B4 \uD0C0\uC774\uBA38\uAC00 {Amount}\uCD08 {Comparison}",
+  "Counter": "\uCE74\uC6B4\uD130",
+  "Counter name": "\uCE74\uC6B4\uD130 \uC774\uB984",
+  "Counters": "\uCE74\uC6B4\uD130",
+  "Counters\u2026": "\uCE74\uC6B4\uD130\u2026",
+  "Create units at {location}": "{location}\uC5D0 \uC720\uB2DB \uC0DD\uC131",
+  "Create {Count} {Unit} at {Location} for {Player}": "{Location}\uC5D0 {Player}\uC758 {Unit} {Count} \uC0DD\uC131",
+  "Create {Count} {Unit} at {Location} for {Player} with {Properties}": "{Location}\uC5D0 {Player}\uC758 {Unit} {Count} \uC0DD\uC131, {Properties}",
+  "Ctrl+Enter to apply": "Ctrl+Enter\uB85C \uC801\uC6A9",
+  "Current player commands the least {Unit}": "\uD604\uC7AC \uD50C\uB808\uC774\uC5B4\uAC00 {Unit|\uC744} \uAC00\uC7A5 \uC801\uAC8C \uBCF4\uC720",
+  "Current player commands the least {Unit} at {Location}": "\uD604\uC7AC \uD50C\uB808\uC774\uC5B4\uAC00 {Location}\uC5D0\uC11C {Unit|\uC744} \uAC00\uC7A5 \uC801\uAC8C \uBCF4\uC720",
+  "Current player commands the most {Unit}": "\uD604\uC7AC \uD50C\uB808\uC774\uC5B4\uAC00 {Unit|\uC744} \uAC00\uC7A5 \uB9CE\uC774 \uBCF4\uC720",
+  "Current player commands the most {Unit} at {Location}": "\uD604\uC7AC \uD50C\uB808\uC774\uC5B4\uAC00 {Location}\uC5D0\uC11C {Unit|\uC744} \uAC00\uC7A5 \uB9CE\uC774 \uBCF4\uC720",
+  "Current player has the fewest kills of {Unit}": "\uD604\uC7AC \uD50C\uB808\uC774\uC5B4\uC758 {Unit} \uCC98\uCE58 \uC218\uAC00 \uAC00\uC7A5 \uC801\uC74C",
+  "Current player has the highest {Score} score": "\uD604\uC7AC \uD50C\uB808\uC774\uC5B4\uC758 {Score} \uC810\uC218\uAC00 \uAC00\uC7A5 \uB192\uC74C",
+  "Current player has the least {Resource}": "\uD604\uC7AC \uD50C\uB808\uC774\uC5B4\uC758 {Resource|\uC774} \uAC00\uC7A5 \uC801\uC74C",
+  "Current player has the lowest {Score} score": "\uD604\uC7AC \uD50C\uB808\uC774\uC5B4\uC758 {Score} \uC810\uC218\uAC00 \uAC00\uC7A5 \uB0AE\uC74C",
+  "Current player has the most kills of {Unit}": "\uD604\uC7AC \uD50C\uB808\uC774\uC5B4\uC758 {Unit} \uCC98\uCE58 \uC218\uAC00 \uAC00\uC7A5 \uB9CE\uC74C",
+  "Current player has the most {Resource}": "\uD604\uC7AC \uD50C\uB808\uC774\uC5B4\uC758 {Resource|\uC774} \uAC00\uC7A5 \uB9CE\uC74C",
+  "Current Player is whichever owner is running it.": "Current Player\uB294 \uC774 \uD2B8\uB9AC\uAC70\uB97C \uC2E4\uD589\uD558\uACE0 \uC788\uB294 \uC18C\uC720\uC790\uC785\uB2C8\uB2E4.",
+  "Custom": "\uC0AC\uC6A9\uC790 \uC9C0\uC815",
+  "cycle {n} \xB7 {s} s": "\uC8FC\uAE30 {n} \xB7 {s}\uCD08",
+  "Damage bonus per upgrade of a weapon": "\uBB34\uAE30\uC758 \uC5C5\uADF8\uB808\uC774\uB4DC\uB2F9 \uCD94\uAC00 \uACF5\uACA9\uB825",
+  "Damage factor of a weapon": "\uBB34\uAE30\uC758 \uACF5\uACA9 \uD69F\uC218",
+  "Damage of a weapon": "\uBB34\uAE30\uC758 \uACF5\uACA9\uB825",
+  "Defeat when nothing is left": "\uB0A8\uC740 \uAC83\uC774 \uC5C6\uC73C\uBA74 \uD328\uBC30",
+  "Delete trigger": "\uD2B8\uB9AC\uAC70 \uC0AD\uC81C",
+  "Detector flag of a unit type": "\uC720\uB2DB \uC885\uB958\uC758 \uD0D0\uC9C0\uAE30 \uD50C\uB798\uADF8",
+  "Differs per computer: what follows runs for that player's screen only, so keep it to text, sounds and the view.": "\uCEF4\uD4E8\uD130\uB9C8\uB2E4 \uB2E4\uB985\uB2C8\uB2E4. \uB4A4\uC5D0 \uC624\uB294 \uAC83\uC740 \uADF8 \uD50C\uB808\uC774\uC5B4\uC758 \uD654\uBA74\uC5D0\uC11C\uB9CC \uC2E4\uD589\uB418\uBBC0\uB85C \uD14D\uC2A4\uD2B8, \uC0AC\uC6B4\uB4DC, \uD654\uBA74 \uC774\uB3D9\uC5D0\uB9CC \uC4F0\uC138\uC694.",
+  "disable": "\uC0AC\uC6A9 \uC548 \uD568",
+  "Disable": "\uB044\uAE30",
+  "Disable / enable trigger": "\uD2B8\uB9AC\uAC70 \uB044\uAE30 / \uCF1C\uAE30",
+  "Disable debug mode": "\uB514\uBC84\uADF8 \uBAA8\uB4DC \uB044\uAE30",
+  "Display": "\uD45C\uC2DC",
+  "Display {Text} ({Display})": "{Text} \uD45C\uC2DC ({Display})",
+  "divided by": "\xF7",
+  "do nothing to it": "\uC544\uBB34\uAC83\uB3C4 \uC548 \uD568",
+  "Dock on the right": "\uC624\uB978\uCABD\uC5D0 \uB3C4\uD0B9",
+  "Docked on the right": "\uC624\uB978\uCABD\uC5D0 \uB3C4\uD0B9",
+  "Don't Always Display": "\uD56D\uC0C1 \uD45C\uC2DC \uC548 \uD568",
+  "Done by a run of {n} generated triggers right after this one, in the same cycle: this trigger's own rows run first, the triggers after the run see the result. The run is hidden here and locked in the other editors.": "\uAC19\uC740 \uC8FC\uAE30\uC5D0 \uC774 \uD2B8\uB9AC\uAC70 \uBC14\uB85C \uB4A4\uC5D0\uC11C \uB9CC\uB4E4\uC5B4\uC9C4 \uD2B8\uB9AC\uAC70 {n}\uAC1C\uAC00 \uCC98\uB9AC\uD569\uB2C8\uB2E4. \uC774 \uD2B8\uB9AC\uAC70\uC758 \uD589\uC774 \uBA3C\uC800 \uC2E4\uD589\uB418\uACE0, \uADF8 \uB4A4\uC758 \uD2B8\uB9AC\uAC70\uB4E4\uC774 \uACB0\uACFC\uB97C \uBD05\uB2C8\uB2E4. \uB9CC\uB4E4\uC5B4\uC9C4 \uD2B8\uB9AC\uAC70\uB294 \uC5EC\uAE30\uC11C \uC228\uACA8\uC9C0\uACE0 \uB2E4\uB978 \uD3B8\uC9D1\uAE30\uC5D0\uC11C\uB294 \uC7A0\uAE41\uB2C8\uB2E4.",
+  "Double-click to rename; drop a trigger here to put it in the folder": "\uB354\uBE14\uD074\uB9AD\uD574\uC11C \uC774\uB984 \uBC14\uAFB8\uAE30. \uD2B8\uB9AC\uAC70\uB97C \uC5EC\uAE30\uC5D0 \uB193\uC73C\uBA74 \uD3F4\uB354\uC5D0 \uB123\uC2B5\uB2C8\uB2E4",
+  "down by": "\uBE7C\uAE30:",
+  "downloaded on the first build, {mb} MB": "\uCCAB \uBE4C\uB4DC \uB54C \uB2E4\uC6B4\uB85C\uB4DC, {mb} MB",
+  "Drag to resize the list; double-click to hide it": "\uB04C\uC5B4\uC11C \uBAA9\uB85D \uD06C\uAE30 \uC870\uC808, \uB354\uBE14\uD074\uB9AD\uD558\uBA74 \uC228\uAE30\uAE30",
+  "draw": "\uBB34\uC2B9\uBD80",
+  "draws": "\uBB34\uC2B9\uBD80",
+  "Drop it and start over": "\uBC84\uB9AC\uACE0 \uC0C8\uB85C \uC2DC\uC791",
+  "Drop Magenta's data": "Magenta \uB370\uC774\uD130 \uBC84\uB9AC\uAE30",
+  "Dry run\u2026": "\uBAA8\uC758 \uC2E4\uD589\u2026",
+  "Duplicate trigger": "\uD2B8\uB9AC\uAC70 \uBCF5\uC81C",
+  "Duration": "\uC2DC\uAC04",
+  "Edit action": "\uC561\uC158 \uD3B8\uC9D1",
+  "Edit build row": "\uBE4C\uB4DC \uD589 \uD3B8\uC9D1",
+  "Edit chat command": "\uCC44\uD305 \uBA85\uB839 \uD3B8\uC9D1",
+  "Edit comparison": "\uBE44\uAD50 \uD3B8\uC9D1",
+  "Edit condition": "\uC870\uAC74 \uD3B8\uC9D1",
+  "Edit counter step": "\uCE74\uC6B4\uD130 \uB2E8\uACC4 \uD3B8\uC9D1",
+  "Edit trigger": "\uD2B8\uB9AC\uAC70 \uD3B8\uC9D1",
+  "Edit unit check": "\uC720\uB2DB \uAC80\uC0AC \uD3B8\uC9D1",
+  "Elapsed game time is {Comparison} {Amount} seconds": "\uAC8C\uC784 \uACBD\uACFC \uC2DC\uAC04\uC774 {Amount}\uCD08 {Comparison}",
+  "empty": "\uBE44\uC5B4 \uC788\uC74C",
+  "Empty trigger": "\uBE48 \uD2B8\uB9AC\uAC70",
+  "enable": "\uC0AC\uC6A9",
+  "Enable": "\uCF1C\uAE30",
+  "Enable debug mode": "\uB514\uBC84\uADF8 \uBAA8\uB4DC \uCF1C\uAE30",
+  "Enable Skip Tutorial": "\uD29C\uD1A0\uB9AC\uC5BC \uAC74\uB108\uB6F0\uAE30 \uCF1C\uAE30",
+  "End the scenario in a draw": "\uC2DC\uB098\uB9AC\uC624\uB97C \uBB34\uC2B9\uBD80\uB85C \uB05D\uB0C4",
+  "End the scenario in defeat": "\uC2DC\uB098\uB9AC\uC624\uB97C \uD328\uBC30\uB85C \uB05D\uB0C4",
+  "End the scenario in victory": "\uC2DC\uB098\uB9AC\uC624\uB97C \uC2B9\uB9AC\uB85C \uB05D\uB0C4",
+  "Enemy": "\uC801",
+  "enemy": "\uC801",
+  "energy": "\uC5D0\uB108\uC9C0",
+  "energy %": "\uC5D0\uB108\uC9C0 %",
+  "Energy cost of a technology": "\uAE30\uC220\uC758 \uC5D0\uB108\uC9C0 \uBE44\uC6A9",
+  "Energy of a placed unit": "\uBC30\uCE58\uB41C \uC720\uB2DB\uC758 \uC5D0\uB108\uC9C0",
+  "ensnare": "\uC778\uC2A4\uB124\uC5B4",
+  "equal to": "\uB3D9\uC77C",
+  "EUD player": "EUD \uD50C\uB808\uC774\uC5B4",
+  "euddraft adds the code for the rows below to the map as it stands, here in the editor, and the built map is saved as a file. Nothing leaves this machine. Only StarCraft: Remastered plays the result. Keep this map as the source: the built one is the compiled output, the way a program is.": "euddraft\uAC00 \uC544\uB798 \uD589\uB4E4\uC758 \uCF54\uB4DC\uB97C \uC9C0\uAE08\uC758 \uB9F5\uC5D0 \uB354\uD558\uACE0, \uBE4C\uB4DC\uD55C \uB9F5\uC744 \uD30C\uC77C\uB85C \uC800\uC7A5\uD569\uB2C8\uB2E4. \uBAA8\uB450 \uC774 \uD3B8\uC9D1\uAE30 \uC548\uC5D0\uC11C \uC77C\uC5B4\uB098\uBA70 \uC774 \uCEF4\uD4E8\uD130 \uBC16\uC73C\uB85C \uB098\uAC00\uB294 \uAC83\uC740 \uC5C6\uC2B5\uB2C8\uB2E4. \uACB0\uACFC\uBB3C\uC740 StarCraft: Remastered\uC5D0\uC11C\uB9CC \uC2E4\uD589\uB429\uB2C8\uB2E4. \uC774 \uB9F5\uC744 \uC6D0\uBCF8\uC73C\uB85C \uBCF4\uAD00\uD558\uC138\uC694. \uBE4C\uB4DC\uD55C \uB9F5\uC740 \uD504\uB85C\uADF8\uB7A8\uCC98\uB7FC \uCEF4\uD30C\uC77C\uB41C \uACB0\uACFC\uBB3C\uC785\uB2C8\uB2E4.",
+  "Every build row's sentence, every folder and every counter name in it is lost; the triggers themselves stay as they are in the map. Continue?": "\uB370\uC774\uD130\uC5D0 \uC788\uB294 \uBE4C\uB4DC \uD589\uC758 \uBB38\uC7A5, \uD3F4\uB354, \uCE74\uC6B4\uD130 \uC774\uB984\uC774 \uBAA8\uB450 \uC0AC\uB77C\uC9D1\uB2C8\uB2E4. \uD2B8\uB9AC\uAC70 \uC790\uCCB4\uB294 \uB9F5\uC5D0 \uADF8\uB300\uB85C \uB0A8\uC2B5\uB2C8\uB2E4. \uACC4\uC18D\uD560\uAE4C\uC694?",
+  "Every enemy unit that dies pays the players 50 minerals. Change the enemy player and the unit, or the amount.": "\uC801 \uC720\uB2DB\uC774 \uC8FD\uC744 \uB54C\uB9C8\uB2E4 \uD50C\uB808\uC774\uC5B4\uAC00 \uBBF8\uB124\uB784 50\uC744 \uBC1B\uC2B5\uB2C8\uB2E4. \uC801 \uD50C\uB808\uC774\uC5B4\uC640 \uC720\uB2DB, \uB610\uB294 \uC591\uC744 \uBC14\uAFB8\uC138\uC694.",
+  "every frame": "\uB9E4 \uD504\uB808\uC784",
+  "Every owner runs this trigger, and its switch is shared: when the Current Player condition is false for one of them, that run can flip the switch for the others. Guard with a death counter of the Current Player instead.": "\uBAA8\uB4E0 \uC18C\uC720\uC790\uAC00 \uC774 \uD2B8\uB9AC\uAC70\uB97C \uC2E4\uD589\uD558\uB294\uB370 \uC2A4\uC704\uCE58\uB294 \uBAA8\uB450\uAC00 \uD568\uAED8 \uC501\uB2C8\uB2E4. \uD55C \uC18C\uC720\uC790\uC5D0\uAC8C Current Player \uC870\uAC74\uC774 \uAC70\uC9D3\uC774\uC5B4\uB3C4 \uADF8 \uC2E4\uD589\uC774 \uB2E4\uB978 \uC18C\uC720\uC790\uC758 \uC2A4\uC704\uCE58\uB97C \uBC14\uAFC0 \uC218 \uC788\uC2B5\uB2C8\uB2E4. \uB300\uC2E0 Current Player\uC758 \uB370\uC2A4 \uCE74\uC6B4\uD130\uB85C \uB9C9\uC73C\uC138\uC694.",
+  "Every player runs this trigger, each on their own.": "\uBAA8\uB4E0 \uD50C\uB808\uC774\uC5B4\uAC00 \uAC01\uC790 \uC774 \uD2B8\uB9AC\uAC70\uB97C \uC2E4\uD589\uD569\uB2C8\uB2E4.",
+  "Every player's units in the location, on the first cycle": "\uCCAB \uC8FC\uAE30\uC5D0 \uB85C\uCF00\uC774\uC158 \uC548\uC5D0 \uC788\uB294 \uBAA8\uB4E0 \uD50C\uB808\uC774\uC5B4\uC758 \uC720\uB2DB",
+  "Every sixty seconds four Marines appear at the location for Player 8. Change the unit, the count, the player and the location.": "60\uCD08\uB9C8\uB2E4 \uB85C\uCF00\uC774\uC158\uC5D0 Player 8\uC758 \uB9C8\uB9B0 4\uAE30\uAC00 \uB098\uD0C0\uB0A9\uB2C8\uB2E4. \uC720\uB2DB, \uC218, \uD50C\uB808\uC774\uC5B4, \uB85C\uCF00\uC774\uC158\uC744 \uBC14\uAFB8\uC138\uC694.",
+  "every two seconds": "2\uCD08\uB9C8\uB2E4",
+  "everyone": "\uBAA8\uB450",
+  "Exactly": "\uC815\uD655\uD788",
+  "Extra damage per upgrade level. Verified (probe 9).": "\uC5C5\uADF8\uB808\uC774\uB4DC \uB2E8\uACC4\uB2F9 \uCD94\uAC00 \uACF5\uACA9\uB825. \uD655\uC778\uB428 (probe 9).",
+  "Fast": "\uBE60\uB984",
+  "Faster": "\uB354 \uBE60\uB984",
+  "Fastest": "\uAC00\uC7A5 \uBE60\uB984",
+  "Filter\u2026": "\uD544\uD130\u2026",
+  "fired and done": "\uC2E4\uD589\uD558\uACE0 \uB05D\uB0A8",
+  "fired {n} times so far": "\uC9C0\uAE08\uAE4C\uC9C0 {n}\uBC88 \uC2E4\uD589\uB428",
+  "fires {trigger}": "{trigger} \uC2E4\uD589",
+  "Floating over the map": "\uB9F5 \uC704\uC5D0 \uB744\uC6B0\uAE30",
+  "Fold": "\uC811\uAE30",
+  "Folder name": "\uD3F4\uB354 \uC774\uB984",
+  "followed by a number": "\uB4A4\uC5D0 \uC22B\uC790",
+  "For each unit of a kind": "\uC5B4\uB5A4 \uC885\uB958\uC758 \uC720\uB2DB \uAC01\uAC01\uC5D0",
+  "For each {units}: {action}": "{units} \uAC01\uAC01: {action}",
+  "Four records: the unit's flingy is switched to table control and given this top speed, with acceleration and stopping distance to match. Units made after this move at the new speed; the ones already on the map keep theirs. A Marine walks at 4, a Vulture at 6.7. Hero units that share a type's flingy change with it.": "\uB808\uCF54\uB4DC 4\uAC1C: \uC720\uB2DB\uC758 flingy\uB97C \uD14C\uC774\uBE14 \uC81C\uC5B4\uB85C \uBC14\uAFB8\uACE0 \uC774 \uCD5C\uACE0 \uC18D\uB3C4\uB97C \uC8FC\uBA70, \uAC00\uC18D\uB3C4\uC640 \uC815\uC9C0 \uAC70\uB9AC\uB3C4 \uB9DE\uCDA5\uB2C8\uB2E4. \uC774\uD6C4\uC5D0 \uB9CC\uB4E0 \uC720\uB2DB\uC740 \uC0C8 \uC18D\uB3C4\uB85C \uC6C0\uC9C1\uC774\uACE0, \uC774\uBBF8 \uB9F5\uC5D0 \uC788\uB294 \uC720\uB2DB\uC740 \uC6D0\uB798 \uC18D\uB3C4\uB97C \uC720\uC9C0\uD569\uB2C8\uB2E4. \uB9C8\uB9B0\uC740 4, \uBC8C\uCC98\uB294 6.7\uB85C \uC6C0\uC9C1\uC785\uB2C8\uB2E4. \uAC19\uC740 flingy\uB97C \uC4F0\uB294 \uC601\uC6C5 \uC720\uB2DB\uB3C4 \uD568\uAED8 \uBC14\uB01D\uB2C8\uB2E4.",
+  "frames": "\uD504\uB808\uC784",
+  "Frames the game has run": "\uAC8C\uC784\uC774 \uC9C4\uD589\uB41C \uD504\uB808\uC784",
+  "From": "\uCD9C\uBC1C",
+  "Game": "\uAC8C\uC784",
+  "Game speed": "\uAC8C\uC784 \uC18D\uB3C4",
+  "gas": "\uAC00\uC2A4",
+  "Gas cost of a technology": "\uAE30\uC220\uC758 \uAC00\uC2A4 \uBE44\uC6A9",
+  "Gas cost of a unit type": "\uC720\uB2DB \uC885\uB958\uC758 \uAC00\uC2A4 \uBE44\uC6A9",
+  "Gas cost of an upgrade": "\uC5C5\uADF8\uB808\uC774\uB4DC\uC758 \uAC00\uC2A4 \uBE44\uC6A9",
+  "Gas of a player": "\uD50C\uB808\uC774\uC5B4\uC758 \uAC00\uC2A4",
+  "Generated by {what}: edit it there, not here.": "{what}\uC774(\uAC00) \uB9CC\uB4E0 \uD2B8\uB9AC\uAC70\uC785\uB2C8\uB2E4. \uC5EC\uAE30\uAC00 \uC544\uB2C8\uB77C \uADF8\uCABD\uC5D0\uC11C \uD3B8\uC9D1\uD558\uC138\uC694.",
+  "give": "\uD68C\uBCF5",
+  "give the speed upgrade": "\uC18D\uB3C4 \uC5C5\uADF8\uB808\uC774\uB4DC \uC8FC\uAE30",
+  "Give this death counter a name, and use it by name everywhere": "\uC774 \uB370\uC2A4 \uCE74\uC6B4\uD130\uC5D0 \uC774\uB984\uC744 \uBD99\uC774\uACE0 \uC5B4\uB514\uC11C\uB098 \uC774\uB984\uC73C\uB85C \uC501\uB2C8\uB2E4",
+  "Give this {unit} to the player who comes": "\uCC3E\uC544\uC628 \uD50C\uB808\uC774\uC5B4\uC5D0\uAC8C \uC774 {unit} \uC8FC\uAE30",
+  "give to": "\uB118\uACA8\uC8FC\uAE30:",
+  "Give units at a beacon": "\uBE44\uCEE8\uC5D0\uC11C \uC720\uB2DB \uC8FC\uAE30",
+  "Give {Count} {Unit} owned by {From} at {Location} to {To}": "{Location}\uC5D0 \uC788\uB294 {From}\uC758 {Unit} {Count|\uC744} {To}\uC5D0\uAC8C \uC90C",
+  "Goal": "\uBAA9\uD45C",
+  "greater than": "\uCD08\uACFC",
+  "green": "\uCD08\uB85D",
+  "Ground weapon of a unit type": "\uC720\uB2DB \uC885\uB958\uC758 \uC9C0\uC0C1 \uBB34\uAE30",
+  "hallucinate": "\uD658\uC601\uC73C\uB85C",
+  "Hallucination flag of a placed unit": "\uBC30\uCE58\uB41C \uC720\uB2DB\uC758 \uD658\uC601 \uD50C\uB798\uADF8",
+  "has left the game": "\uAC8C\uC784\uC744 \uB098\uAC10",
+  "has not fired yet": "\uC544\uC9C1 \uC2E4\uD589\uB418\uC9C0 \uC54A\uC74C",
+  "has {n}": "\uD604\uC7AC {n}",
+  "held (not seen in the game)": "\uB204\uB974\uACE0 \uC788\uC74C (\uAC8C\uC784\uC5D0\uC11C \uD655\uC778 \uC548 \uB428)",
+  "Hero flag of a unit type": "\uC720\uB2DB \uC885\uB958\uC758 \uC601\uC6C5 \uD50C\uB798\uADF8",
+  "Hex address the player value should reach through the deaths table (Deaths and Set Deaths only)": "\uD50C\uB808\uC774\uC5B4 \uAC12\uC774 \uB370\uC2A4 \uD14C\uC774\uBE14\uC744 \uAC70\uCCD0 \uAC00\uB9AC\uD0AC 16\uC9C4\uC218 \uC8FC\uC18C (Deaths\uC640 Set Deaths\uB9CC)",
+  "Hide the portrait in {Slot}": "{Slot}\uC758 \uCD08\uC0C1\uD654 \uC228\uAE30\uAE30",
+  "hit points": "\uCCB4\uB825",
+  "hit points %": "\uCCB4\uB825 %",
+  "Hit points of a placed unit": "\uBC30\uCE58\uB41C \uC720\uB2DB\uC758 \uCCB4\uB825",
+  "Hits per attack. Verified (probe 9).": "\uACF5\uACA9 \uD55C \uBC88\uC758 \uD0C0\uACA9 \uD69F\uC218. \uD655\uC778\uB428 (probe 9).",
+  "hold fire": "\uACF5\uACA9 \uC911\uC9C0",
+  "How far a unit looks for targets on its own. A write of 1 in probe 9 could not be read back; not yet seen working.": "\uC720\uB2DB\uC774 \uC2A4\uC2A4\uB85C \uB300\uC0C1\uC744 \uCC3E\uB294 \uAC70\uB9AC\uC785\uB2C8\uB2E4. probe 9\uC5D0\uC11C 1\uC744 \uC4F4 \uAC12\uC744 \uB2E4\uC2DC \uC77D\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uC544\uC9C1 \uB3D9\uC791\uC744 \uD655\uC778\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.",
+  "How far from the mouse a unit still counts, in map pixels (32 a tile); farther, and the pick finds nothing.": "\uB9C8\uC6B0\uC2A4\uC5D0\uC11C \uC5BC\uB9C8\uB098 \uB5A8\uC5B4\uC9C4 \uC720\uB2DB\uAE4C\uC9C0 \uC140\uC9C0 \uB9F5 \uD53D\uC140\uB85C \uC815\uD569\uB2C8\uB2E4 (\uD0C0\uC77C\uB2F9 32). \uB354 \uBA40\uBA74 \uC544\uBB34\uAC83\uB3C4 \uACE0\uB974\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
+  "How many bits of the counter to carry: 16 is half the triggers for a counter that stays under 65536": "\uCE74\uC6B4\uD130\uC758 \uBA87 \uBE44\uD2B8\uB97C \uC62E\uAE38\uC9C0 \uC815\uD569\uB2C8\uB2E4. 65536 \uBBF8\uB9CC\uC73C\uB85C \uC720\uC9C0\uB418\uB294 \uCE74\uC6B4\uD130\uB77C\uBA74 16\uBE44\uD2B8\uB85C \uD2B8\uB9AC\uAC70\uAC00 \uC808\uBC18\uC774 \uB429\uB2C8\uB2E4",
+  "How many times the upgrade can be researched. Writing it did nothing in Remastered (probe 8: Infantry Armor still stopped at 3), so it is a read only.": "\uC5C5\uADF8\uB808\uC774\uB4DC\uB97C \uBA87 \uBC88 \uC5F0\uAD6C\uD560 \uC218 \uC788\uB294\uC9C0\uC785\uB2C8\uB2E4. Remastered\uC5D0\uC11C\uB294 \uC368\uB3C4 \uC544\uBB34 \uC77C\uC774 \uC5C6\uC5C8\uC73C\uBBC0\uB85C (probe 8: \uBCF4\uBCD1 \uBC29\uC5B4\uB825\uC774 \uC5EC\uC804\uD788 3\uC5D0\uC11C \uBA48\uCDA4) \uC77D\uAE30 \uC804\uC6A9\uC785\uB2C8\uB2E4.",
+  "HP": "HP",
+  "in a transport": "\uC218\uC1A1\uC120 \uC548",
+  "In frames. Verified (probe 9).": "\uD504\uB808\uC784 \uB2E8\uC704. \uD655\uC778\uB428 (probe 9).",
+  "In pixels, 32 a tile. Verified: marines could not shoot a zergling up close (probe 9).": "\uD53D\uC140 \uB2E8\uC704, \uD0C0\uC77C\uB2F9 32. \uD655\uC778\uB428: \uB9C8\uB9B0\uC774 \uAC00\uAE4C\uC774 \uBD99\uC740 \uC800\uAE00\uB9C1\uC744 \uC3D8\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4 (probe 9).",
+  "In pixels, 32 a tile. Verified: marines shot from farther (probe 8).": "\uD53D\uC140 \uB2E8\uC704, \uD0C0\uC77C\uB2F9 32. \uD655\uC778\uB428: \uB9C8\uB9B0\uC774 \uB354 \uBA3C \uACF3\uC5D0\uC11C \uC408\uC2B5\uB2C8\uB2E4 (probe 8).",
+  "In plain words": "\uC26C\uC6B4 \uB9D0\uB85C",
+  "In tiles, up to 11. Verified: a marine with sight 1 revealed only a tiny circle (probe 9). A beacon reveals around itself, so stand clear of one to see it.": "\uD0C0\uC77C \uB2E8\uC704, 11\uAE4C\uC9C0. \uD655\uC778\uB428: \uC2DC\uC57C 1\uC778 \uB9C8\uB9B0\uC740 \uC544\uC8FC \uC791\uC740 \uC6D0\uB9CC \uBC1D\uD614\uC2B5\uB2C8\uB2E4 (probe 9). \uBE44\uCEE8\uC740 \uC8FC\uBCC0\uC744 \uBC1D\uD788\uBBC0\uB85C \uBE44\uCEE8\uC5D0\uC11C \uB5A8\uC5B4\uC838\uC11C \uD655\uC778\uD558\uC138\uC694.",
+  "independent": "\uB3C5\uB9BD\uD615",
+  "Inertia": "\uAD00\uC131",
+  "Invincibility of a placed unit": "\uBC30\uCE58\uB41C \uC720\uB2DB\uC758 \uBB34\uC801",
+  "Invincibility of placed unit {index} is {value}": "\uBC30\uCE58\uB41C \uC720\uB2DB {index}\uC758 \uBB34\uC801: {value}",
+  "invincible": "\uBB34\uC801",
+  "Invincible flag of a unit type": "\uC720\uB2DB \uC885\uB958\uC758 \uBB34\uC801 \uD50C\uB798\uADF8",
+  "irradiate": "\uC774\uB808\uB514\uC5D0\uC774\uD2B8",
+  "is": "\uC608",
+  "is not": "\uC544\uB2C8\uC694",
+  "is still in the game": "\uC544\uC9C1 \uAC8C\uC784\uC5D0 \uC788\uC74C",
+  "It does nothing when it fires.": "\uC2E4\uD589\uB418\uC5B4\uB3C4 \uC544\uBB34\uAC83\uB3C4 \uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
+  "It fires on the first cycle.": "\uCCAB \uC8FC\uAE30\uC5D0 \uC2E4\uD589\uB429\uB2C8\uB2E4.",
+  "It fires once and then stops.": "\uD55C \uBC88 \uC2E4\uD589\uB418\uACE0 \uBA48\uCDA5\uB2C8\uB2E4.",
+  "It fires once for each owner and then stops.": "\uC18C\uC720\uC790\uB9C8\uB2E4 \uD55C \uBC88 \uC2E4\uD589\uB418\uACE0 \uBA48\uCDA5\uB2C8\uB2E4.",
+  "It is preserved, so it fires again on every cycle ({clock}) its conditions hold.": "\uBCF4\uC874\uB418\uBBC0\uB85C \uC870\uAC74\uC774 \uB9DE\uB294 \uC8FC\uAE30({clock})\uB9C8\uB2E4 \uB2E4\uC2DC \uC2E4\uD589\uB429\uB2C8\uB2E4.",
+  "It is preserved, so it runs again every cycle ({clock}).": "\uBCF4\uC874\uB418\uBBC0\uB85C \uB9E4 \uC8FC\uAE30({clock}) \uB2E4\uC2DC \uC2E4\uD589\uB429\uB2C8\uB2E4.",
+  "It needs a free counter unit and a free location slot.": "\uBE48 \uCE74\uC6B4\uD130 \uC720\uB2DB\uACFC \uBE48 \uB85C\uCF00\uC774\uC158 \uC2AC\uB86F\uC774 \uD544\uC694\uD569\uB2C8\uB2E4.",
+  "It needs a free counter unit and, for the mouse, nine free location slots.": "\uBE48 \uCE74\uC6B4\uD130 \uC720\uB2DB\uC774 \uD544\uC694\uD558\uACE0, \uB9C8\uC6B0\uC2A4\uC5D0\uB294 \uBE48 \uB85C\uCF00\uC774\uC158 \uC2AC\uB86F 9\uAC1C\uAC00 \uB354 \uD544\uC694\uD569\uB2C8\uB2E4.",
+  "It needs nine free location slots for MSQC.": "MSQC\uC6A9 \uBE48 \uB85C\uCF00\uC774\uC158 \uC2AC\uB86F\uC774 9\uAC1C \uD544\uC694\uD569\uB2C8\uB2E4.",
+  "It writes {n} records and the trigger has {free} action slots left.": "\uC774 \uD589\uC740 \uB808\uCF54\uB4DC {n}\uAC1C\uB97C \uC4F0\uB294\uB370 \uD2B8\uB9AC\uAC70\uC5D0 \uB0A8\uC740 \uC561\uC158 \uCE78\uC740 {free}\uAC1C\uC785\uB2C8\uB2E4.",
+  "Its Magenta data could not be read. Start over from the notice at the top of the panel, or update Magenta.": "\uC774 \uB9F5\uC758 Magenta \uB370\uC774\uD130\uB97C \uC77D\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4. \uD328\uB110 \uC704\uC758 \uC54C\uB9BC\uC5D0\uC11C \uC0C8\uB85C \uC2DC\uC791\uD558\uAC70\uB098 Magenta\uB97C \uC5C5\uB370\uC774\uD2B8\uD558\uC138\uC694.",
+  "its size": "\uC6D0\uB798 \uD06C\uAE30",
+  "Key": "\uD0A4",
+  "key 0x{hex}": "\uD0A4 0x{hex}",
+  "Keyboard key state": "\uD0A4\uBCF4\uB4DC \uD0A4 \uC0C1\uD0DC",
+  "kill": "\uC8FD\uC774\uAE30",
+  "Kill all {Unit} owned by {Player}": "{Player}\uC758 {Unit} \uBAA8\uB450 \uC8FD\uC784",
+  "Kill everything at {location}": "{location}\uC758 \uBAA8\uB4E0 \uAC83 \uC8FD\uC774\uAE30",
+  "Kill {Count} {Unit} owned by {Player} at {Location}": "{Location}\uC5D0 \uC788\uB294 {Player}\uC758 {Unit} {Count} \uC8FD\uC784",
+  "kills": "\uCC98\uCE58 \uC218",
+  "Kills": "\uCC98\uCE58",
+  "Kills and razings": "\uCC98\uCE58\uC640 \uD30C\uAD34",
+  "Label": "\uC81C\uBAA9",
+  "large": "\uB300\uD615",
+  "last {n} of {total}": "{total}\uAC1C \uC911 \uB9C8\uC9C0\uB9C9 {n}\uAC1C",
+  "left": "\uC67C\uCABD",
+  "less than": "\uBBF8\uB9CC",
+  "levels": "\uB2E8\uACC4",
+  "Lift the sprite and image limits": "\uC2A4\uD504\uB77C\uC774\uD2B8\uC640 \uC774\uBBF8\uC9C0 \uAC1C\uC218 \uC81C\uD55C \uD574\uC81C",
+  "Load {Scenario} after this scenario": "\uC774 \uC2DC\uB098\uB9AC\uC624 \uB2E4\uC74C\uC5D0 {Scenario} \uBD88\uB7EC\uC624\uAE30",
+  "Local player": "\uB85C\uCEEC \uD50C\uB808\uC774\uC5B4",
+  "Local to each computer, like the local player.": "\uB85C\uCEEC \uD50C\uB808\uC774\uC5B4\uCC98\uB7FC \uCEF4\uD4E8\uD130\uB9C8\uB2E4 \uB530\uB85C\uC785\uB2C8\uB2E4.",
+  "Local to each computer. Center View moves it natively.": "\uCEF4\uD4E8\uD130\uB9C8\uB2E4 \uB530\uB85C\uC785\uB2C8\uB2E4. Center View\uAC00 \uAE30\uBCF8 \uBC29\uBC95\uC73C\uB85C \uC62E\uAE41\uB2C8\uB2E4.",
+  "Local to each computer. Needs triggers running every frame to catch a press. Verified in Remastered 2026-09-12: the press reads as 1 for a frame and the key reads 0 again at once, even while held; 2 and 3 never appeared.": "\uCEF4\uD4E8\uD130\uB9C8\uB2E4 \uB530\uB85C\uC785\uB2C8\uB2E4. \uB204\uB984\uC744 \uC7A1\uC73C\uB824\uBA74 \uD2B8\uB9AC\uAC70\uAC00 \uB9E4 \uD504\uB808\uC784 \uC2E4\uD589\uB418\uC5B4\uC57C \uD569\uB2C8\uB2E4. 2026-09-12 Remastered\uC5D0\uC11C \uD655\uC778: \uB204\uB974\uBA74 \uD55C \uD504\uB808\uC784 \uB3D9\uC548 1\uB85C \uC77D\uD788\uACE0, \uB204\uB974\uACE0 \uC788\uC5B4\uB3C4 \uBC14\uB85C \uB2E4\uC2DC 0\uC73C\uB85C \uC77D\uD799\uB2C8\uB2E4. 2\uC640 3\uC740 \uB098\uD0C0\uB098\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.",
+  "Location": "\uB85C\uCF00\uC774\uC158",
+  "location {n}": "\uB85C\uCF00\uC774\uC158 {n}",
+  "lockdown": "\uB77D\uB2E4\uC6B4",
+  "Log": "\uAE30\uB85D",
+  "Looks of a unit type": "\uC720\uB2DB \uC885\uB958\uC758 \uBAA8\uC2B5",
+  "Loop a sound as background music": "\uC0AC\uC6B4\uB4DC\uB97C \uBC30\uACBD \uC74C\uC545\uC73C\uB85C \uBC18\uBCF5 \uC7AC\uC0DD",
+  "loses": "\uD328\uBC30",
+  "lost": "\uD328\uBC30",
+  "maelstrom": "\uB9C8\uC5D8\uC2A4\uD2B8\uB86C",
+  "Magenta cannot change this map yet": "Magenta\uAC00 \uC544\uC9C1 \uC774 \uB9F5\uC744 \uBC14\uAFC0 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4",
+  "Magenta needs it to build this map.": "Magenta\uAC00 \uC774 \uB9F5\uC744 \uBE4C\uB4DC\uD558\uB294 \uB370 \uD544\uC694\uD569\uB2C8\uB2E4.",
+  "Magenta Settings": "Magenta \uC124\uC815",
+  "Magenta's counter add": "Magenta\uC758 \uCE74\uC6B4\uD130 \uB354\uD558\uAE30",
+  "Magenta's counter comparison": "Magenta\uC758 \uCE74\uC6B4\uD130 \uBE44\uAD50",
+  "Magenta's counter copy": "Magenta\uC758 \uCE74\uC6B4\uD130 \uBCF5\uC0AC",
+  "Magenta's counter subtract": "Magenta\uC758 \uCE74\uC6B4\uD130 \uBE7C\uAE30",
+  "Magenta's per-player copies": "Magenta\uC758 \uD50C\uB808\uC774\uC5B4\uBCC4 \uBCF5\uC0AC\uBCF8",
+  "Magenta: describe a trigger": "Magenta: \uD2B8\uB9AC\uAC70 \uC124\uBA85",
+  "Magenta: dry run": "Magenta: \uBAA8\uC758 \uC2E4\uD589",
+  "Magenta\u2026": "Magenta\u2026",
+  "make invincible": "\uBB34\uC801\uC73C\uB85C",
+  "make vulnerable": "\uBB34\uC801 \uD574\uC81C",
+  "Make {unit} look like {value}": "{unit}\uC758 \uBAA8\uC2B5 \uC124\uC815: {value}",
+  "Make {unit} {value}": "{unit} \uC124\uC815: {value}",
+  "Map revision": "\uB9F5 \uBC84\uC804",
+  "Map-wide": "\uB9F5 \uC804\uCCB4",
+  "Max hit points of a unit type": "\uC720\uB2DB \uC885\uB958\uC758 \uCD5C\uB300 \uCCB4\uB825",
+  "Max shields of a unit type": "\uC720\uB2DB \uC885\uB958\uC758 \uCD5C\uB300 \uBCF4\uD638\uB9C9",
+  "Max speed": "\uCD5C\uACE0 \uC18D\uB3C4",
+  "Maximum level of an upgrade": "\uC5C5\uADF8\uB808\uC774\uB4DC\uC758 \uCD5C\uB300 \uB2E8\uACC4",
+  "mechanical": "\uAE30\uACC4",
+  "Mechanical flag of a unit type": "\uC720\uB2DB \uC885\uB958\uC758 \uAE30\uACC4 \uD50C\uB798\uADF8",
+  "medium": "\uC911\uD615",
+  "memory 0x{hex} = {value}": "\uBA54\uBAA8\uB9AC 0x{hex} = {value}",
+  "Memory address\u2026": "\uBA54\uBAA8\uB9AC \uC8FC\uC18C\u2026",
+  "memory at 0x{addr}": "\uBA54\uBAA8\uB9AC 0x{addr}",
+  "Message at the start": "\uC2DC\uC791\uD560 \uB54C \uBA54\uC2DC\uC9C0",
+  "middle": "\uAC00\uC6B4\uB370",
+  "Milliseconds": "\uBC00\uB9AC\uCD08",
+  "Mineral cost of a technology": "\uAE30\uC220\uC758 \uBBF8\uB124\uB784 \uBE44\uC6A9",
+  "Mineral cost of a unit type": "\uC720\uB2DB \uC885\uB958\uC758 \uBBF8\uB124\uB784 \uBE44\uC6A9",
+  "Mineral cost of an upgrade": "\uC5C5\uADF8\uB808\uC774\uB4DC\uC758 \uBBF8\uB124\uB784 \uBE44\uC6A9",
+  "minerals": "\uBBF8\uB124\uB784",
+  "Minerals for each kill": "\uCC98\uCE58\uD560 \uB54C\uB9C8\uB2E4 \uBBF8\uB124\uB784",
+  "Minerals of a player": "\uD50C\uB808\uC774\uC5B4\uC758 \uBBF8\uB124\uB784",
+  "Minimum range of a weapon": "\uBB34\uAE30\uC758 \uCD5C\uC18C \uC0AC\uAC70\uB9AC",
+  "missing": "\uC5C6\uC74C",
+  "Mission briefing": "\uC784\uBB34 \uBE0C\uB9AC\uD551",
+  "Modifier": "\uBCC0\uACBD \uBC29\uC2DD",
+  "modulo": "\uB098\uBA38\uC9C0",
+  "More": "\uB354 \uBCF4\uAE30",
+  "Mouse X on screen": "\uD654\uBA74 \uC704 \uB9C8\uC6B0\uC2A4 X",
+  "Mouse Y on screen": "\uD654\uBA74 \uC704 \uB9C8\uC6B0\uC2A4 Y",
+  "move": "\uC774\uB3D9",
+  "Move": "\uC62E\uAE38 \uB85C\uCF00\uC774\uC158",
+  "move a locationby": "\uB9CC\uD07C",
+  "move a locationto": "\uC88C\uD45C\uB85C",
+  "Move a location to coordinates or by an offset": "\uB85C\uCF00\uC774\uC158\uC744 \uC88C\uD45C\uB85C \uB610\uB294 \uB9CC\uD07C \uC62E\uAE30\uAE30",
+  "Move action": "\uC561\uC158 \uC774\uB3D9",
+  "Move condition": "\uC870\uAC74 \uC774\uB3D9",
+  "Move down (Alt+Down)": "\uC544\uB798\uB85C \uC774\uB3D9 (Alt+Down)",
+  "Move trigger": "\uD2B8\uB9AC\uAC70 \uC774\uB3D9",
+  "Move up (Alt+Up)": "\uC704\uB85C \uC774\uB3D9 (Alt+Up)",
+  "Move {Count} {Unit} owned by {Player} from {From} to {To}": "{From}\uC5D0 \uC788\uB294 {Player}\uC758 {Unit} {Count|\uC744} {To|\uC73C\uB85C} \uC62E\uAE40",
+  "Move {location} {mode} {x}, {y}": "{location} \uC774\uB3D9({mode}): {x}, {y}",
+  "Move {location} {mode} {x}, {y} keeping {size}": "{location} \uC774\uB3D9({mode}): {x}, {y}, \uD06C\uAE30 {size}",
+  "moved and used by": "\uC62E\uAE30\uACE0 \uC4F0\uB294 \uD2B8\uB9AC\uAC70:",
+  "moved by": "\uC62E\uAE30\uB294 \uD2B8\uB9AC\uAC70:",
+  "moving": "\uC774\uB3D9 \uC911",
+  "Multiply, divide or randomize a counter": "\uCE74\uC6B4\uD130 \uACF1\uD558\uAE30, \uB098\uB204\uAE30, \uBB34\uC791\uC704",
+  "Mute unit speech": "\uC720\uB2DB \uC74C\uC131 \uB044\uAE30",
+  "Name counter": "\uCE74\uC6B4\uD130 \uC774\uB984 \uBD99\uC774\uAE30",
+  "Name for switch {n}": "\uC2A4\uC704\uCE58 {n}\uC758 \uC774\uB984",
+  "Name for the new counter": "\uC0C8 \uCE74\uC6B4\uD130\uC758 \uC774\uB984",
+  "Name for this death counter": "\uC774 \uB370\uC2A4 \uCE74\uC6B4\uD130\uC758 \uC774\uB984",
+  "Name of a unit type": "\uC720\uB2DB \uC885\uB958\uC758 \uC774\uB984",
+  "Name switch {name}": "\uC2A4\uC704\uCE58 \uC774\uB984 {name}",
+  "Name {unit} {value}": "{unit}\uC758 \uC774\uB984 \uC124\uC815: {value}",
+  "Named counters": "\uC774\uB984 \uC788\uB294 \uCE74\uC6B4\uD130",
+  "name\u2026": "\uC774\uB984\u2026",
+  "nearest to": "\uAC00\uC7A5 \uAC00\uAE4C\uC6B4",
+  "Needs a build": "\uBE4C\uB4DC \uD544\uC694",
+  "Needs a Build (\u22EF menu). The MSQC plugin in the built map turns each player's input into a game command, so every computer sees the same press in the same cycle, before its triggers run; the cell is cleared once they have.": "\uBE4C\uB4DC \uD544\uC694 (\u22EF \uBA54\uB274). \uBE4C\uB4DC\uD55C \uB9F5\uC758 MSQC \uD50C\uB7EC\uADF8\uC778\uC774 \uAC01 \uD50C\uB808\uC774\uC5B4\uC758 \uC785\uB825\uC744 \uAC8C\uC784 \uBA85\uB839\uC73C\uB85C \uBC14\uAFB8\uBBC0\uB85C, \uBAA8\uB4E0 \uCEF4\uD4E8\uD130\uAC00 \uAC19\uC740 \uC8FC\uAE30\uC5D0 \uD2B8\uB9AC\uAC70\uAC00 \uC2E4\uD589\uB418\uAE30 \uC804\uC5D0 \uAC19\uC740 \uC785\uB825\uC744 \uBD05\uB2C8\uB2E4. \uD2B8\uB9AC\uAC70\uAC00 \uC2E4\uD589\uB418\uACE0 \uB098\uBA74 \uCE78\uC774 \uBE44\uC6CC\uC9D1\uB2C8\uB2E4.",
+  "Needs a Build (\u22EF menu): the built map checks this every cycle, before the triggers run, and leaves the answer in a cell this condition reads.": "\uBE4C\uB4DC \uD544\uC694 (\u22EF \uBA54\uB274): \uBE4C\uB4DC\uD55C \uB9F5\uC774 \uB9E4 \uC8FC\uAE30 \uD2B8\uB9AC\uAC70\uAC00 \uC2E4\uD589\uB418\uAE30 \uC804\uC5D0 \uC774\uAC83\uC744 \uAC80\uC0AC\uD558\uACE0, \uC774 \uC870\uAC74\uC774 \uC77D\uB294 \uCE78\uC5D0 \uB2F5\uC744 \uB0A8\uAE41\uB2C8\uB2E4.",
+  "Needs a Build (\u22EF menu): the chat plugin in the built map writes the command's number into a cell this condition reads, in the cycle the message arrives, for every player at once. A message with a number is matched as a pattern and the number is parsed out for you.": "\uBE4C\uB4DC \uD544\uC694 (\u22EF \uBA54\uB274): \uBE4C\uB4DC\uD55C \uB9F5\uC758 \uCC44\uD305 \uD50C\uB7EC\uADF8\uC778\uC774 \uBA54\uC2DC\uC9C0\uAC00 \uB3C4\uCC29\uD55C \uC8FC\uAE30\uC5D0 \uBA85\uB839 \uBC88\uD638\uB97C \uC774 \uC870\uAC74\uC774 \uC77D\uB294 \uCE78\uC5D0 \uBAA8\uB4E0 \uD50C\uB808\uC774\uC5B4\uC5D0\uAC8C \uD55C\uAEBC\uBC88\uC5D0 \uC501\uB2C8\uB2E4. \uC22B\uC790\uAC00 \uBD99\uC740 \uBA54\uC2DC\uC9C0\uB294 \uD328\uD134\uC73C\uB85C \uB9DE\uCD94\uACE0 \uC22B\uC790\uB97C \uB530\uB85C \uC77D\uC5B4 \uC90D\uB2C8\uB2E4.",
+  "Needs a Build (\u22EF menu): the game's own triggers cannot do this, so the built map carries the code that does. It runs once every trigger has had its turn this cycle \u2014 a row below it in this trigger still sees the map as it was; a trigger in the next cycle sees the result. The source map stays as it is.": "\uBE4C\uB4DC \uD544\uC694 (\u22EF \uBA54\uB274): \uAC8C\uC784\uC758 \uD2B8\uB9AC\uAC70\uB85C\uB294 \uD560 \uC218 \uC5C6\uB294 \uC77C\uC774\uB77C \uBE4C\uB4DC\uD55C \uB9F5\uC5D0 \uADF8 \uC77C\uC744 \uD558\uB294 \uCF54\uB4DC\uAC00 \uB4E4\uC5B4\uAC11\uB2C8\uB2E4. \uC774\uBC88 \uC8FC\uAE30\uC5D0 \uBAA8\uB4E0 \uD2B8\uB9AC\uAC70\uAC00 \uD55C \uCC28\uB840\uC529 \uC2E4\uD589\uB41C \uB4A4\uC5D0 \uC2E4\uD589\uB418\uBBC0\uB85C, \uC774 \uD2B8\uB9AC\uAC70\uC5D0\uC11C \uC544\uB798\uC5D0 \uC788\uB294 \uD589\uC740 \uC544\uC9C1 \uC774\uC804 \uC0C1\uD0DC\uC758 \uB9F5\uC744 \uBCF4\uACE0, \uB2E4\uC74C \uC8FC\uAE30\uC758 \uD2B8\uB9AC\uAC70\uAC00 \uACB0\uACFC\uB97C \uBD05\uB2C8\uB2E4. \uC6D0\uBCF8 \uB9F5\uC740 \uADF8\uB300\uB85C\uC785\uB2C8\uB2E4.",
+  "Needs a Build to work in the game": "\uAC8C\uC784\uC5D0\uC11C \uB3D9\uC791\uD558\uB824\uBA74 \uBE4C\uB4DC\uAC00 \uD544\uC694\uD569\uB2C8\uB2E4",
+  "Needs a location under the unit": "\uC720\uB2DB \uC544\uB798\uC5D0 \uB85C\uCF00\uC774\uC158\uC774 \uC788\uC5B4\uC57C \uD569\uB2C8\uB2E4",
+  "neutral": "\uC911\uB9BD",
+  "Never": "\uC808\uB300 \uC548 \uD568",
+  "Never above the type's maximum.": "\uC720\uB2DB \uC885\uB958\uC758 \uCD5C\uB300\uCE58\uB97C \uB118\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
+  "Never below 0; a unit whose hit points reach 0 dies.": "0 \uBC11\uC73C\uB85C\uB294 \uB0B4\uB824\uAC00\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4. \uCCB4\uB825\uC774 0\uC774 \uB41C \uC720\uB2DB\uC740 \uC8FD\uC2B5\uB2C8\uB2E4.",
+  "New": "\uC0C8\uB85C \uB9CC\uB4E4\uAE30",
+  "New counter": "\uC0C8 \uCE74\uC6B4\uD130",
+  "New counter\u2026": "\uC0C8 \uCE74\uC6B4\uD130\u2026",
+  "New folder": "\uC0C8 \uD3F4\uB354",
+  "New folder\u2026": "\uC0C8 \uD3F4\uB354\u2026",
+  "New trigger": "\uC0C8 \uD2B8\uB9AC\uAC70",
+  "New trigger about this {unit}\u2026": "\uC774 {unit}\uC5D0 \uB300\uD55C \uC0C8 \uD2B8\uB9AC\uAC70\u2026",
+  "New trigger at {location}\u2026": "{location}\uC5D0\uC11C \uC0C8 \uD2B8\uB9AC\uAC70\u2026",
+  "New trigger from the map": "\uB9F5\uC5D0\uC11C \uC0C8 \uD2B8\uB9AC\uAC70",
+  "No active player runs this trigger, so it cannot fire.": "\uC774 \uD2B8\uB9AC\uAC70\uB97C \uC2E4\uD589\uD558\uB294 \uD65C\uC131 \uD50C\uB808\uC774\uC5B4\uAC00 \uC5C6\uC5B4 \uC2E4\uD589\uB420 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.",
+  "No build rows": "\uBE4C\uB4DC \uD589 \uC5C6\uC74C",
+  "No chat commands": "\uCC44\uD305 \uBA85\uB839 \uC5C6\uC74C",
+  "No conditions: it fires on the first cycle.": "\uC870\uAC74 \uC5C6\uC74C: \uCCAB \uC8FC\uAE30\uC5D0 \uC2E4\uD589\uB429\uB2C8\uB2E4.",
+  "no counter": "\uCE74\uC6B4\uD130 \uC5C6\uC74C",
+  "No counter": "\uCE74\uC6B4\uD130 \uC5C6\uC74C",
+  "No counter has a name yet. Name one from a Deaths row's name\u2026 chip, or from a counter chip's New counter\u2026": "\uC544\uC9C1 \uC774\uB984 \uC788\uB294 \uCE74\uC6B4\uD130\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4. Deaths \uD589\uC758 \uC774\uB984\u2026 \uCE69\uC774\uB098 \uCE74\uC6B4\uD130 \uCE69\uC758 \uC0C8 \uCE74\uC6B4\uD130\u2026\uC5D0\uC11C \uC774\uB984\uC744 \uBD99\uC774\uC138\uC694.",
+  "No free counter cell": "\uBE48 \uCE74\uC6B4\uD130 \uCE78\uC774 \uC5C6\uC2B5\uB2C8\uB2E4",
+  "No free counter cell for the build row": "\uBE4C\uB4DC \uD589\uC5D0 \uC4F8 \uBE48 \uCE74\uC6B4\uD130 \uCE78\uC774 \uC5C6\uC2B5\uB2C8\uB2E4",
+  "No free counter cell for the chat command": "\uCC44\uD305 \uBA85\uB839\uC5D0 \uC4F8 \uBE48 \uCE74\uC6B4\uD130 \uCE78\uC774 \uC5C6\uC2B5\uB2C8\uB2E4",
+  "No free counter cell for the check": "\uAC80\uC0AC\uC5D0 \uC4F8 \uBE48 \uCE74\uC6B4\uD130 \uCE78\uC774 \uC5C6\uC2B5\uB2C8\uB2E4",
+  "No free counter cell for the copy's build rows": "\uBCF5\uC0AC\uBCF8\uC758 \uBE4C\uB4DC \uD589\uC5D0 \uC4F8 \uBE48 \uCE74\uC6B4\uD130 \uCE78\uC774 \uC5C6\uC2B5\uB2C8\uB2E4",
+  "No free counter cells for a chat pattern": "\uCC44\uD305 \uD328\uD134\uC5D0 \uC4F8 \uBE48 \uCE74\uC6B4\uD130 \uCE78\uC774 \uC5C6\uC2B5\uB2C8\uB2E4",
+  "No free counter cells for the comparison": "\uBE44\uAD50\uC5D0 \uC4F8 \uBE48 \uCE74\uC6B4\uD130 \uCE78\uC774 \uC5C6\uC2B5\uB2C8\uB2E4",
+  "No free counter cells for the number": "\uC22B\uC790\uC5D0 \uC4F8 \uBE48 \uCE74\uC6B4\uD130 \uCE78\uC774 \uC5C6\uC2B5\uB2C8\uB2E4",
+  "No free counter cells for the step": "\uB2E8\uACC4\uC5D0 \uC4F8 \uBE48 \uCE74\uC6B4\uD130 \uCE78\uC774 \uC5C6\uC2B5\uB2C8\uB2E4",
+  "No free location slot": "\uBE48 \uB85C\uCF00\uC774\uC158 \uC2AC\uB86F \uC5C6\uC74C",
+  "no location": "\uB85C\uCF00\uC774\uC158 \uC5C6\uC74C",
+  "No location": "\uB85C\uCF00\uC774\uC158 \uC5C6\uC74C",
+  "No map is open.": "\uC5F4\uB9B0 \uB9F5\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.",
+  "No other trigger uses the switches, counters or locations this one touches.": "\uC774 \uD2B8\uB9AC\uAC70\uAC00 \uB2E4\uB8E8\uB294 \uC2A4\uC704\uCE58, \uCE74\uC6B4\uD130, \uB85C\uCF00\uC774\uC158\uC744 \uC4F0\uB294 \uB2E4\uB978 \uD2B8\uB9AC\uAC70\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.",
+  "No player owns this trigger, so it never runs.": "\uC774 \uD2B8\uB9AC\uAC70\uB97C \uC18C\uC720\uD55C \uD50C\uB808\uC774\uC5B4\uAC00 \uC5C6\uC5B4\uC11C \uC2E4\uD589\uB418\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
+  "no properties": "\uC18D\uC131 \uC5C6\uC74C",
+  "No room for synced input": "\uB3D9\uAE30\uD654 \uC785\uB825\uC744 \uB123\uC744 \uACF5\uAC04\uC774 \uC5C6\uC2B5\uB2C8\uB2E4",
+  "No room for the mouse": "\uB9C8\uC6B0\uC2A4\uC6A9 \uACF5\uAC04 \uC5C6\uC74C",
+  "No room for this row": "\uC774 \uD589\uC744 \uB123\uC744 \uACF5\uAC04\uC774 \uC5C6\uC2B5\uB2C8\uB2E4",
+  "No sound": "\uC0AC\uC6B4\uB4DC \uC5C6\uC74C",
+  "no sound": "\uC0AC\uC6B4\uB4DC \uC5C6\uC74C",
+  "No synced input": "\uB3D9\uAE30\uD654 \uC785\uB825 \uC5C6\uC74C",
+  "No triggers.": "\uD2B8\uB9AC\uAC70\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.",
+  "no version": "\uBC84\uC804 \uC5C6\uC74C",
+  "no weapon": "\uBB34\uAE30 \uC5C6\uC74C",
+  "No weapon": "\uBB34\uAE30 \uC5C6\uC74C",
+  "Normal": "\uBCF4\uD1B5",
+  "not a detector": "\uD0D0\uC9C0\uAE30 \uC544\uB2D8",
+  "not a hero": "\uC601\uC6C5 \uC544\uB2D8",
+  "not built": "\uBE4C\uB4DC \uC548 \uB428",
+  "Not built: the build runtime was not installed.": "\uBE4C\uB4DC\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4. \uBE4C\uB4DC \uB7F0\uD0C0\uC784\uC774 \uC124\uCE58\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.",
+  "not invincible": "\uBB34\uC801 \uC544\uB2D8",
+  "not mechanical": "\uAE30\uACC4 \uC544\uB2D8",
+  "not organic": "\uC0DD\uCCB4 \uC544\uB2D8",
+  "not permanently cloaked": "\uC601\uAD6C \uC740\uD3D0 \uC544\uB2D8",
+  "not regenerating hit points": "\uCCB4\uB825 \uC7AC\uC0DD \uC548 \uD568",
+  "not researched": "\uC5F0\uAD6C \uC548 \uB428",
+  "not robotic": "\uB85C\uBD07 \uC544\uB2D8",
+  "not set": "\uC124\uC815 \uC548 \uB428",
+  "Not yet seen working in Remastered.": "\uC544\uC9C1 Remastered\uC5D0\uC11C \uB3D9\uC791\uC744 \uD655\uC778\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.",
+  "Nothing has happened yet. Step runs one cycle.": "\uC544\uC9C1 \uC544\uBB34 \uC77C\uB3C4 \uC5C6\uC2B5\uB2C8\uB2E4. \uD55C \uB2E8\uACC4\uB294 \uC8FC\uAE30 \uD558\uB098\uB97C \uC2E4\uD589\uD569\uB2C8\uB2E4.",
+  "Nothing in this map needs a build; a plain save is all it takes.": "\uC774 \uB9F5\uC5D0\uB294 \uBE4C\uB4DC\uAC00 \uD544\uC694\uD55C \uAC83\uC774 \uC5C6\uC2B5\uB2C8\uB2E4. \uADF8\uB0E5 \uC800\uC7A5\uD558\uBA74 \uB429\uB2C8\uB2E4.",
+  "Nothing matches.": "\uB9DE\uB294 \uAC83\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.",
+  "objectives:": "\uC784\uBB34 \uBAA9\uD45C:",
+  "off": "\uB054",
+  "OK": "\uD655\uC778",
+  "on": "\uCF2C",
+  "One comparison per trigger": "\uD2B8\uB9AC\uAC70\uB9C8\uB2E4 \uBE44\uAD50\uB294 \uD558\uB098\uB9CC",
+  "One copy of this trigger per player ticked, owned by that player, with the group below replaced by the player in every condition and action. This trigger becomes the template and stops running itself.": "\uCCB4\uD06C\uD55C \uD50C\uB808\uC774\uC5B4\uB9C8\uB2E4 \uADF8 \uD50C\uB808\uC774\uC5B4\uAC00 \uC18C\uC720\uD55C \uC774 \uD2B8\uB9AC\uAC70\uC758 \uBCF5\uC0AC\uBCF8\uC744 \uD558\uB098\uC529 \uB9CC\uB4E4\uACE0, \uBAA8\uB4E0 \uC870\uAC74\uACFC \uC561\uC158\uC5D0\uC11C \uC544\uB798 \uADF8\uB8F9\uC744 \uADF8 \uD50C\uB808\uC774\uC5B4\uB85C \uBC14\uAFC9\uB2C8\uB2E4. \uC774 \uD2B8\uB9AC\uAC70\uB294 \uD2C0\uC774 \uB418\uC5B4 \uC9C1\uC811 \uC2E4\uD589\uB418\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
+  "One line.": "\uD55C \uC904\uB9CC \uC4F8 \uC218 \uC788\uC2B5\uB2C8\uB2E4.",
+  "One Marine for Player 1 at the start; change the unit, the count and the player": "\uC2DC\uC791\uD560 \uB54C Player 1\uC5D0\uAC8C \uB9C8\uB9B0 1\uAE30. \uC720\uB2DB, \uC218, \uD50C\uB808\uC774\uC5B4\uB97C \uBC14\uAFB8\uC138\uC694",
+  "One message to everyone when the game begins. Change the text.": "\uAC8C\uC784\uC774 \uC2DC\uC791\uB418\uBA74 \uBAA8\uB450\uC5D0\uAC8C \uBA54\uC2DC\uC9C0\uB97C \uD558\uB098 \uBCF4\uB0C5\uB2C8\uB2E4. \uD14D\uC2A4\uD2B8\uB97C \uBC14\uAFB8\uC138\uC694.",
+  "Only StarCraft: Remastered runs this row; the map is marked {revision}, a revision 1.16.1 also plays.": "\uC774 \uD589\uC740 StarCraft: Remastered\uC5D0\uC11C\uB9CC \uC2E4\uD589\uB429\uB2C8\uB2E4. \uB9F5\uC740 1.16.1\uC5D0\uC11C\uB3C4 \uC5F4\uB9AC\uB294 {revision}(\uC73C)\uB85C \uD45C\uC2DC\uB418\uC5B4 \uC788\uC2B5\uB2C8\uB2E4.",
+  "open": "\uC5F4\uB9BC",
+  "Open a map first": "\uBA3C\uC800 \uB9F5\uC744 \uC5EC\uC138\uC694",
+  "Open Magenta": "Magenta \uC5F4\uAE30",
+  "Open {plugin}": "{plugin} \uC5F4\uAE30",
+  "orange": "\uC8FC\uD669",
+  "Order": "\uBA85\uB839",
+  "order id": "\uBA85\uB839 \uBC88\uD638",
+  "order to attack-move to": "\uACF5\uACA9 \uC774\uB3D9 \uBA85\uB839:",
+  "order to move to": "\uC774\uB3D9 \uBA85\uB839:",
+  "order to patrol to": "\uC815\uCC30 \uBA85\uB839:",
+  "Order {Unit} owned by {Player} at {From} to {Order} to {To}": "{From}\uC5D0 \uC788\uB294 {Player}\uC758 {Unit}\uC5D0\uAC8C {To|\uC73C\uB85C} {Order} \uBA85\uB839",
+  "Ordering one unit at a time needs a location of Magenta's own; free a location slot first.": "\uC720\uB2DB\uB9C8\uB2E4 \uB530\uB85C \uBA85\uB839\uD558\uB824\uBA74 Magenta \uC804\uC6A9 \uB85C\uCF00\uC774\uC158\uC774 \uD544\uC694\uD569\uB2C8\uB2E4. \uBA3C\uC800 \uB85C\uCF00\uC774\uC158 \uC2AC\uB86F\uC744 \uD558\uB098 \uBE44\uC6B0\uC138\uC694.",
+  "ore": "\uBBF8\uB124\uB784",
+  "ore and gas": "\uBBF8\uB124\uB784\uACFC \uAC00\uC2A4",
+  "organic": "\uC0DD\uCCB4",
+  "Organic flag of a unit type": "\uC720\uB2DB \uC885\uB958\uC758 \uC0DD\uCCB4 \uD50C\uB798\uADF8",
+  "other": "\uAE30\uD0C0",
+  "owner": "\uC18C\uC720\uC790",
+  "Owner of a placed unit": "\uBC30\uCE58\uB41C \uC720\uB2DB\uC758 \uC18C\uC720\uC790",
+  "Panel": "\uD328\uB110",
+  "Paste triggers": "\uD2B8\uB9AC\uAC70 \uBD99\uC5EC\uB123\uAE30",
+  "Paste triggers from text": "\uD14D\uC2A4\uD2B8\uC5D0\uC11C \uD2B8\uB9AC\uAC70 \uBD99\uC5EC\uB123\uAE30",
+  "patrol": "\uC815\uCC30",
+  "Pause the countdown timer": "\uCE74\uC6B4\uD2B8\uB2E4\uC6B4 \uD0C0\uC774\uBA38 \uC77C\uC2DC \uC815\uC9C0",
+  "Pause the game": "\uAC8C\uC784 \uC77C\uC2DC \uC815\uC9C0",
+  "Percent": "\uD37C\uC13C\uD2B8",
+  "Permanent cloak flag of a unit type": "\uC720\uB2DB \uC885\uB958\uC758 \uC601\uAD6C \uC740\uD3D0 \uD50C\uB798\uADF8",
+  "permanently cloaked": "\uC601\uAD6C \uC740\uD3D0",
+  "Pick a trigger in the Magenta panel to see its conditions decided here.": "Magenta \uD328\uB110\uC5D0\uC11C \uD2B8\uB9AC\uAC70\uB97C \uACE0\uB974\uBA74 \uC5EC\uAE30\uC11C \uC870\uAC74\uC758 \uACB0\uACFC\uB97C \uBCFC \uC218 \uC788\uC2B5\uB2C8\uB2E4.",
+  "Pick a trigger on the left, or add one.": "\uC67C\uCABD\uC5D0\uC11C \uD2B8\uB9AC\uAC70\uB97C \uACE0\uB974\uAC70\uB098 \uC0C8\uB85C \uCD94\uAC00\uD558\uC138\uC694.",
+  "Pick near the mouse": "\uB9C8\uC6B0\uC2A4 \uADFC\uCC98\uC5D0\uC11C \uACE0\uB974\uAE30",
+  "Pick on map": "\uB9F5\uC5D0\uC11C \uACE0\uB974\uAE30",
+  "Ping the minimap at {Location}": "\uBBF8\uB2C8\uB9F5\uC758 {Location}\uC5D0 \uD551",
+  "pixels": "\uD53D\uC140",
+  "Placed unit": "\uBC30\uCE58\uB41C \uC720\uB2DB",
+  "Placed unit slot {n}: the game fills the slots in map order, so the number stays right while no unit is added before it": "\uBC30\uCE58\uB41C \uC720\uB2DB \uC2AC\uB86F {n}: \uAC8C\uC784\uC740 \uB9F5 \uC21C\uC11C\uB300\uB85C \uC2AC\uB86F\uC744 \uCC44\uC6B0\uBBC0\uB85C, \uC55E\uC5D0 \uC720\uB2DB\uC744 \uCD94\uAC00\uD558\uC9C0 \uC54A\uB294 \uD55C \uBC88\uD638\uAC00 \uB9DE\uC2B5\uB2C8\uB2E4",
+  "Placed unit {index} is {value}": "\uBC30\uCE58\uB41C \uC720\uB2DB {index}\uC758 \uC885\uB958: {value}",
+  "Placed units": "\uBC30\uCE58\uB41C \uC720\uB2DB",
+  "plague": "\uD50C\uB808\uC774\uADF8",
+  "Play {WAV} ({Duration} ms)": "{WAV} \uC7AC\uC0DD ({Duration}ms)",
+  "Player": "\uD50C\uB808\uC774\uC5B4",
+  "Player 2's row with Player 1's bit on lets Player 1 see what Player 2 sees: the row is whose sight is shared, the bit who receives it (probe 9).": "Player 2\uC758 \uD589\uC5D0\uC11C Player 1\uC758 \uBE44\uD2B8\uB97C \uCF1C\uBA74 Player 1\uC774 Player 2\uAC00 \uBCF4\uB294 \uAC83\uC744 \uBD05\uB2C8\uB2E4. \uD589\uC740 \uC2DC\uC57C\uB97C \uC8FC\uB294 \uCABD, \uBE44\uD2B8\uB294 \uBC1B\uB294 \uCABD\uC785\uB2C8\uB2E4 (probe 9).",
+  "Players": "\uD50C\uB808\uC774\uC5B4",
+  "Portrait slot, 1 to 4": "\uCD08\uC0C1\uD654 \uC2AC\uB86F, 1\u20134",
+  "Preserve trigger": "\uD2B8\uB9AC\uAC70 \uBCF4\uC874",
+  "pressed": "\uB20C\uB9BC",
+  "Pressing M gives the player who pressed it 100 minerals. A synced key press: every computer sees it, so the game stays in step. Needs a Build. Change the key.": "M\uC744 \uB204\uB978 \uD50C\uB808\uC774\uC5B4\uAC00 \uBBF8\uB124\uB784 100\uC744 \uBC1B\uC2B5\uB2C8\uB2E4. \uB3D9\uAE30\uD654\uB41C \uD0A4 \uC785\uB825\uC774\uB77C \uBAA8\uB4E0 \uCEF4\uD4E8\uD130\uAC00 \uD568\uAED8 \uBCF4\uBBC0\uB85C \uAC8C\uC784\uC774 \uC5B4\uAE0B\uB098\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4. \uBE4C\uB4DC\uAC00 \uD544\uC694\uD569\uB2C8\uB2E4. \uD0A4\uB97C \uBC14\uAFB8\uC138\uC694.",
+  "Properties": "\uC18D\uC131",
+  "properties slot {n}": "\uC18D\uC131 \uC2AC\uB86F {n}",
+  "Protoss": "\uD504\uB85C\uD1A0\uC2A4",
+  "purple": "\uBCF4\uB77C",
+  "Put a second comparison in another trigger.": "\uB450 \uBC88\uC9F8 \uBE44\uAD50\uB294 \uB2E4\uB978 \uD2B8\uB9AC\uAC70\uC5D0 \uB123\uC73C\uC138\uC694.",
+  "Put units": "\uC720\uB2DB \uB193\uAE30",
+  "px high": "px \uB192\uC774",
+  "px wide": "px \uB108\uBE44",
+  "px/frame": "px/\uD504\uB808\uC784",
+  "Race": "\uC885\uC871",
+  "Race of a player": "\uD50C\uB808\uC774\uC5B4\uC758 \uC885\uC871",
+  "random": "\uBB34\uC791\uC704",
+  "randomize": "\uBB34\uC791\uC704",
+  "Range of a weapon": "\uBB34\uAE30\uC758 \uC0AC\uAC70\uB9AC",
+  "Razings": "\uD30C\uAD34",
+  "Read a unit's stat into a counter": "\uC720\uB2DB \uB2A5\uB825\uCE58\uB97C \uCE74\uC6B4\uD130\uB85C \uC77D\uAE30",
+  "read and write": "\uC77D\uAE30\uC640 \uC4F0\uAE30",
+  "read by": "\uC77D\uB294 \uD2B8\uB9AC\uAC70:",
+  "read only": "\uC77D\uAE30 \uC804\uC6A9",
+  "Reads memory at 0x{hex}, which the catalogue does not know.": "\uCE74\uD0C8\uB85C\uADF8\uC5D0 \uC5C6\uB294 \uBA54\uBAA8\uB9AC 0x{hex}\uC744(\uB97C) \uC77D\uC2B5\uB2C8\uB2E4.",
+  "ready in this editor": "\uC774 \uD3B8\uC9D1\uAE30\uC5D0 \uC900\uBE44\uB428",
+  "Recipes\u2026": "\uB808\uC2DC\uD53C\u2026",
+  "Recipe\u2026": "\uB808\uC2DC\uD53C\u2026",
+  "red": "\uBE68\uAC15",
+  "Redo {what}": "\uB2E4\uC2DC \uC2E4\uD589: {what}",
+  "regenerating hit points": "\uCCB4\uB825 \uC7AC\uC0DD",
+  "Regeneration flag of a unit type": "\uC720\uB2DB \uC885\uB958\uC758 \uC7AC\uC0DD \uD50C\uB798\uADF8",
+  "Reinforcements every minute": "1\uBD84\uB9C8\uB2E4 \uC99D\uC6D0",
+  "released (not seen in the game)": "\uB5CC (\uAC8C\uC784\uC5D0\uC11C \uD655\uC778 \uC548 \uB428)",
+  "remaining build time": "\uB0A8\uC740 \uC0DD\uC0B0 \uC2DC\uAC04",
+  "Remastered does not let a trigger write this address; the action does nothing in the game.": "Remastered\uC5D0\uC11C\uB294 \uD2B8\uB9AC\uAC70\uAC00 \uC774 \uC8FC\uC18C\uC5D0 \uC4F8 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4. \uAC8C\uC784\uC5D0\uC11C \uC774 \uC561\uC158\uC740 \uC544\uBB34 \uC77C\uB3C4 \uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
+  "Remastered does not let a trigger write {what}.": "Remastered\uC5D0\uC11C\uB294 \uD2B8\uB9AC\uAC70\uAC00 {what}\uC744(\uB97C) \uC4F8 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.",
+  "remove": "\uC81C\uAC70",
+  "Remove": "\uC81C\uAC70",
+  "Remove (Delete)": "\uC81C\uAC70 (Delete)",
+  "Remove action": "\uC561\uC158 \uC81C\uAC70",
+  "Remove all {Unit} owned by {Player}": "{Player}\uC758 {Unit} \uBAA8\uB450 \uC81C\uAC70",
+  "Remove build row": "\uBE4C\uB4DC \uD589 \uC81C\uAC70",
+  "Remove comparison": "\uBE44\uAD50 \uC81C\uAC70",
+  "Remove condition": "\uC870\uAC74 \uC81C\uAC70",
+  "Remove counter step": "\uCE74\uC6B4\uD130 \uB2E8\uACC4 \uC81C\uAC70",
+  "Remove folder": "\uD3F4\uB354 \uC81C\uAC70",
+  "Remove folder (keep triggers)": "\uD3F4\uB354 \uC81C\uAC70 (\uD2B8\uB9AC\uAC70\uB294 \uC720\uC9C0)",
+  "Remove {Count} {Unit} owned by {Player} at {Location}": "{Location}\uC5D0 \uC788\uB294 {Player}\uC758 {Unit} {Count} \uC81C\uAC70",
+  "Rename folder": "\uD3F4\uB354 \uC774\uB984 \uBC14\uAFB8\uAE30",
+  "Rename switch": "\uC2A4\uC704\uCE58 \uC774\uB984 \uBC14\uAFB8\uAE30",
+  "Rename trigger": "\uD2B8\uB9AC\uAC70 \uC774\uB984 \uBC14\uAFB8\uAE30",
+  "Rename\u2026": "\uC774\uB984 \uBC14\uAFB8\uAE30\u2026",
+  "rescuable": "\uAD6C\uC870 \uAC00\uB2A5",
+  "Research time of a technology": "\uAE30\uC220\uC758 \uC5F0\uAD6C \uC2DC\uAC04",
+  "Research time of an upgrade": "\uC5C5\uADF8\uB808\uC774\uB4DC\uC758 \uC5F0\uAD6C \uC2DC\uAC04",
+  "researched": "\uC5F0\uAD6C\uB428",
+  "Reset": "\uCD08\uAE30\uD654",
+  "Resource": "\uC790\uC6D0",
+  "resources": "\uC790\uC6D0",
+  "Respawn a unit when it dies": "\uC720\uB2DB\uC774 \uC8FD\uC73C\uBA74 \uB2E4\uC2DC \uC0DD\uC131",
+  "right": "\uC624\uB978\uCABD",
+  "robotic": "\uB85C\uBD07",
+  "Robotic flag of a unit type": "\uC720\uB2DB \uC885\uB958\uC758 \uB85C\uBD07 \uD50C\uB798\uADF8",
+  "Row {row} moves {location} only after this cycle's triggers have all run, so this row still sees it where it was. Put this row in a trigger that fires in a later cycle.": "{row}\uBC88 \uD589\uC740 \uC774\uBC88 \uC8FC\uAE30\uC758 \uD2B8\uB9AC\uAC70\uAC00 \uBAA8\uB450 \uC2E4\uD589\uB41C \uB4A4\uC5D0\uC57C {location}\uC744(\uB97C) \uC62E\uAE30\uBBC0\uB85C, \uC774 \uD589\uC740 \uC544\uC9C1 \uC6D0\uB798 \uC790\uB9AC\uC758 \uB85C\uCF00\uC774\uC158\uC744 \uBD05\uB2C8\uB2E4. \uC774 \uD589\uC744 \uB2E4\uC74C \uC8FC\uAE30\uC5D0 \uC2E4\uD589\uB418\uB294 \uD2B8\uB9AC\uAC70\uB85C \uC62E\uAE30\uC138\uC694.",
+  "Run 10": "10\uBC88 \uC2E4\uD589",
+  "Run for each player": "\uD50C\uB808\uC774\uC5B4\uBCC4\uB85C \uC2E4\uD589",
+  "Run on": "\uACC4\uC18D \uC2E4\uD589",
+  "Run one trigger cycle": "\uD2B8\uB9AC\uAC70 \uC8FC\uAE30 \uD55C \uBC88 \uC2E4\uD589",
+  "Run the AI script {Script}": "AI \uC2A4\uD06C\uB9BD\uD2B8 {Script} \uC2E4\uD589",
+  "Run the AI script {Script} at {Location}": "{Location}\uC5D0\uC11C AI \uC2A4\uD06C\uB9BD\uD2B8 {Script} \uC2E4\uD589",
+  "Run this trigger for each player\u2026": "\uC774 \uD2B8\uB9AC\uAC70\uB97C \uD50C\uB808\uC774\uC5B4\uBCC4\uB85C \uC2E4\uD589\u2026",
+  "Run triggers every frame": "\uD2B8\uB9AC\uAC70 \uB9E4 \uD504\uB808\uC784 \uC2E4\uD589",
+  "Run triggers every two seconds": "\uD2B8\uB9AC\uAC70 2\uCD08\uB9C8\uB2E4 \uC2E4\uD589",
+  "Runs for": "\uC2E4\uD589 \uB300\uC0C1",
+  "Runs once for each of": "\uAC01\uAC01 \uD55C \uBC88\uC529 \uC2E4\uD589:",
+  "Runs once for each of {players}, with {group} standing for the player in every condition and action.": "{players} \uAC01\uAC01\uC5D0 \uB300\uD574 \uD55C \uBC88\uC529 \uC2E4\uD589\uB418\uBA70, \uBAA8\uB4E0 \uC870\uAC74\uACFC \uC561\uC158\uC5D0\uC11C {group}\uC774(\uAC00) \uADF8 \uD50C\uB808\uC774\uC5B4\uB97C \uB73B\uD569\uB2C8\uB2E4.",
+  "s": "\uCD08",
+  "Scenario": "\uC2DC\uB098\uB9AC\uC624",
+  "Score": "\uC810\uC218",
+  "Screen X on the map": "\uB9F5 \uC704 \uD654\uBA74 X",
+  "Screen Y on the map": "\uB9F5 \uC704 \uD654\uBA74 Y",
+  "Script": "\uC2A4\uD06C\uB9BD\uD2B8",
+  "Search triggers\u2026": "\uD2B8\uB9AC\uAC70 \uAC80\uC0C9\u2026",
+  "Seconds": "\uCD08",
+  "seconds": "\uCD08",
+  "Seconds at the fastest speed; the game counts these timers in ticks of about eight frames. The effect applies without the spell's overlay graphic.": "\uAC00\uC7A5 \uBE60\uB978 \uC18D\uB3C4 \uAE30\uC900 \uCD08\uC785\uB2C8\uB2E4. \uAC8C\uC784\uC740 \uC774 \uD0C0\uC774\uBA38\uB97C \uC57D 8\uD504\uB808\uC784 \uB2E8\uC704\uB85C \uC149\uB2C8\uB2E4. \uD6A8\uACFC\uB294 \uB9C8\uBC95 \uADF8\uB798\uD53D \uC5C6\uC774 \uC801\uC6A9\uB429\uB2C8\uB2E4.",
+  "Seconds on the game clock": "\uAC8C\uC784 \uC2DC\uACC4\uC758 \uCD08",
+  "Seen by": "\uBC1B\uB294 \uCABD",
+  "Seen working in Remastered.": "Remastered\uC5D0\uC11C \uB3D9\uC791\uC744 \uD655\uC778\uD588\uC2B5\uB2C8\uB2E4.",
+  "Selected trigger": "\uC120\uD0DD\uD55C \uD2B8\uB9AC\uAC70",
+  "set": "\uC124\uC815",
+  "Set a counter": "\uCE74\uC6B4\uD130 \uC124\uC815",
+  "Set a switch": "\uC2A4\uC704\uCE58 \uCF1C\uAE30",
+  "set and read by": "\uC124\uC815\uD558\uACE0 \uC77D\uB294 \uD2B8\uB9AC\uAC70:",
+  "set by": "\uC124\uC815\uD558\uB294 \uD2B8\uB9AC\uAC70:",
+  "Set deaths of {Unit} for {Player} {Modifier} {Amount}": "{Player}\uC758 {Unit} \uB370\uC2A4 {Modifier} {Amount}",
+  "set energy": "\uC5D0\uB108\uC9C0 \uC124\uC815",
+  "set hit points": "\uCCB4\uB825 \uC124\uC815",
+  "Set invincibility of placed unit {index} to {value}": "\uBC30\uCE58\uB41C \uC720\uB2DB {index}\uC758 \uBB34\uC801 \uC124\uC815: {value}",
+  "set kills": "\uCC98\uCE58 \uC218 \uC124\uC815",
+  "Set once a human leaves. Not yet seen working in Remastered.": "\uC0AC\uB78C \uD50C\uB808\uC774\uC5B4\uAC00 \uB098\uAC00\uBA74 \uC124\uC815\uB429\uB2C8\uB2E4. \uC544\uC9C1 Remastered\uC5D0\uC11C \uB3D9\uC791\uC744 \uD655\uC778\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.",
+  "Set revision to Remastered": "\uBC84\uC804\uC744 Remastered\uB85C \uC124\uC815",
+  "set shields": "\uBCF4\uD638\uB9C9 \uC124\uC815",
+  "Set the air weapon of {unit} to {value}": "{unit}\uC758 \uACF5\uC911 \uBB34\uAE30 \uC124\uC815: {value}",
+  "Set the armor of {unit} {mod} {value}": "{unit}\uC758 \uBC29\uC5B4\uB825 {mod} {value}",
+  "Set the build time of {unit} {mod} {value}": "{unit}\uC758 \uC0DD\uC0B0 \uC2DC\uAC04 {mod} {value}",
+  "Set the colour of {player} to {value}": "{player}\uC758 \uC0C9 \uC124\uC815: {value}",
+  "Set the cooldown of {weapon} {mod} {value}": "{weapon}\uC758 \uC7AC\uC0AC\uC6A9 \uB300\uAE30\uC2DC\uAC04 {mod} {value}",
+  "Set the countdown timer {Modifier} {Seconds} seconds": "\uCE74\uC6B4\uD2B8\uB2E4\uC6B4 \uD0C0\uC774\uBA38 {Modifier} {Seconds}\uCD08",
+  "Set the damage bonus per upgrade of {weapon} {mod} {value}": "{weapon}\uC758 \uC5C5\uADF8\uB808\uC774\uB4DC\uB2F9 \uCD94\uAC00 \uACF5\uACA9\uB825 {mod} {value}",
+  "Set the damage factor of {weapon} {mod} {value}": "{weapon}\uC758 \uACF5\uACA9 \uD69F\uC218 {mod} {value}",
+  "Set the damage of {weapon} {mod} {value}": "{weapon}\uC758 \uACF5\uACA9\uB825 {mod} {value}",
+  "Set the energy cost of {tech} {mod} {value}": "{tech}\uC758 \uC5D0\uB108\uC9C0 \uBE44\uC6A9 {mod} {value}",
+  "Set the energy of placed unit {index} {mod} {value}": "\uBC30\uCE58\uB41C \uC720\uB2DB {index}\uC758 \uC5D0\uB108\uC9C0 {mod} {value}",
+  "Set the energy of {Count} {Unit} owned by {Player} at {Location} to {Percent}%": "{Location}\uC5D0 \uC788\uB294 {Player}\uC758 {Unit} {Count}\uC758 \uC5D0\uB108\uC9C0\uB97C {Percent}%\uB85C \uC124\uC815",
+  "Set the gas cost of {tech} {mod} {value}": "{tech}\uC758 \uAC00\uC2A4 \uBE44\uC6A9 {mod} {value}",
+  "Set the gas cost of {unit} {mod} {value}": "{unit}\uC758 \uAC00\uC2A4 \uBE44\uC6A9 {mod} {value}",
+  "Set the gas cost of {upgrade} {mod} {value}": "{upgrade}\uC758 \uAC00\uC2A4 \uBE44\uC6A9 {mod} {value}",
+  "Set the gas of {player} {mod} {value}": "{player}\uC758 \uAC00\uC2A4 {mod} {value}",
+  "Set the ground weapon of {unit} to {value}": "{unit}\uC758 \uC9C0\uC0C1 \uBB34\uAE30 \uC124\uC815: {value}",
+  "Set the hallucination flag of placed unit {index} to {value}": "\uBC30\uCE58\uB41C \uC720\uB2DB {index}\uC758 \uD658\uC601 \uD50C\uB798\uADF8 \uC124\uC815: {value}",
+  "Set the hit points of placed unit {index} {mod} {value}": "\uBC30\uCE58\uB41C \uC720\uB2DB {index}\uC758 \uCCB4\uB825 {mod} {value}",
+  "Set the hit points of {Count} {Unit} owned by {Player} at {Location} to {Percent}%": "{Location}\uC5D0 \uC788\uB294 {Player}\uC758 {Unit} {Count}\uC758 \uCCB4\uB825\uC744 {Percent}%\uB85C \uC124\uC815",
+  "Set the level of {upgrade} for {player} {mod} {value}": "{player}\uC758 {upgrade} \uB2E8\uACC4 {mod} {value}",
+  "Set the max hit points of {unit} {mod} {value}": "{unit}\uC758 \uCD5C\uB300 \uCCB4\uB825 {mod} {value}",
+  "Set the max shields of {unit} {mod} {value}": "{unit}\uC758 \uCD5C\uB300 \uBCF4\uD638\uB9C9 {mod} {value}",
+  "Set the mineral cost of {tech} {mod} {value}": "{tech}\uC758 \uBBF8\uB124\uB784 \uBE44\uC6A9 {mod} {value}",
+  "Set the mineral cost of {unit} {mod} {value}": "{unit}\uC758 \uBBF8\uB124\uB784 \uBE44\uC6A9 {mod} {value}",
+  "Set the mineral cost of {upgrade} {mod} {value}": "{upgrade}\uC758 \uBBF8\uB124\uB784 \uBE44\uC6A9 {mod} {value}",
+  "Set the minerals of {player} {mod} {value}": "{player}\uC758 \uBBF8\uB124\uB784 {mod} {value}",
+  "Set the minimum range of {weapon} {mod} {value}": "{weapon}\uC758 \uCD5C\uC18C \uC0AC\uAC70\uB9AC {mod} {value}",
+  "Set the mission objectives to {Text}": "\uC784\uBB34 \uBAA9\uD45C \uC124\uC815: {Text}",
+  "Set the owner of placed unit {index} to {value}": "\uBC30\uCE58\uB41C \uC720\uB2DB {index}\uC758 \uC18C\uC720\uC790 \uC124\uC815: {value}",
+  "Set the range of {weapon} {mod} {value}": "{weapon}\uC758 \uC0AC\uAC70\uB9AC {mod} {value}",
+  "set the rank": "\uACC4\uAE09 \uC124\uC815",
+  "set the remaining build time": "\uB0A8\uC740 \uC0DD\uC0B0 \uC2DC\uAC04 \uC124\uC815",
+  "Set the research time of {tech} {mod} {value}": "{tech}\uC758 \uC5F0\uAD6C \uC2DC\uAC04 {mod} {value}",
+  "Set the research time of {upgrade} {mod} {value}": "{upgrade}\uC758 \uC5F0\uAD6C \uC2DC\uAC04 {mod} {value}",
+  "set the resources": "\uC790\uC6D0 \uC124\uC815",
+  "Set the resources of {Count} resource units owned by {Player} at {Location} to {Amount}": "{Location}\uC5D0 \uC788\uB294 {Player}\uC758 \uC790\uC6D0 \uC720\uB2DB {Count}\uC758 \uC790\uC6D0\uC744 {Amount|\uC73C\uB85C} \uC124\uC815",
+  "Set the revision to Remastered 1.21+ and older clients refuse the map instead of playing it without these rows.": "\uBC84\uC804\uC744 Remastered 1.21+\uB85C \uC124\uC815\uD558\uBA74 \uC608\uC804 \uD074\uB77C\uC774\uC5B8\uD2B8\uB294 \uC774 \uD589\uB4E4 \uC5C6\uC774 \uB9F5\uC744 \uC2E4\uD589\uD558\uB294 \uB300\uC2E0 \uB9F5\uC744 \uC5F4\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
+  "Set the shields of placed unit {index} {mod} {value}": "\uBC30\uCE58\uB41C \uC720\uB2DB {index}\uC758 \uBCF4\uD638\uB9C9 {mod} {value}",
+  "Set the shields of {Count} {Unit} owned by {Player} at {Location} to {Percent}%": "{Location}\uC5D0 \uC788\uB294 {Player}\uC758 {Unit} {Count}\uC758 \uBCF4\uD638\uB9C9\uC744 {Percent}%\uB85C \uC124\uC815",
+  "Set the sight range of {unit} {mod} {value}": "{unit}\uC758 \uC2DC\uC57C {mod} {value}",
+  "Set the size of {unit} to {value}": "{unit}\uC758 \uD06C\uAE30 \uC124\uC815: {value}",
+  "Set the speed of {unit} to {value}": "{unit}\uC758 \uC18D\uB3C4 \uC124\uC815: {value}",
+  "Set the stance of {player} toward {other} to {value}": "{other}\uC5D0 \uB300\uD55C {player}\uC758 \uAD00\uACC4 \uC124\uC815: {value}",
+  "Set the supply provided by {unit} {mod} {value}": "{unit}\uC774(\uAC00) \uC8FC\uB294 \uBCF4\uAE09 {mod} {value}",
+  "Set the supply used by {unit} {mod} {value}": "{unit}\uC774(\uAC00) \uC4F0\uB294 \uBCF4\uAE09 {mod} {value}",
+  "Set the target acquisition range of {unit} {mod} {value}": "{unit}\uC758 \uB300\uC0C1 \uD0D0\uC0C9 \uBC94\uC704 {mod} {value}",
+  "Set the trigger timer {mod} {value}": "\uD2B8\uB9AC\uAC70 \uD0C0\uC774\uBA38 {mod} {value}",
+  "Set the {race} supply cap of {player} {mod} {value}": "{player}\uC758 {race} \uBCF4\uAE09 \uD55C\uB3C4 {mod} {value}",
+  "Set the {race} supply provided to {player} {mod} {value}": "{player}\uC758 {race} \uBCF4\uAE09 \uC81C\uACF5\uB7C9 {mod} {value}",
+  "Set the {race} supply used by {player} {mod} {value}": "{player}\uC758 {race} \uBCF4\uAE09 \uC0AC\uC6A9\uB7C9 {mod} {value}",
+  "Set the {Score} score of {Player} {Modifier} {Amount}": "{Player}\uC758 {Score} \uC810\uC218 {Modifier} {Amount}",
+  "Set this {unit}'s hit points (EUD)": "\uC774 {unit}\uC758 \uCCB4\uB825 \uC124\uC815 (EUD)",
+  "Set To": "\uC124\uC815",
+  "Set to 0 every cycle by the every-frame switch; every probe map runs on it.": "\uB9E4 \uD504\uB808\uC784 \uC2E4\uD589 \uC2A4\uC704\uCE58\uAC00 \uB9E4 \uC8FC\uAE30 0\uC73C\uB85C \uC124\uC815\uD569\uB2C8\uB2E4. \uBAA8\uB4E0 probe \uB9F5\uC774 \uC774\uAC83\uC73C\uB85C \uC2E4\uD589\uB429\uB2C8\uB2E4.",
+  "Set vision of {player} for {other} to {value}": "{player}\uC758 \uC2DC\uC57C\uB97C {other}\uC5D0\uAC8C \uACF5\uC720: {value}",
+  "Set {counter} to the number of {units}": "{counter} \uC124\uC815: {units}\uC758 \uC218",
+  "Set {counter} to the {field} of the first {units}": "{counter} \uC124\uC815: \uCCAB \uBC88\uC9F8 {units}\uC758 {field}",
+  "Set {counter} to {a} {op} {b}": "{counter} \uC124\uC815: {a} {op} {b}",
+  "Set {counter} to {op} {b}": "{counter} \uC124\uC815: {op} {b}",
+  "Set {counter} {mod} {amount}": "{counter} {mod} {amount}",
+  "Set {Player} to {Status}": "{Player|\uC744} {Status|\uC73C\uB85C} \uC124\uC815",
+  "Set {Resource} of {Player} {Modifier} {Amount}": "{Player}\uC758 {Resource} {Modifier} {Amount}",
+  "Set {tech} for {player} to {value}": "{player}\uC758 {tech} \uC124\uC815: {value}",
+  "Settings\u2026": "\uC124\uC815\u2026",
+  "Shared vision between players": "\uD50C\uB808\uC774\uC5B4 \uC0AC\uC774\uC758 \uC2DC\uC57C \uACF5\uC720",
+  "shields": "\uBCF4\uD638\uB9C9",
+  "shields %": "\uBCF4\uD638\uB9C9 %",
+  "Shields of a placed unit": "\uBC30\uCE58\uB41C \uC720\uB2DB\uC758 \uBCF4\uD638\uB9C9",
+  "Show": "\uBCF4\uAE30",
+  "Show a leader board of most {Resource}, labelled {Label}": "\uB9AC\uB354\uBCF4\uB4DC \uD45C\uC2DC: {Resource}, \uC81C\uBAA9 {Label}",
+  "Show a leader board of most {Score} points, labelled {Label}": "\uB9AC\uB354\uBCF4\uB4DC \uD45C\uC2DC: {Score} \uC810\uC218, \uC81C\uBAA9 {Label}",
+  "Show a leader board of most {Unit} controlled at {Location}, labelled {Label}": "\uB9AC\uB354\uBCF4\uB4DC \uD45C\uC2DC: {Location}\uC758 {Unit} \uBCF4\uC720 \uC218, \uC81C\uBAA9 {Label}",
+  "Show a leader board of most {Unit} controlled, labelled {Label}": "\uB9AC\uB354\uBCF4\uB4DC \uD45C\uC2DC: {Unit} \uBCF4\uC720 \uC218, \uC81C\uBAA9 {Label}",
+  "Show a leader board of most {Unit} killed, labelled {Label}": "\uB9AC\uB354\uBCF4\uB4DC \uD45C\uC2DC: {Unit} \uCC98\uCE58 \uC218, \uC81C\uBAA9 {Label}",
+  "Show a leader board of {Resource} with a goal of {Goal}, labelled {Label}": "\uB9AC\uB354\uBCF4\uB4DC \uD45C\uC2DC: {Resource}, \uBAA9\uD45C {Goal}, \uC81C\uBAA9 {Label}",
+  "Show a leader board of {Score} points with a goal of {Goal}, labelled {Label}": "\uB9AC\uB354\uBCF4\uB4DC \uD45C\uC2DC: {Score} \uC810\uC218, \uBAA9\uD45C {Goal}, \uC81C\uBAA9 {Label}",
+  "Show a leader board of {Unit} controlled at {Location} with a goal of {Goal}, labelled {Label}": "\uB9AC\uB354\uBCF4\uB4DC \uD45C\uC2DC: {Location}\uC758 {Unit} \uBCF4\uC720 \uC218, \uBAA9\uD45C {Goal}, \uC81C\uBAA9 {Label}",
+  "Show a leader board of {Unit} controlled with a goal of {Goal}, labelled {Label}": "\uB9AC\uB354\uBCF4\uB4DC \uD45C\uC2DC: {Unit} \uBCF4\uC720 \uC218, \uBAA9\uD45C {Goal}, \uC81C\uBAA9 {Label}",
+  "Show a leader board of {Unit} killed with a goal of {Goal}, labelled {Label}": "\uB9AC\uB354\uBCF4\uB4DC \uD45C\uC2DC: {Unit} \uCC98\uCE58 \uC218, \uBAA9\uD45C {Goal}, \uC81C\uBAA9 {Label}",
+  "Show as player and unit": "\uD50C\uB808\uC774\uC5B4\uC640 \uC720\uB2DB\uC73C\uB85C \uBCF4\uAE30",
+  "Show every trigger": "\uBAA8\uB4E0 \uD2B8\uB9AC\uAC70 \uBCF4\uAE30",
+  "Show only EUD triggers": "EUD \uD2B8\uB9AC\uAC70\uB9CC \uBCF4\uAE30",
+  "Show only triggers with a problem": "\uBB38\uC81C\uAC00 \uC788\uB294 \uD2B8\uB9AC\uAC70\uB9CC \uBCF4\uAE30",
+  "Show or hide the trigger list": "\uD2B8\uB9AC\uAC70 \uBAA9\uB85D \uBCF4\uC774\uAE30/\uC228\uAE30\uAE30",
+  "Show text with numbers in it": "\uC22B\uC790\uAC00 \uB4E4\uC5B4\uAC04 \uD14D\uC2A4\uD2B8 \uD45C\uC2DC",
+  "Show the greed leader board with a goal of {Goal} resources": "\uD0D0\uC695 \uB9AC\uB354\uBCF4\uB4DC \uD45C\uC2DC: \uBAA9\uD45C \uC790\uC6D0 {Goal}",
+  "Show the portrait of {Unit} in {Slot}": "{Slot}\uC5D0 {Unit} \uCD08\uC0C1\uD654 \uD45C\uC2DC",
+  "Show the talking portrait of {Unit} for {Duration} ms": "{Unit}\uC758 \uB9D0\uD558\uB294 \uCD08\uC0C1\uD654\uB97C {Duration}ms \uB3D9\uC548 \uD45C\uC2DC",
+  "Show {Text} for {Duration} ms": "{Duration}ms \uB3D9\uC548 \uD45C\uC2DC: {Text}",
+  "Show {text} to {player}": "{player}\uC5D0\uAC8C {text} \uD45C\uC2DC",
+  "Sight range of a unit type": "\uC720\uB2DB \uC885\uB958\uC758 \uC2DC\uC57C",
+  "Size of a unit type": "\uC720\uB2DB \uC885\uB958\uC758 \uD06C\uAE30",
+  "Slot": "\uC2AC\uB86F",
+  "Slot of a player": "\uD50C\uB808\uC774\uC5B4\uC758 \uC2AC\uB86F",
+  "Slot order as for hit points: not simply map order, being probed. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out. Start locations take no slot; nor does a unit of a human player who is not in the game (it is removed at load), so slots after one shift by one when that player is missing.": "\uC2AC\uB86F \uC21C\uC11C\uB294 \uCCB4\uB825\uACFC \uAC19\uC2B5\uB2C8\uB2E4. \uB2E8\uC21C\uD55C \uB9F5 \uC21C\uC11C\uAC00 \uC544\uB2C8\uBA70 \uD655\uC778 \uC911\uC785\uB2C8\uB2E4. \uC2AC\uB86F: \uCC98\uC74C \uBC30\uCE58\uB41C \uC720\uB2DB\uC774 \uC2AC\uB86F 0\uC774\uACE0 \uADF8 \uB4A4\uB85C\uB294 1699\uBD80\uD130 \uAC70\uAFB8\uB85C \uC149\uB2C8\uB2E4 (2026-09-12 Remastered\uC5D0\uC11C \uD655\uC778). \uCE69\uC5D0\uC11C \uB9F5\uC758 \uC720\uB2DB\uC744 \uACE0\uB974\uBA74 \uC2AC\uB86F\uC744 \uACC4\uC0B0\uD574 \uC90D\uB2C8\uB2E4. \uC2DC\uC791 \uC704\uCE58\uB294 \uC2AC\uB86F\uC744 \uCC28\uC9C0\uD558\uC9C0 \uC54A\uACE0, \uAC8C\uC784\uC5D0 \uC5C6\uB294 \uC0AC\uB78C \uD50C\uB808\uC774\uC5B4\uC758 \uC720\uB2DB\uB3C4 \uBD88\uB7EC\uC62C \uB54C \uC9C0\uC6CC\uC9C0\uBBC0\uB85C \uCC28\uC9C0\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4. \uADF8\uB798\uC11C \uADF8 \uD50C\uB808\uC774\uC5B4\uAC00 \uC5C6\uC73C\uBA74 \uB4A4\uC758 \uC2AC\uB86F\uC774 \uD558\uB098\uC529 \uBC00\uB9BD\uB2C8\uB2E4.",
+  "slot {n}": "\uC2AC\uB86F {n}",
+  "Slow": "\uB290\uB9BC",
+  "Slower": "\uB354 \uB290\uB9BC",
+  "Slowest": "\uAC00\uC7A5 \uB290\uB9BC",
+  "small": "\uC18C\uD615",
+  "Sound": "\uC0AC\uC6B4\uB4DC",
+  "sound {n}": "\uC0AC\uC6B4\uB4DC {n}",
+  "Source: {source}.": "\uCD9C\uCC98: {source}.",
+  "Speed of a unit type": "\uC720\uB2DB \uC885\uB958\uC758 \uC18D\uB3C4",
+  "stale": "\uC624\uB798\uB428",
+  "Stands for the player": "\uD50C\uB808\uC774\uC5B4\uB97C \uB73B\uD558\uB294 \uADF8\uB8F9",
+  "Start following at once (a trigger sets the cammove switch)": "\uBC14\uB85C \uB530\uB77C\uAC00\uAE30 \uC2DC\uC791 (\uD2B8\uB9AC\uAC70\uAC00 cammove \uC2A4\uC704\uCE58\uB97C \uCF2C)",
+  "Start from a whole trigger: a beacon shop, a countdown, a respawn\u2026": "\uC644\uC131\uB41C \uD2B8\uB9AC\uAC70\uB85C \uC2DC\uC791\uD569\uB2C8\uB2E4: \uBE44\uCEE8 \uC0C1\uC810, \uCE74\uC6B4\uD2B8\uB2E4\uC6B4, \uBD80\uD65C\u2026",
+  "Start from\u2026": "\uC2DC\uC791\uD560 \uD2B8\uB9AC\uAC70\u2026",
+  "Start over from the map as it is now": "\uC9C0\uAE08\uC758 \uB9F5\uC5D0\uC11C \uB2E4\uC2DC \uC2DC\uC791",
+  "Start the camera": "\uCE74\uBA54\uB77C \uC2DC\uC791",
+  "stasis": "\uC2A4\uD14C\uC774\uC2DC\uC2A4",
+  "State": "\uC0C1\uD0DC",
+  "Status": "\uAD00\uACC4",
+  "Step": "\uD55C \uB2E8\uACC4",
+  "stim": "\uC2A4\uD300\uD329",
+  "Stop running for each player": "\uD50C\uB808\uC774\uC5B4\uBCC4 \uC2E4\uD589 \uADF8\uB9CC\uB450\uAE30",
+  "Stored in frames at Normal speed: 15 per game second.": "\uBCF4\uD1B5 \uC18D\uB3C4 \uAE30\uC900 \uD504\uB808\uC784\uC73C\uB85C \uC800\uC7A5\uB429\uB2C8\uB2E4 (\uAC8C\uC784 1\uCD08\uC5D0 15).",
+  "Stored in frames at Normal speed: 15 per game second. Verified: a Barracks trained a marine in a second (probe 8).": "\uBCF4\uD1B5 \uC18D\uB3C4 \uAE30\uC900 \uD504\uB808\uC784\uC73C\uB85C \uC800\uC7A5\uB429\uB2C8\uB2E4 (\uAC8C\uC784 1\uCD08\uC5D0 15). \uD655\uC778\uB428: \uBC30\uB7ED\uC774 \uB9C8\uB9B0\uC744 1\uCD08 \uB9CC\uC5D0 \uC0DD\uC0B0\uD588\uC2B5\uB2C8\uB2E4 (probe 8).",
+  "Stored in halves: a Zergling is 1.": "\uC808\uBC18 \uB2E8\uC704\uB85C \uC800\uC7A5\uB429\uB2C8\uB2E4. \uC800\uAE00\uB9C1\uC774 1\uC785\uB2C8\uB2E4.",
+  "string {n}": "\uBB38\uC790\uC5F4 {n}",
+  "Subtract": "\uBE7C\uAE30",
+  "Subtract a counter from another": "\uCE74\uC6B4\uD130\uB97C \uB2E4\uB978 \uCE74\uC6B4\uD130\uC5D0\uC11C \uBE7C\uAE30",
+  "Subtract {from} from {to}": "{to}\uC5D0\uC11C {from} \uBE7C\uAE30",
+  "supply": "\uBCF4\uAE09",
+  "Supply cap of a player": "\uD50C\uB808\uC774\uC5B4\uC758 \uBCF4\uAE09 \uD55C\uB3C4",
+  "Supply provided by a unit type": "\uC720\uB2DB \uC885\uB958\uAC00 \uC8FC\uB294 \uBCF4\uAE09",
+  "Supply provided to a player": "\uD50C\uB808\uC774\uC5B4\uAC00 \uBC1B\uB294 \uBCF4\uAE09",
+  "Supply used by a player": "\uD50C\uB808\uC774\uC5B4\uAC00 \uC4F0\uB294 \uBCF4\uAE09",
+  "Supply used by a unit type": "\uC720\uB2DB \uC885\uB958\uAC00 \uC4F0\uB294 \uBCF4\uAE09",
+  "Switch": "\uC2A4\uC704\uCE58",
+  "Switches set": "\uCF1C\uC9C4 \uC2A4\uC704\uCE58",
+  "Synced input (keys, clicks, mouse) through MSQC": "MSQC\uB97C \uD1B5\uD55C \uB3D9\uAE30\uD654 \uC785\uB825 (\uD0A4, \uD074\uB9AD, \uB9C8\uC6B0\uC2A4)",
+  "Synced input needs {player} for itself, and the slot is set to {type}. Make it inactive in Scenario \u25B8 Players, or free another slot and remove the input rows to let Magenta pick again.": "\uB3D9\uAE30\uD654 \uC785\uB825\uC740 {player}\uC744(\uB97C) \uC804\uC6A9\uC73C\uB85C \uC368\uC57C \uD558\uB294\uB370 \uC774 \uC2AC\uB86F\uC774 {type}(\uC73C)\uB85C \uC124\uC815\uB418\uC5B4 \uC788\uC2B5\uB2C8\uB2E4. \uC2DC\uB098\uB9AC\uC624 \u25B8 \uD50C\uB808\uC774\uC5B4\uC5D0\uC11C \uBE44\uD65C\uC131\uC73C\uB85C \uBC14\uAFB8\uAC70\uB098, \uB2E4\uB978 \uC2AC\uB86F\uC744 \uBE44\uC6B0\uACE0 \uC785\uB825 \uD589\uC744 \uC9C0\uC6CC Magenta\uAC00 \uB2E4\uC2DC \uACE0\uB974\uAC8C \uD558\uC138\uC694.",
+  "Synced input needs {player} for itself, and units on the map belong to it.": "\uB3D9\uAE30\uD654 \uC785\uB825\uC740 {player}\uC744(\uB97C) \uC804\uC6A9\uC73C\uB85C \uC368\uC57C \uD558\uB294\uB370 \uB9F5\uC5D0 \uADF8 \uD50C\uB808\uC774\uC5B4\uC758 \uC720\uB2DB\uC774 \uC788\uC2B5\uB2C8\uB2E4.",
+  "Synced input owns {player}; this trigger runs for it too.": "{player}\uC740(\uB294) \uB3D9\uAE30\uD654 \uC785\uB825 \uC804\uC6A9\uC778\uB370 \uC774 \uD2B8\uB9AC\uAC70\uAC00 \uADF8 \uD50C\uB808\uC774\uC5B4\uB85C\uB3C4 \uC2E4\uD589\uB429\uB2C8\uB2E4.",
+  "Synced input uses the {unit} type for its own command units, and the map has some placed. Remove them, or pick another unit type in the map's settings.": "\uB3D9\uAE30\uD654 \uC785\uB825\uC740 {unit} \uC885\uB958\uB97C \uC790\uCCB4 \uBA85\uB839 \uC720\uB2DB\uC73C\uB85C \uC4F0\uB294\uB370 \uB9F5\uC5D0 \uC774 \uC720\uB2DB\uC774 \uBC30\uCE58\uB418\uC5B4 \uC788\uC2B5\uB2C8\uB2E4. \uBC30\uCE58\uB41C \uC720\uB2DB\uC744 \uC9C0\uC6B0\uAC70\uB098 \uB9F5 \uC124\uC815\uC5D0\uC11C \uB2E4\uB978 \uC720\uB2DB \uC885\uB958\uB97C \uACE0\uB974\uC138\uC694.",
+  "Synced input's own location slot ({n}) is no longer empty: a location was made there. Free it, or remove the input rows and add them again to pick another.": "\uB3D9\uAE30\uD654 \uC785\uB825 \uC804\uC6A9 \uB85C\uCF00\uC774\uC158 \uC2AC\uB86F({n})\uC774 \uB354 \uC774\uC0C1 \uBE44\uC5B4 \uC788\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4. \uADF8 \uC790\uB9AC\uC5D0 \uB85C\uCF00\uC774\uC158\uC774 \uC0DD\uACBC\uC2B5\uB2C8\uB2E4. \uBE44\uC6B0\uAC70\uB098, \uC785\uB825 \uD589\uC744 \uC9C0\uC6B0\uACE0 \uB2E4\uC2DC \uCD94\uAC00\uD574 \uB2E4\uB978 \uC2AC\uB86F\uC744 \uACE0\uB974\uAC8C \uD558\uC138\uC694.",
+  "take": "\uAC10\uC18C",
+  "take the speed upgrade": "\uC18D\uB3C4 \uC5C5\uADF8\uB808\uC774\uB4DC \uBE7C\uAE30",
+  "Take the {units} {by} {measure}: {action}, center {location} on it, value into {counter}": "{units} \uC911 {measure|\uC774} {by} \uC720\uB2DB: {action}, {location|\uC744} \uADF8 \uC720\uB2DB \uC911\uC2EC\uC5D0, \uAC12\uC740 {counter}\uC5D0",
+  "Take the {units} {by} {point}: {action}, center {location} on it, value into {counter}": "{units} \uC911 {point}\uC5D0 {by} \uC720\uB2DB: {action}, {location|\uC744} \uADF8 \uC720\uB2DB \uC911\uC2EC\uC5D0, \uAC12\uC740 {counter}\uC5D0",
+  "Take the {units} {by}: {action}, center {location} on it, value into {counter}": "{units} \uC911 {by} \uC720\uB2DB: {action}, {location|\uC744} \uADF8 \uC720\uB2DB \uC911\uC2EC\uC5D0, \uAC12\uC740 {counter}\uC5D0",
+  "Target acquisition range of a unit type": "\uC720\uB2DB \uC885\uB958\uC758 \uB300\uC0C1 \uD0D0\uC0C9 \uBC94\uC704",
+  "targeting something": "\uB300\uC0C1 \uC9C0\uC815 \uC911",
+  "teal": "\uCCAD\uB85D",
+  "Technologies": "\uAE30\uC220",
+  "Technology": "\uAE30\uC220",
+  "Technology researched by a player": "\uD50C\uB808\uC774\uC5B4\uAC00 \uC5F0\uAD6C\uD55C \uAE30\uC220",
+  "technology {n}": "\uAE30\uC220 {n}",
+  "Terran": "\uD14C\uB780",
+  "Text": "\uD14D\uC2A4\uD2B8",
+  "That is not trigger text": "\uD2B8\uB9AC\uAC70 \uD14D\uC2A4\uD2B8\uAC00 \uC544\uB2D9\uB2C8\uB2E4",
+  "The air weapon of {unit} is {value}": "{unit}\uC758 \uACF5\uC911 \uBB34\uAE30: {value}",
+  "The armor of {unit} is {cmp} {value}": "{unit}\uC758 \uBC29\uC5B4\uB825\uC774 {value} {cmp}",
+  "The background music {file} is not in the map archive.": "\uBC30\uACBD \uC74C\uC545 {file}\uC774(\uAC00) \uB9F5 \uC544\uCE74\uC774\uBE0C\uC5D0 \uC5C6\uC2B5\uB2C8\uB2E4.",
+  "The browser did not allow reading the clipboard": "\uBE0C\uB77C\uC6B0\uC800\uAC00 \uD074\uB9BD\uBCF4\uB4DC \uC77D\uAE30\uB97C \uD5C8\uC6A9\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4",
+  "The build failed: {why}. The map is unchanged.": "\uBE4C\uB4DC\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4: {why}. \uB9F5\uC740 \uBC14\uB00C\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.",
+  "The build time of {unit} is {cmp} {value}": "{unit}\uC758 \uC0DD\uC0B0 \uC2DC\uAC04\uC774 {value} {cmp}",
+  "The camera finds its location by name, and location {n} has none of its own.": "\uCE74\uBA54\uB77C\uB294 \uB85C\uCF00\uC774\uC158\uC744 \uC774\uB984\uC73C\uB85C \uCC3E\uB294\uB370 \uB85C\uCF00\uC774\uC158 {n}\uC5D0\uB294 \uC774\uB984\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.",
+  "The camera follows a location by its name, so only named locations are offered. It follows while a switch named cammove is set, so a trigger can turn it on and off; the switch and a helper location named cammoveLoc are made in this map at build time. A looped sound needs its length; a plain WAV's is read from the file.": "\uCE74\uBA54\uB77C\uB294 \uB85C\uCF00\uC774\uC158\uC744 \uC774\uB984\uC73C\uB85C \uCC3E\uC73C\uBBC0\uB85C \uC774\uB984 \uC788\uB294 \uB85C\uCF00\uC774\uC158\uB9CC \uACE0\uB97C \uC218 \uC788\uC2B5\uB2C8\uB2E4. cammove\uB77C\uB294 \uC2A4\uC704\uCE58\uAC00 \uCF1C\uC838 \uC788\uB294 \uB3D9\uC548 \uB530\uB77C\uAC00\uBBC0\uB85C \uD2B8\uB9AC\uAC70\uB85C \uCF1C\uACE0 \uB04C \uC218 \uC788\uC2B5\uB2C8\uB2E4. \uC774 \uC2A4\uC704\uCE58\uC640 cammoveLoc\uC774\uB77C\uB294 \uBCF4\uC870 \uB85C\uCF00\uC774\uC158\uC740 \uBE4C\uB4DC\uD560 \uB54C \uC774 \uB9F5\uC5D0 \uB9CC\uB4E4\uC5B4\uC9D1\uB2C8\uB2E4. \uBC18\uBCF5 \uC7AC\uC0DD\uD560 \uC0AC\uC6B4\uB4DC\uB294 \uAE38\uC774\uAC00 \uD544\uC694\uD558\uBA70, \uC77C\uBC18 WAV\uB294 \uD30C\uC77C\uC5D0\uC11C \uAE38\uC774\uB97C \uC77D\uC2B5\uB2C8\uB2E4.",
+  "The camera follows a location, for everyone": "\uBAA8\uB450\uC758 \uCE74\uBA54\uB77C\uAC00 \uB85C\uCF00\uC774\uC158\uC744 \uB530\uB77C\uAC10",
+  "The camera follows location {n}, which the map no longer has.": "\uCE74\uBA54\uB77C\uAC00 \uB9F5\uC5D0\uC11C \uC5C6\uC5B4\uC9C4 \uB85C\uCF00\uC774\uC158 {n}\uC744(\uB97C) \uB530\uB77C\uAC11\uB2C8\uB2E4.",
+  "The camera needs one free location slot for its helper location.": "\uCE74\uBA54\uB77C\uC758 \uBCF4\uC870 \uB85C\uCF00\uC774\uC158\uC5D0 \uC4F8 \uBE48 \uB85C\uCF00\uC774\uC158 \uC2AC\uB86F\uC774 \uD558\uB098 \uD544\uC694\uD569\uB2C8\uB2E4.",
+  "The camera needs one free switch to turn it on and off.": "\uCE74\uBA54\uB77C\uB97C \uCF1C\uACE0 \uB04C \uBE48 \uC2A4\uC704\uCE58\uAC00 \uD558\uB098 \uD544\uC694\uD569\uB2C8\uB2E4.",
+  'The chat command "{message}": {problem}': '\uCC44\uD305 \uBA85\uB839 "{message}": {problem}',
+  "The chat said a command": "\uCC44\uD305\uC73C\uB85C \uBA85\uB839 \uC785\uB825",
+  "The chat said {message} {mode}": "\uCC44\uD305 \uC785\uB825: {message} {mode}",
+  "The cloak of placed unit {index} is {value}": "\uBC30\uCE58\uB41C \uC720\uB2DB {index}\uC758 \uC740\uD3D0: {value}",
+  "The command before the number: -set matches -set 250, and the number lands in the counter named Chat number": "\uC22B\uC790 \uC55E\uC758 \uBA85\uB839\uC785\uB2C8\uB2E4. -set\uC740 -set 250\uACFC \uB9DE\uACE0, \uC22B\uC790\uB294 Chat number\uB77C\uB294 \uCE74\uC6B4\uD130\uC5D0 \uB4E4\uC5B4\uAC11\uB2C8\uB2E4",
+  "The cooldown of {weapon} is {cmp} {value}": "{weapon}\uC758 \uC7AC\uC0AC\uC6A9 \uB300\uAE30\uC2DC\uAC04\uC774 {value} {cmp}",
+  "The cooldowns are written each time the trigger fires; to keep a unit from firing, the trigger must fire every cycle (preserved, with triggers running every frame).": "\uC7AC\uC0AC\uC6A9 \uB300\uAE30\uC2DC\uAC04\uC740 \uD2B8\uB9AC\uAC70\uAC00 \uC2E4\uD589\uB420 \uB54C\uB9C8\uB2E4 \uC4F0\uC785\uB2C8\uB2E4. \uC720\uB2DB\uC774 \uACC4\uC18D \uACF5\uACA9\uD558\uC9C0 \uBABB\uD558\uAC8C \uD558\uB824\uBA74 \uD2B8\uB9AC\uAC70\uAC00 \uB9E4 \uC8FC\uAE30 \uC2E4\uD589\uB418\uC5B4\uC57C \uD569\uB2C8\uB2E4 (\uBCF4\uC874, \uD2B8\uB9AC\uAC70 \uB9E4 \uD504\uB808\uC784 \uC2E4\uD589).",
+  "The countdown timer": "\uCE74\uC6B4\uD2B8\uB2E4\uC6B4 \uD0C0\uC774\uBA38",
+  "The damage bonus per upgrade of {weapon} is {cmp} {value}": "{weapon}\uC758 \uC5C5\uADF8\uB808\uC774\uB4DC\uB2F9 \uCD94\uAC00 \uACF5\uACA9\uB825\uC774 {value} {cmp}",
+  "The damage factor of {weapon} is {cmp} {value}": "{weapon}\uC758 \uACF5\uACA9 \uD69F\uC218\uAC00 {value} {cmp}",
+  "The damage of {weapon} is {cmp} {value}": "{weapon}\uC758 \uACF5\uACA9\uB825\uC774 {value} {cmp}",
+  "The destination. The order goes to one unit at a time through the location named Magenta scratch, which is Magenta's to move.": "\uBAA9\uC801\uC9C0\uC785\uB2C8\uB2E4. \uBA85\uB839\uC740 Magenta scratch\uB77C\uB294 \uB85C\uCF00\uC774\uC158\uC744 \uAC70\uCCD0 \uD55C \uC720\uB2DB\uC529 \uB0B4\uB824\uC9C0\uBA70, \uC774 \uB85C\uCF00\uC774\uC158\uC740 Magenta\uAC00 \uC62E\uAE41\uB2C8\uB2E4.",
+  "The energy cost of {tech} is {cmp} {value}": "{tech}\uC758 \uC5D0\uB108\uC9C0 \uBE44\uC6A9\uC774 {value} {cmp}",
+  "The energy of placed unit {index} is {cmp} {value}": "\uBC30\uCE58\uB41C \uC720\uB2DB {index}\uC758 \uC5D0\uB108\uC9C0\uAC00 {value} {cmp}",
+  "The eudplib plugin is not running: it is the library that builds EUD maps. Install or turn it on under Plugins \u25B8 Manage Plugins\u2026": "eudplib \uD50C\uB7EC\uADF8\uC778\uC774 \uC2E4\uD589\uB418\uACE0 \uC788\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4. EUD \uB9F5\uC744 \uBE4C\uB4DC\uD558\uB294 \uB77C\uC774\uBE0C\uB7EC\uB9AC\uC785\uB2C8\uB2E4. \uD50C\uB7EC\uADF8\uC778 \u25B8 \uD50C\uB7EC\uADF8\uC778 \uAD00\uB9AC\u2026\uC5D0\uC11C \uC124\uCE58\uD558\uAC70\uB098 \uCF1C\uC138\uC694.",
+  "The eudplib plugin is not running; install or turn it on under Plugins \u25B8 Manage Plugins\u2026": "eudplib \uD50C\uB7EC\uADF8\uC778\uC774 \uC2E4\uD589\uB418\uACE0 \uC788\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4. \uD50C\uB7EC\uADF8\uC778 \u25B8 \uD50C\uB7EC\uADF8\uC778 \uAD00\uB9AC\u2026\uC5D0\uC11C \uC124\uCE58\uD558\uAC70\uB098 \uCF1C\uC138\uC694.",
+  "The field's value \u2014 or the distance, for the nearest \u2014 goes into this counter; 0 when nothing matched.": "\uADF8 \uD56D\uBAA9\uC758 \uAC12(\uAC00\uC7A5 \uAC00\uAE4C\uC6B4 \uC720\uB2DB\uC774\uBA74 \uAC70\uB9AC)\uC774 \uC774 \uCE74\uC6B4\uD130\uC5D0 \uB4E4\uC5B4\uAC11\uB2C8\uB2E4. \uB9DE\uB294 \uC720\uB2DB\uC774 \uC5C6\uC73C\uBA74 0\uC785\uB2C8\uB2E4.",
+  "The first level's cost; each further level adds the upgrade's own factor to it.": "\uCCAB \uB2E8\uACC4\uC758 \uBE44\uC6A9\uC785\uB2C8\uB2E4. \uB2E4\uC74C \uB2E8\uACC4\uB9C8\uB2E4 \uC5C5\uADF8\uB808\uC774\uB4DC \uACE0\uC720\uC758 \uC99D\uAC00\uB7C9\uC774 \uB354\uD574\uC9D1\uB2C8\uB2E4.",
+  "The first level's time, stored in frames at Normal speed: 15 per game second. Each further level adds the upgrade's own factor.": "\uCCAB \uB2E8\uACC4\uC758 \uC2DC\uAC04\uC73C\uB85C, \uBCF4\uD1B5 \uC18D\uB3C4 \uAE30\uC900 \uD504\uB808\uC784\uC73C\uB85C \uC800\uC7A5\uB429\uB2C8\uB2E4 (\uAC8C\uC784 1\uCD08\uC5D0 15). \uB2E4\uC74C \uB2E8\uACC4\uB9C8\uB2E4 \uC5C5\uADF8\uB808\uC774\uB4DC \uACE0\uC720\uC758 \uC99D\uAC00\uB7C9\uC774 \uB354\uD574\uC9D1\uB2C8\uB2E4.",
+  "The game clock is {cmp} {value}": "\uAC8C\uC784 \uC2DC\uACC4\uAC00 {value} {cmp}",
+  "The game has run {cmp} {value}": "\uAC8C\uC784 \uC9C4\uD589 \uD504\uB808\uC784\uC774 {value} {cmp}",
+  "The game is over for every player.": "\uBAA8\uB4E0 \uD50C\uB808\uC774\uC5B4\uC758 \uAC8C\uC784\uC774 \uB05D\uB0AC\uC2B5\uB2C8\uB2E4.",
+  "The game speed is {value}": "\uAC8C\uC784 \uC18D\uB3C4: {value}",
+  "The gas cost of {tech} is {cmp} {value}": "{tech}\uC758 \uAC00\uC2A4 \uBE44\uC6A9\uC774 {value} {cmp}",
+  "The gas cost of {unit} is {cmp} {value}": "{unit}\uC758 \uAC00\uC2A4 \uBE44\uC6A9\uC774 {value} {cmp}",
+  "The gas cost of {upgrade} is {cmp} {value}": "{upgrade}\uC758 \uAC00\uC2A4 \uBE44\uC6A9\uC774 {value} {cmp}",
+  "The gas of {player} is {cmp} {value}": "{player}\uC758 \uAC00\uC2A4\uAC00 {value} {cmp}",
+  "The ground weapon of {unit} is {value}": "{unit}\uC758 \uC9C0\uC0C1 \uBB34\uAE30: {value}",
+  "The hallucination flag of placed unit {index} is {value}": "\uBC30\uCE58\uB41C \uC720\uB2DB {index}\uC758 \uD658\uC601 \uD50C\uB798\uADF8: {value}",
+  "The hit points of placed unit {index} is {cmp} {value}": "\uBC30\uCE58\uB41C \uC720\uB2DB {index}\uC758 \uCCB4\uB825\uC774 {value} {cmp}",
+  "The left-hand number of the top bar. The game recounts it when a unit is made or dies. Each race has its own table; a player's is the one for the race they play. Verified as a read (probe 9).": "\uC704\uCABD \uB9C9\uB300\uC758 \uC67C\uCABD \uC22B\uC790\uC785\uB2C8\uB2E4. \uC720\uB2DB\uC774 \uC0DD\uAE30\uAC70\uB098 \uC8FD\uC744 \uB54C \uAC8C\uC784\uC774 \uB2E4\uC2DC \uC149\uB2C8\uB2E4. \uC885\uC871\uB9C8\uB2E4 \uD45C\uAC00 \uB530\uB85C \uC788\uC73C\uBA70, \uD50C\uB808\uC774\uC5B4\uC5D0\uAC8C\uB294 \uC790\uAE30 \uC885\uC871\uC758 \uD45C\uAC00 \uC4F0\uC785\uB2C8\uB2E4. \uC77D\uAE30\uB85C \uD655\uC778\uB428 (probe 9).",
+  "The level of {upgrade} for {player} is {cmp} {value}": "{player}\uC758 {upgrade} \uB2E8\uACC4\uAC00 {value} {cmp}",
+  "The map changed since its last build, {when}{file}: that output is stale.": "\uB9C8\uC9C0\uB9C9 \uBE4C\uB4DC({when}{file}) \uC774\uD6C4 \uB9F5\uC774 \uBC14\uB00C\uC5C8\uC2B5\uB2C8\uB2E4. \uADF8 \uACB0\uACFC\uBB3C\uC740 \uC624\uB798\uB41C \uAC83\uC785\uB2C8\uB2E4.",
+  "The max hit points of {unit} is {cmp} {value}": "{unit}\uC758 \uCD5C\uB300 \uCCB4\uB825\uC774 {value} {cmp}",
+  "The max shields of {unit} is {cmp} {value}": "{unit}\uC758 \uCD5C\uB300 \uBCF4\uD638\uB9C9\uC774 {value} {cmp}",
+  "The maximum level of {upgrade} is {cmp} {value}": "{upgrade}\uC758 \uCD5C\uB300 \uB2E8\uACC4\uAC00 {value} {cmp}",
+  "The mineral cost of {tech} is {cmp} {value}": "{tech}\uC758 \uBBF8\uB124\uB784 \uBE44\uC6A9\uC774 {value} {cmp}",
+  "The mineral cost of {unit} is {cmp} {value}": "{unit}\uC758 \uBBF8\uB124\uB784 \uBE44\uC6A9\uC774 {value} {cmp}",
+  "The mineral cost of {upgrade} is {cmp} {value}": "{upgrade}\uC758 \uBBF8\uB124\uB784 \uBE44\uC6A9\uC774 {value} {cmp}",
+  "The minerals of {player} is {cmp} {value}": "{player}\uC758 \uBBF8\uB124\uB784\uC774 {value} {cmp}",
+  "The minimum range of {weapon} is {cmp} {value}": "{weapon}\uC758 \uCD5C\uC18C \uC0AC\uAC70\uB9AC\uAC00 {value} {cmp}",
+  "The mouse's X on screen is {cmp} {value}": "\uD654\uBA74 \uC704 \uB9C8\uC6B0\uC2A4 X\uAC00 {value} {cmp}",
+  "The mouse's Y on screen is {cmp} {value}": "\uD654\uBA74 \uC704 \uB9C8\uC6B0\uC2A4 Y\uAC00 {value} {cmp}",
+  "The name comes from one of the map's strings, shown wherever the unit's name appears; the one type only. Remastered only.": "\uC774\uB984\uC740 \uB9F5\uC758 \uBB38\uC790\uC5F4 \uAC00\uC6B4\uB370 \uD558\uB098\uC5D0\uC11C \uAC00\uC838\uC624\uBA70, \uC720\uB2DB \uC774\uB984\uC774 \uB098\uC624\uB294 \uACF3\uB9C8\uB2E4 \uBCF4\uC785\uB2C8\uB2E4. \uC774 \uC885\uB958\uC5D0\uB9CC \uC801\uC6A9\uB429\uB2C8\uB2E4. Remastered \uC804\uC6A9.",
+  'The next scenario is set to "{name}".': '\uB2E4\uC74C \uC2DC\uB098\uB9AC\uC624\uAC00 "{name}"(\uC73C)\uB85C \uC124\uC815\uB429\uB2C8\uB2E4.',
+  "The order row's scratch location ({n}) is gone; pick the order again to make one.": "\uBA85\uB839 \uD589\uC758 \uC791\uC5C5\uC6A9 \uB85C\uCF00\uC774\uC158({n})\uC774 \uC5C6\uC5B4\uC84C\uC2B5\uB2C8\uB2E4. \uBA85\uB839\uC744 \uB2E4\uC2DC \uACE8\uB77C \uC0C8\uB85C \uB9CC\uB4DC\uC138\uC694.",
+  "The order row's target location ({n}) is gone.": "\uBA85\uB839 \uD589\uC758 \uBAA9\uD45C \uB85C\uCF00\uC774\uC158({n})\uC774 \uC5C6\uC5B4\uC84C\uC2B5\uB2C8\uB2E4.",
+  "The owner of placed unit {index} is {value}": "\uBC30\uCE58\uB41C \uC720\uB2DB {index}\uC758 \uC18C\uC720\uC790: {value}",
+  "The pick row centres location {n} on the unit, and the map no longer has it.": "\uACE0\uB974\uAE30 \uD589\uC740 \uB85C\uCF00\uC774\uC158 {n}\uC744(\uB97C) \uC720\uB2DB \uC911\uC2EC\uC5D0 \uB450\uB294\uB370, \uB9F5\uC5D0 \uADF8 \uB85C\uCF00\uC774\uC158\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.",
+  "The pick row measures from location {n}, which the map no longer has.": "\uACE0\uB974\uAE30 \uD589\uC774 \uB9F5\uC5D0\uC11C \uC5C6\uC5B4\uC9C4 \uB85C\uCF00\uC774\uC158 {n}\uC5D0\uC11C\uBD80\uD130 \uAC70\uB9AC\uB97C \uC7BD\uB2C8\uB2E4.",
+  "The player at this computer is {value}": "\uC774 \uCEF4\uD4E8\uD130\uC758 \uD50C\uB808\uC774\uC5B4: {value}",
+  "The race of {player} is {value}": "{player}\uC758 \uC885\uC871: {value}",
+  "The race the player picked, once the game has started. Verified: read at the start of probe 9.": "\uAC8C\uC784\uC774 \uC2DC\uC791\uB41C \uB4A4 \uD50C\uB808\uC774\uC5B4\uAC00 \uACE0\uB978 \uC885\uC871. \uD655\uC778\uB428: probe 9 \uC2DC\uC791 \uB54C \uC77D\uC74C.",
+  "The range of {weapon} is {cmp} {value}": "{weapon}\uC758 \uC0AC\uAC70\uB9AC\uAC00 {value} {cmp}",
+  "The research time of {tech} is {cmp} {value}": "{tech}\uC758 \uC5F0\uAD6C \uC2DC\uAC04\uC774 {value} {cmp}",
+  "The research time of {upgrade} is {cmp} {value}": "{upgrade}\uC758 \uC5F0\uAD6C \uC2DC\uAC04\uC774 {value} {cmp}",
+  "The right-hand number of the top bar, before the cap. The game recounts it when a depot, overlord or pylon is made or lost, so set it every frame to hold a value. Each race has its own table; a player's is the one for the race they play.": "\uC704\uCABD \uB9C9\uB300\uC758 \uC624\uB978\uCABD \uC22B\uC790\uB85C, \uD55C\uB3C4\uB97C \uC801\uC6A9\uD558\uAE30 \uC804 \uAC12\uC785\uB2C8\uB2E4. \uC11C\uD50C\uB77C\uC774 \uB514\uD3EC, \uC624\uBC84\uB85C\uB4DC, \uD30C\uC77C\uB7F0\uC774 \uC0DD\uAE30\uAC70\uB098 \uC5C6\uC5B4\uC9C8 \uB54C \uAC8C\uC784\uC774 \uB2E4\uC2DC \uC138\uBBC0\uB85C, \uAC12\uC744 \uC720\uC9C0\uD558\uB824\uBA74 \uB9E4 \uD504\uB808\uC784 \uC124\uC815\uD558\uC138\uC694. \uC885\uC871\uB9C8\uB2E4 \uD45C\uAC00 \uB530\uB85C \uC788\uC73C\uBA70, \uD50C\uB808\uC774\uC5B4\uC5D0\uAC8C\uB294 \uC790\uAE30 \uC885\uC871\uC758 \uD45C\uAC00 \uC4F0\uC785\uB2C8\uB2E4.",
+  "The row centres location {n} on the unit, and the map no longer has it.": "\uC774 \uD589\uC740 \uB85C\uCF00\uC774\uC158 {n}\uC744(\uB97C) \uC720\uB2DB \uC911\uC2EC\uC5D0 \uB450\uB294\uB370, \uB9F5\uC5D0 \uADF8 \uB85C\uCF00\uC774\uC158\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.",
+  "The same number Set Resources changes, without the resource counter's sound.": "Set Resources\uAC00 \uBC14\uAFB8\uB294 \uAC83\uACFC \uAC19\uC740 \uAC12\uC774\uC9C0\uB9CC, \uC790\uC6D0 \uCE74\uC6B4\uD130 \uC18C\uB9AC\uAC00 \uB098\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
+  "The screen's left edge on the map is {cmp} {value}": "\uB9F5 \uC704 \uD654\uBA74\uC758 \uC67C\uCABD \uB05D\uC774 {value} {cmp}",
+  "The screen's top edge on the map is {cmp} {value}": "\uB9F5 \uC704 \uD654\uBA74\uC758 \uC704\uCABD \uB05D\uC774 {value} {cmp}",
+  "The seconds the in-game clock shows. The earlier entry at 0x58D6F4 (the countdown timer) never fired; this one is the next dword. Verified: a line at 15 s (probe 8).": "\uAC8C\uC784 \uC548 \uC2DC\uACC4\uAC00 \uBCF4\uC5EC \uC8FC\uB294 \uCD08\uC785\uB2C8\uB2E4. \uC608\uC804 \uD56D\uBAA9 0x58D6F4(\uCE74\uC6B4\uD2B8\uB2E4\uC6B4 \uD0C0\uC774\uBA38)\uB294 \uC2E4\uD589\uB418\uC9C0 \uC54A\uC558\uACE0, \uC774\uAC83\uC740 \uADF8\uB2E4\uC74C dword\uC785\uB2C8\uB2E4. \uD655\uC778\uB428: 15\uCD08\uC5D0 \uD55C \uC904 (probe 8).",
+  "The shields of placed unit {index} is {cmp} {value}": "\uBC30\uCE58\uB41C \uC720\uB2DB {index}\uC758 \uBCF4\uD638\uB9C9\uC774 {value} {cmp}",
+  "The sight range of {unit} is {cmp} {value}": "{unit}\uC758 \uC2DC\uC57C\uAC00 {value} {cmp}",
+  "The size of {unit} is {value}": "{unit}\uC758 \uD06C\uAE30: {value}",
+  "The slot of {player} is {value}": "{player}\uC758 \uC2AC\uB86F: {value}",
+  "The sound of {what} is not in the map.": "{what}\uC758 \uC0AC\uC6B4\uB4DC\uAC00 \uB9F5\uC5D0 \uC5C6\uC2B5\uB2C8\uB2E4.",
+  "The stance of {player} toward {other} is {value}": "{other}\uC5D0 \uB300\uD55C {player}\uC758 \uAD00\uACC4: {value}",
+  "The supply provided by {unit} is {cmp} {value}": "{unit}\uC774(\uAC00) \uC8FC\uB294 \uBCF4\uAE09\uC774 {value} {cmp}",
+  "The supply used by {unit} is {cmp} {value}": "{unit}\uC774(\uAC00) \uC4F0\uB294 \uBCF4\uAE09\uC774 {value} {cmp}",
+  "The target acquisition range of {unit} is {cmp} {value}": "{unit}\uC758 \uB300\uC0C1 \uD0D0\uC0C9 \uBC94\uC704\uAC00 {value} {cmp}",
+  "The trigger timer is {cmp} {value}": "\uD2B8\uB9AC\uAC70 \uD0C0\uC774\uBA38\uAC00 {value} {cmp}",
+  "The trigger's name, kept as its Comment action so every editor shows it": "\uD2B8\uB9AC\uAC70 \uC774\uB984\uC785\uB2C8\uB2E4. \uC5B4\uB290 \uD3B8\uC9D1\uAE30\uC5D0\uC11C\uB098 \uBCF4\uC774\uB3C4\uB85D Comment \uC561\uC158\uC73C\uB85C \uC800\uC7A5\uB429\uB2C8\uB2E4",
+  "The trigger's name, shown by every trigger editor": "\uD2B8\uB9AC\uAC70 \uC774\uB984. \uBAA8\uB4E0 \uD2B8\uB9AC\uAC70 \uD3B8\uC9D1\uAE30\uC5D0 \uBCF4\uC785\uB2C8\uB2E4",
+  "The triggers changed since this run started. Reset to run the list as it is now.": "\uC774 \uC2E4\uD589\uC744 \uC2DC\uC791\uD55C \uB4A4 \uD2B8\uB9AC\uAC70\uAC00 \uBC14\uB00C\uC5C8\uC2B5\uB2C8\uB2E4. \uCD08\uAE30\uD654\uD558\uBA74 \uC9C0\uAE08\uC758 \uBAA9\uB85D\uC73C\uB85C \uC2E4\uD589\uD569\uB2C8\uB2E4.",
+  "The weakest, strongest, nearest or a random unit of a kind": "\uC5B4\uB5A4 \uC885\uB958\uC5D0\uC11C \uAC00\uC7A5 \uC57D\uD55C, \uAC00\uC7A5 \uAC15\uD55C, \uAC00\uC7A5 \uAC00\uAE4C\uC6B4, \uB610\uB294 \uBB34\uC791\uC704 \uC720\uB2DB",
+  "The X of placed unit {index} is {cmp} {value}": "\uBC30\uCE58\uB41C \uC720\uB2DB {index}\uC758 X\uAC00 {value} {cmp}",
+  "The Y of placed unit {index} is {cmp} {value}": "\uBC30\uCE58\uB41C \uC720\uB2DB {index}\uC758 Y\uAC00 {value} {cmp}",
+  "The {key} key is {value}": "{key} \uD0A4: {value}",
+  "The {race} supply cap of {player} is {cmp} {value}": "{player}\uC758 {race} \uBCF4\uAE09 \uD55C\uB3C4\uAC00 {value} {cmp}",
+  "The {race} supply provided to {player} is {cmp} {value}": "{player}\uC758 {race} \uBCF4\uAE09 \uC81C\uACF5\uB7C9\uC774 {value} {cmp}",
+  "The {race} supply used by {player} is {cmp} {value}": "{player}\uC758 {race} \uBCF4\uAE09 \uC0AC\uC6A9\uB7C9\uC774 {value} {cmp}",
+  "Then: {actions}.": "\uADF8\uB7EC\uBA74: {actions}.",
+  "This death counter is used by another plugin's generated triggers.": "\uC774 \uB370\uC2A4 \uCE74\uC6B4\uD130\uB294 \uB2E4\uB978 \uD50C\uB7EC\uADF8\uC778\uC774 \uB9CC\uB4E0 \uD2B8\uB9AC\uAC70\uAC00 \uC4F0\uACE0 \uC788\uC2B5\uB2C8\uB2E4.",
+  "This map has no triggers yet. Add one with New.": "\uC774 \uB9F5\uC5D0\uB294 \uC544\uC9C1 \uD2B8\uB9AC\uAC70\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4. \uC0C8\uB85C \uB9CC\uB4E4\uAE30\uB85C \uCD94\uAC00\uD558\uC138\uC694.",
+  "This map has not been built yet.": "\uC774 \uB9F5\uC740 \uC544\uC9C1 \uBE4C\uB4DC\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.",
+  "This map's Magenta data could not be read ({detail}). Its folders, counter names and build rows are hidden, and the triggers cannot be changed here until the data is dropped.": "\uC774 \uB9F5\uC758 Magenta \uB370\uC774\uD130\uB97C \uC77D\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4({detail}). \uD3F4\uB354, \uCE74\uC6B4\uD130 \uC774\uB984, \uBE4C\uB4DC \uD589\uC774 \uC228\uACA8\uC9C0\uBA70, \uB370\uC774\uD130\uB97C \uBC84\uB9AC\uAE30 \uC804\uAE4C\uC9C0\uB294 \uC5EC\uAE30\uC11C \uD2B8\uB9AC\uAC70\uB97C \uBC14\uAFC0 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.",
+  "This map's Magenta data was written by a newer Magenta (version {v}). Its folders, counter names and build rows are hidden, and the triggers cannot be changed here until Magenta is updated or the data is dropped.": "\uC774 \uB9F5\uC758 Magenta \uB370\uC774\uD130\uB294 \uB354 \uC0C8\uB85C\uC6B4 Magenta(\uBC84\uC804 {v})\uAC00 \uC37C\uC2B5\uB2C8\uB2E4. \uD3F4\uB354, \uCE74\uC6B4\uD130 \uC774\uB984, \uBE4C\uB4DC \uD589\uC774 \uC228\uACA8\uC9C0\uBA70, Magenta\uB97C \uC5C5\uB370\uC774\uD2B8\uD558\uAC70\uB098 \uB370\uC774\uD130\uB97C \uBC84\uB9AC\uAE30 \uC804\uAE4C\uC9C0\uB294 \uC5EC\uAE30\uC11C \uD2B8\uB9AC\uAC70\uB97C \uBC14\uAFC0 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.",
+  "This trigger creates a {unit}, the type synced input keeps for itself.": "\uC774 \uD2B8\uB9AC\uAC70\uB294 \uB3D9\uAE30\uD654 \uC785\uB825 \uC804\uC6A9 \uC885\uB958\uC778 {unit}\uC744(\uB97C) \uB9CC\uB4ED\uB2C8\uB2E4.",
+  "This trigger has no actions.": "\uC774 \uD2B8\uB9AC\uAC70\uC5D0\uB294 \uC561\uC158\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.",
+  "tick to pretend it holds": "\uCCB4\uD06C\uD558\uBA74 \uB9DE\uB294 \uAC83\uC73C\uB85C \uCE69\uB2C8\uB2E4",
+  "tiles": "\uD0C0\uC77C",
+  "times": "\xD7",
+  "to": "\uC124\uC815:",
+  "To": "\uB3C4\uCC29",
+  "To: the top-left corner lands on x, y. By: the whole location shifts by x, y from where it is (negative goes left or up).": "\uC88C\uD45C\uB85C: \uC67C\uCABD \uC704 \uBAA8\uC11C\uB9AC\uAC00 x, y\uC5D0 \uC635\uB2C8\uB2E4. \uB9CC\uD07C: \uB85C\uCF00\uC774\uC158 \uC804\uCCB4\uAC00 \uC9C0\uAE08 \uC790\uB9AC\uC5D0\uC11C x, y\uB9CC\uD07C \uC62E\uACA8\uC9D1\uB2C8\uB2E4 (\uC74C\uC218\uB294 \uC67C\uCABD\uC774\uB098 \uC704\uCABD).",
+  "toggle": "\uC804\uD658",
+  "Toggle action": "\uC561\uC158 \uCF1C\uAE30/\uB044\uAE30",
+  "Toggle condition": "\uC870\uAC74 \uCF1C\uAE30/\uB044\uAE30",
+  "Toggle trigger": "\uD2B8\uB9AC\uAC70 \uCF1C\uAE30/\uB044\uAE30",
+  "Total": "\uD569\uACC4",
+  "Toward": "\uC0C1\uB300",
+  "Transmission from {Unit} at {Location}: {Text}, {WAV} for {WAV duration} ms, shown {Modifier} {Duration} ms ({Display})": "{Location}\uC758 {Unit}\uC5D0\uAC8C\uC11C \uD1B5\uC2E0: {Text}, {WAV} {WAV duration}ms, \uD45C\uC2DC \uC2DC\uAC04 {Modifier} {Duration}ms ({Display})",
+  "Transmission {Text} from {Slot}, {WAV}, shown {Modifier} {Amount} for {Duration} ms": "{Slot}\uC5D0\uC11C \uD1B5\uC2E0 {Text}, {WAV}, \uD45C\uC2DC \uC2DC\uAC04 {Modifier} {Amount}, {Duration}ms",
+  "Trigger timer": "\uD2B8\uB9AC\uAC70 \uD0C0\uC774\uBA38",
+  "trigger {n}": "\uD2B8\uB9AC\uAC70 {n}",
+  "Trigger {n}": "\uD2B8\uB9AC\uAC70 {n}",
+  "Triggers Magenta generates for this one": "Magenta\uAC00 \uC774 \uD2B8\uB9AC\uAC70\uB97C \uC704\uD574 \uB9CC\uB4DC\uB294 \uD2B8\uB9AC\uAC70",
+  "Triggers run every frame": "\uD2B8\uB9AC\uAC70\uAC00 \uB9E4 \uD504\uB808\uC784 \uC2E4\uD589\uB429\uB2C8\uB2E4",
+  "Triggers run every frame (turbo)": "\uD2B8\uB9AC\uAC70\uAC00 \uB9E4 \uD504\uB808\uC784 \uC2E4\uD589\uB428 (\uD130\uBCF4)",
+  "Triggers run every two seconds": "\uD2B8\uB9AC\uAC70\uAC00 2\uCD08\uB9C8\uB2E4 \uC2E4\uD589\uB428",
+  "Triggers run {clock}": "\uD2B8\uB9AC\uAC70\uAC00 {clock} \uC2E4\uD589\uB429\uB2C8\uB2E4",
+  "Turn on Run triggers every frame in the \u22EF menu for this one.": "\uC774 \uB808\uC2DC\uD53C\uB294 \u22EF \uBA54\uB274\uC5D0\uC11C \uD2B8\uB9AC\uAC70 \uB9E4 \uD504\uB808\uC784 \uC2E4\uD589\uC744 \uCF1C\uC57C \uD569\uB2C8\uB2E4.",
+  'Two chat commands say "{message}"; the second never fires on its own.': '"{message}" \uCC44\uD305 \uBA85\uB839\uC774 \uB450 \uAC1C\uC785\uB2C8\uB2E4. \uB450 \uBC88\uC9F8\uB294 \uB530\uB85C \uC2E4\uD589\uB418\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.',
+  "Two records: the palette entry the player's units are drawn in, and the one the minimap uses. Takes effect at once, for every unit of the player.": "\uB808\uCF54\uB4DC 2\uAC1C: \uD50C\uB808\uC774\uC5B4 \uC720\uB2DB\uC744 \uADF8\uB9AC\uB294 \uD314\uB808\uD2B8 \uD56D\uBAA9\uACFC \uBBF8\uB2C8\uB9F5\uC5D0 \uC4F0\uB294 \uD56D\uBAA9. \uD50C\uB808\uC774\uC5B4\uC758 \uBAA8\uB4E0 \uC720\uB2DB\uC5D0 \uBC14\uB85C \uC801\uC6A9\uB429\uB2C8\uB2E4.",
+  "Type of a placed unit": "\uBC30\uCE58\uB41C \uC720\uB2DB\uC758 \uC885\uB958",
+  "Type the message players will send.": "\uD50C\uB808\uC774\uC5B4\uAC00 \uBCF4\uB0BC \uBA54\uC2DC\uC9C0\uB97C \uC785\uB825\uD558\uC138\uC694.",
+  "un-hallucinate": "\uD658\uC601 \uD574\uC81C",
+  "unable to burrow": "\uBC84\uB85C\uC6B0 \uBD88\uAC00",
+  "unable to cloak": "\uC740\uD3D0 \uBD88\uAC00",
+  "unavailable": "\uC0AC\uC6A9 \uBD88\uAC00",
+  "under attack": "\uACF5\uACA9\uBC1B\uB294 \uC911",
+  "Undo {what}": "\uC2E4\uD589 \uCDE8\uC18C: {what}",
+  "Unit": "\uC720\uB2DB",
+  "Unit at": "\uC720\uB2DB \uC704\uCE58",
+  "Unit name\u2026": "\uC720\uB2DB \uC774\uB984\u2026",
+  "unit type id": "\uC720\uB2DB \uC885\uB958 \uBC88\uD638",
+  "Units": "\uC720\uB2DB",
+  "Units and buildings": "\uC720\uB2DB\uACFC \uAC74\uBB3C",
+  "Units made after this draw as the other type; the ones already on the map keep their look. Stats, size and weapons stay the type's own.": "\uC774\uD6C4\uC5D0 \uB9CC\uB4E0 \uC720\uB2DB\uC740 \uB2E4\uB978 \uC885\uB958\uC758 \uBAA8\uC2B5\uC73C\uB85C \uADF8\uB824\uC9C0\uACE0, \uC774\uBBF8 \uB9F5\uC5D0 \uC788\uB294 \uC720\uB2DB\uC740 \uBAA8\uC2B5\uC744 \uC720\uC9C0\uD569\uB2C8\uB2E4. \uB2A5\uB825\uCE58, \uD06C\uAE30, \uBB34\uAE30\uB294 \uC6D0\uB798 \uC885\uB958 \uADF8\uB300\uB85C\uC785\uB2C8\uB2E4.",
+  "Unmute unit speech": "\uC720\uB2DB \uC74C\uC131 \uCF1C\uAE30",
+  "Unname counter": "\uCE74\uC6B4\uD130 \uC774\uB984 \uC5C6\uC560\uAE30",
+  "Unpause the countdown timer": "\uCE74\uC6B4\uD2B8\uB2E4\uC6B4 \uD0C0\uC774\uBA38 \uC7AC\uAC1C",
+  "Unpause the game": "\uAC8C\uC784 \uC7AC\uAC1C",
+  "Untitled trigger \u2014 type a name": "\uC774\uB984 \uC5C6\uB294 \uD2B8\uB9AC\uAC70 \u2014 \uC774\uB984\uC744 \uC785\uB825\uD558\uC138\uC694",
+  "up": "\uB5BC\uC5B4\uC9D0",
+  "up by": "\uCD94\uAC00:",
+  "Up to 500 cycles: until someone wins or loses, or nothing has happened for 50 cycles": "\uCD5C\uB300 500\uC8FC\uAE30. \uB204\uAD70\uAC00 \uC774\uAE30\uAC70\uB098 \uC9C0\uAC70\uB098, 50\uC8FC\uAE30 \uB3D9\uC548 \uC544\uBB34 \uC77C\uB3C4 \uC5C6\uC744 \uB54C\uAE4C\uC9C0",
+  "Up to 78 bytes, which is what the game lets a player type.": "\uAC8C\uC784\uC5D0\uC11C \uD50C\uB808\uC774\uC5B4\uAC00 \uC785\uB825\uD560 \uC218 \uC788\uB294 \uAE38\uC774\uC778 78\uBC14\uC774\uD2B8\uAE4C\uC9C0\uC785\uB2C8\uB2E4.",
+  "Upgrade": "\uC5C5\uADF8\uB808\uC774\uB4DC",
+  "Upgrade level of a player": "\uD50C\uB808\uC774\uC5B4\uC758 \uC5C5\uADF8\uB808\uC774\uB4DC \uB2E8\uACC4",
+  "upgrade {n}": "\uC5C5\uADF8\uB808\uC774\uB4DC {n}",
+  "Upgrades": "\uC5C5\uADF8\uB808\uC774\uB4DC",
+  "used by": "\uC4F0\uB294 \uD2B8\uB9AC\uAC70:",
+  "user selectable": "\uC0AC\uC6A9\uC790 \uC120\uD0DD",
+  "Verified (probe 8). A value past the unit's maximum shows for a frame and is clamped back by the game, so 250 on a Ghost reads 200/200.": "\uD655\uC778\uB428 (probe 8). \uC720\uB2DB \uCD5C\uB300\uCE58\uB97C \uB118\uB294 \uAC12\uC740 \uD55C \uD504\uB808\uC784 \uBCF4\uC600\uB2E4\uAC00 \uAC8C\uC784\uC774 \uB418\uB3CC\uB9AC\uBBC0\uB85C, \uACE0\uC2A4\uD2B8\uC5D0 250\uC744 \uC4F0\uBA74 200/200\uC73C\uB85C \uC77D\uD799\uB2C8\uB2E4.",
+  "Verified (probe 9).": "\uD655\uC778\uB428 (probe 9).",
+  "Verified as a write (probe 9): the unit is labelled a hallucination and takes hallucination damage, but the tint and the timed death come from a real cast, not this bit.": "\uC4F0\uAE30\uB85C \uD655\uC778\uB428 (probe 9): \uC720\uB2DB\uC774 \uD658\uC601\uC73C\uB85C \uD45C\uC2DC\uB418\uACE0 \uD658\uC601 \uD53C\uD574\uB97C \uBC1B\uC9C0\uB9CC, \uC0C9\uC870\uC640 \uC2DC\uAC04\uC774 \uC9C0\uB098 \uC8FD\uB294 \uAC83\uC740 \uC774 \uBE44\uD2B8\uAC00 \uC544\uB2C8\uB77C \uC2E4\uC81C \uB9C8\uBC95\uC5D0\uC11C \uC635\uB2C8\uB2E4.",
+  "Verified in Remastered 2026-09-12. Slots: the first placed unit is slot 0 and later ones count down from 1699 (verified in Remastered 2026-09-12); the chip picks a unit on the map and works the slot out. Start locations take no slot; nor does a unit of a human player who is not in the game (it is removed at load), so slots after one shift by one when that player is missing.": "2026-09-12 Remastered\uC5D0\uC11C \uD655\uC778\uB428. \uC2AC\uB86F: \uCC98\uC74C \uBC30\uCE58\uB41C \uC720\uB2DB\uC774 \uC2AC\uB86F 0\uC774\uACE0 \uADF8 \uB4A4\uB85C\uB294 1699\uBD80\uD130 \uAC70\uAFB8\uB85C \uC149\uB2C8\uB2E4 (2026-09-12 Remastered\uC5D0\uC11C \uD655\uC778). \uCE69\uC5D0\uC11C \uB9F5\uC758 \uC720\uB2DB\uC744 \uACE0\uB974\uBA74 \uC2AC\uB86F\uC744 \uACC4\uC0B0\uD574 \uC90D\uB2C8\uB2E4. \uC2DC\uC791 \uC704\uCE58\uB294 \uC2AC\uB86F\uC744 \uCC28\uC9C0\uD558\uC9C0 \uC54A\uACE0, \uAC8C\uC784\uC5D0 \uC5C6\uB294 \uC0AC\uB78C \uD50C\uB808\uC774\uC5B4\uC758 \uC720\uB2DB\uB3C4 \uBD88\uB7EC\uC62C \uB54C \uC9C0\uC6CC\uC9C0\uBBC0\uB85C \uCC28\uC9C0\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4. \uADF8\uB798\uC11C \uADF8 \uD50C\uB808\uC774\uC5B4\uAC00 \uC5C6\uC73C\uBA74 \uB4A4\uC758 \uC2AC\uB86F\uC774 \uD558\uB098\uC529 \uBC00\uB9BD\uB2C8\uB2E4.",
+  "Verified: +500 gas (probe 8).": "\uD655\uC778\uB428: \uAC00\uC2A4 +500 (probe 8).",
+  "Verified: a depot made after the write provided 30 (probe 9).": "\uD655\uC778\uB428: \uC4F0\uAE30 \uB4A4\uC5D0 \uB9CC\uB4E0 \uC11C\uD50C\uB77C\uC774 \uB514\uD3EC\uAC00 \uBCF4\uAE09 30\uC744 \uC8FC\uC5C8\uC2B5\uB2C8\uB2E4 (probe 9).",
+  "Verified: a marine made after the write had 100 HP (probe 8).": "\uD655\uC778\uB428: \uC4F0\uAE30 \uB4A4\uC5D0 \uB9CC\uB4E0 \uB9C8\uB9B0\uC758 \uCCB4\uB825\uC774 100\uC774\uC5C8\uC2B5\uB2C8\uB2E4 (probe 8).",
+  "Verified: a placed Zealot set to 0 shields (probe 8).": "\uD655\uC778\uB428: \uBC30\uCE58\uB41C \uC9C8\uB7FF\uC758 \uBCF4\uD638\uB9C9\uC744 0\uC73C\uB85C \uC124\uC815 (probe 8).",
+  "Verified: Infantry Weapons set to 3 showed on the marines (probe 8).": "\uD655\uC778\uB428: \uBCF4\uBCD1 \uACF5\uACA9\uB825\uC744 3\uC73C\uB85C \uC124\uC815\uD55C \uAC83\uC774 \uB9C8\uB9B0\uC5D0\uAC8C \uBCF4\uC600\uC2B5\uB2C8\uB2E4 (probe 8).",
+  "Verified: Lockdown and Personnel Cloaking researched at the start of probe 8, and the ghost could cast.": "\uD655\uC778\uB428: probe 8 \uC2DC\uC791 \uB54C \uB77D\uB2E4\uC6B4\uACFC \uAC1C\uC778 \uC740\uD3D0\uAC00 \uC5F0\uAD6C\uB418\uC5C8\uACE0, \uACE0\uC2A4\uD2B8\uAC00 \uC4F8 \uC218 \uC788\uC5C8\uC2B5\uB2C8\uB2E4.",
+  "Verified: marines given the Arclite Shock Cannon fired it (probe 9). Units already on the map switch too.": "\uD655\uC778\uB428: \uC544\uD06C\uB77C\uC774\uD2B8 \uCDA9\uACA9\uD3EC\uB97C \uBC1B\uC740 \uB9C8\uB9B0\uC774 \uADF8\uAC83\uC744 \uC408\uC2B5\uB2C8\uB2E4 (probe 9). \uC774\uBBF8 \uB9F5\uC5D0 \uC788\uB294 \uC720\uB2DB\uB3C4 \uBC14\uB01D\uB2C8\uB2E4.",
+  "Verified: marines with no air weapon ignored an overlord (probe 9).": "\uD655\uC778\uB428: \uACF5\uC911 \uBB34\uAE30\uAC00 \uC5C6\uB294 \uB9C8\uB9B0\uC774 \uC624\uBC84\uB85C\uB4DC\uB97C \uBB34\uC2DC\uD588\uC2B5\uB2C8\uB2E4 (probe 9).",
+  "Verified: read while a ghost was cloaked (probe 9).": "\uD655\uC778\uB428: \uACE0\uC2A4\uD2B8\uAC00 \uC740\uD3D0\uD55C \uB3D9\uC548 \uC77D\uC74C (probe 9).",
+  "Vision of {player} for {other} is {value}": "{other}\uC5D0\uAC8C {player}\uC758 \uC2DC\uC57C \uACF5\uC720: {value}",
+  "Wait {Milliseconds} ms": "{Milliseconds}ms \uB300\uAE30",
+  "waiting inside its actions": "\uC561\uC158 \uC548\uC5D0\uC11C \uAE30\uB2E4\uB9AC\uB294 \uC911",
+  "waiting until {s} s": "{s}\uCD08\uAE4C\uC9C0 \uB300\uAE30",
+  "waits {s} s": "{s}\uCD08 \uB300\uAE30",
+  "walk through anything": "\uBB34\uC5C7\uC774\uB4E0 \uD1B5\uACFC",
+  "WAV": "WAV",
+  "WAV duration": "WAV \uAE38\uC774",
+  "Weapon": "\uBB34\uAE30",
+  "weapon cooldown": "\uBB34\uAE30 \uC7AC\uC0AC\uC6A9 \uB300\uAE30\uC2DC\uAC04",
+  "weapon {n}": "\uBB34\uAE30 {n}",
+  "Weapons": "\uBB34\uAE30",
+  "What a cast of the spell takes. Verified: lockdown at 10 energy (probe 8).": "\uB9C8\uBC95\uC744 \uD55C \uBC88 \uC4F8 \uB54C \uB4DC\uB294 \uC5D0\uB108\uC9C0\uC785\uB2C8\uB2E4. \uD655\uC778\uB428: \uC5D0\uB108\uC9C0 10\uC73C\uB85C \uB77D\uB2E4\uC6B4 (probe 8).",
+  "What a player types in chat; ^\u2026$ writes a pattern, as in ^-give .*$": "\uD50C\uB808\uC774\uC5B4\uAC00 \uCC44\uD305\uC5D0 \uC785\uB825\uD558\uB294 \uB9D0\uC785\uB2C8\uB2E4. ^\u2026$\uB294 ^-give .*$\uCC98\uB7FC \uD328\uD134\uC744 \uC501\uB2C8\uB2E4",
+  "What concussive and explosive damage scale by: small takes full concussive damage and half explosive, large the other way round. Verified: a vulture took 5 off a large marine (probe 9).": "\uC9C4\uB3D9\uD615\uACFC \uD3ED\uBC1C\uD615 \uACF5\uACA9\uB825\uC774 \uC5BC\uB9C8\uB098 \uB4E4\uC5B4\uAC08\uC9C0 \uC815\uD569\uB2C8\uB2E4. \uC18C\uD615\uC740 \uC9C4\uB3D9\uD615\uC744 \uBAA8\uB450, \uD3ED\uBC1C\uD615\uC744 \uC808\uBC18 \uBC1B\uACE0, \uB300\uD615\uC740 \uADF8 \uBC18\uB300\uC785\uB2C8\uB2E4. \uD655\uC778\uB428: \uBC8C\uCC98\uAC00 \uB300\uD615 \uB9C8\uB9B0\uC5D0\uAC8C 5\uB97C \uC785\uD614\uC2B5\uB2C8\uB2E4 (probe 9).",
+  "What the provided supply is capped at, 200 in a normal game. Each race has its own table; a player's is the one for the race they play.": "\uBC1B\uB294 \uBCF4\uAE09\uC758 \uD55C\uB3C4\uB85C, \uC77C\uBC18 \uAC8C\uC784\uC5D0\uC11C\uB294 200\uC785\uB2C8\uB2E4. \uC885\uC871\uB9C8\uB2E4 \uD45C\uAC00 \uB530\uB85C \uC788\uC73C\uBA70, \uD50C\uB808\uC774\uC5B4\uC5D0\uAC8C\uB294 \uC790\uAE30 \uC885\uC871\uC758 \uD45C\uAC00 \uC4F0\uC785\uB2C8\uB2E4.",
+  "What the slot holds once the game has started: a human, a computer, or nothing. Verified: read at the start of probe 9.": "\uAC8C\uC784\uC774 \uC2DC\uC791\uB41C \uB4A4 \uC2AC\uB86F\uC5D0 \uC788\uB294 \uAC83: \uC0AC\uB78C, \uCEF4\uD4E8\uD130, \uB610\uB294 \uC5C6\uC74C. \uD655\uC778\uB428: probe 9 \uC2DC\uC791 \uB54C \uC77D\uC74C.",
+  "When a unit comes to {location}": "{location}\uC5D0 \uC720\uB2DB\uC774 \uC624\uBA74",
+  "When the player's unit dies, wait five seconds and create it again at the location. Change the unit and the location.": "\uD50C\uB808\uC774\uC5B4\uC758 \uC720\uB2DB\uC774 \uC8FD\uC73C\uBA74 5\uCD08 \uAE30\uB2E4\uB9B0 \uB4A4 \uB85C\uCF00\uC774\uC158\uC5D0 \uB2E4\uC2DC \uB9CC\uB4ED\uB2C8\uB2E4. \uC720\uB2DB\uACFC \uB85C\uCF00\uC774\uC158\uC744 \uBC14\uAFB8\uC138\uC694.",
+  "When this {unit} dies": "\uC774 {unit}\uC774(\uAC00) \uC8FD\uC73C\uBA74",
+  "When this {unit} is at {location}": "\uC774 {unit}\uC774(\uAC00) {location}\uC5D0 \uC788\uC73C\uBA74",
+  "Where the map stands against its last build; click for Build EUD map\u2026": "\uB9C8\uC9C0\uB9C9 \uBE4C\uB4DC\uC640 \uBE44\uAD50\uD55C \uB9F5\uC758 \uC0C1\uD0DC\uC785\uB2C8\uB2E4. \uD074\uB9AD\uD558\uBA74 EUD \uB9F5 \uBE4C\uB4DC\u2026",
+  "Whether a player has left": "\uD50C\uB808\uC774\uC5B4\uAC00 \uB098\uAC14\uB294\uC9C0",
+  "white": "\uD558\uC591",
+  "Whoever brings a unit to {location} gets the {unit}": "{location}\uC5D0 \uC720\uB2DB\uC744 \uAC00\uC838\uC628 \uD50C\uB808\uC774\uC5B4\uAC00 {unit}\uC744(\uB97C) \uBC1B\uC74C",
+  "Width \xD7 height in map pixels, 32 per tile; 0 keeps the location's own size": "\uB9F5 \uD53D\uC140 \uB2E8\uC704\uC758 \uB108\uBE44 \xD7 \uB192\uC774 (\uD0C0\uC77C\uB2F9 32). 0\uC774\uBA74 \uB85C\uCF00\uC774\uC158 \uD06C\uAE30\uB97C \uADF8\uB300\uB85C \uB461\uB2C8\uB2E4",
+  "Win by holding a location": "\uB85C\uCF00\uC774\uC158\uC744 \uC9C0\uCF1C\uC11C \uC2B9\uB9AC",
+  "wins": "\uC2B9\uB9AC",
+  "With a number, the message is a prefix and the number typed after it goes into the counter named Chat number.": "\uC22B\uC790\uB97C \uBC1B\uC73C\uBA74 \uBA54\uC2DC\uC9C0\uB294 \uC55E\uBD80\uBD84\uC774 \uB418\uACE0, \uADF8 \uB4A4\uC5D0 \uC785\uB825\uD55C \uC22B\uC790\uAC00 Chat number\uB77C\uB294 \uCE74\uC6B4\uD130\uC5D0 \uB4E4\uC5B4\uAC11\uB2C8\uB2E4.",
+  "with the greatest": "\uAC00\uC7A5 \uB192\uC740",
+  "with the least": "\uAC00\uC7A5 \uB0AE\uC740",
+  "With triggers running every frame, a Wait blocks the owner's other triggers for its whole length.": "\uD2B8\uB9AC\uAC70\uAC00 \uB9E4 \uD504\uB808\uC784 \uC2E4\uD589\uB418\uBA74 Wait\uC740 \uADF8 \uC2DC\uAC04 \uB0B4\uB0B4 \uC18C\uC720\uC790\uC758 \uB2E4\uB978 \uD2B8\uB9AC\uAC70\uB97C \uB9C9\uC2B5\uB2C8\uB2E4.",
+  "with {group} standing for the player": "{group}\uC774(\uAC00) \uADF8 \uD50C\uB808\uC774\uC5B4\uB97C \uB73B\uD568",
+  "won": "\uC2B9\uB9AC",
+  "write only": "\uC4F0\uAE30 \uC804\uC6A9",
+  "Writes memory at 0x{hex}, which the catalogue does not know.": "\uCE74\uD0C8\uB85C\uADF8\uC5D0 \uC5C6\uB294 \uBA54\uBAA8\uB9AC 0x{hex}\uC5D0 \uC501\uB2C8\uB2E4.",
+  "Writing it did nothing in Remastered (probe 5, 2026-09-14), so it is a read only: what the speed setting is.": "Remastered\uC5D0\uC11C\uB294 \uC368\uB3C4 \uC544\uBB34 \uC77C\uC774 \uC5C6\uC5C8\uC73C\uBBC0\uB85C (probe 5, 2026-09-14) \uC77D\uAE30 \uC804\uC6A9\uC785\uB2C8\uB2E4: \uC18D\uB3C4 \uC124\uC815\uC774 \uBB34\uC5C7\uC778\uC9C0.",
+  "x": "x",
+  "X position of a placed unit": "\uBC30\uCE58\uB41C \uC720\uB2DB\uC758 X \uC704\uCE58",
+  "y": "y",
+  "Y position of a placed unit": "\uBC30\uCE58\uB41C \uC720\uB2DB\uC758 Y \uC704\uCE58",
+  "yellow": "\uB178\uB791",
+  "Zerg": "\uC800\uADF8",
+  "{action} to {value}": "{action}: {value}",
+  "{action} {location}": "{action} {location}",
+  "{action} {n} {field}": "{field} {n} {action}",
+  "{action} {player}": "{action} {player}",
+  "{action}: {effect} for {seconds} s": "{action}: {effect} {seconds}\uCD08",
+  "{action}: {location}": "{action}: {location}",
+  "{a} is {relation} {b}": "{a|\uC774} {b} {relation}",
+  "{Counter name} for a counter's value, {Player 1} for a name, {Player 1's colour} to switch colour; the buttons insert the game's own codes": "{Counter name}\uC740(\uB294) \uCE74\uC6B4\uD130 \uAC12, {Player 1}\uC740(\uB294) \uD50C\uB808\uC774\uC5B4 \uC774\uB984, {Player 1's colour}\uC740(\uB294) \uC0C9 \uBC14\uAFB8\uAE30\uC785\uB2C8\uB2E4. \uBC84\uD2BC\uC740 \uAC8C\uC784\uC758 \uCF54\uB4DC\uB97C \uB123\uC2B5\uB2C8\uB2E4",
+  "{counter} is {cmp} {amount}": "{counter|\uC774} {amount} {cmp}",
+  "{count} {unit} for {player} at {location}": "{location}\uC5D0 {player}\uC758 {unit} {count}",
+  "{list} and {last}": "{list}, {last}",
+  "{n, plural, one {# build row} other {# build rows}} (text, maths, unit passes, checks)": "{n, plural, other {\uBE4C\uB4DC \uD589 #\uAC1C}} (\uD14D\uC2A4\uD2B8, \uACC4\uC0B0, \uC720\uB2DB \uC21C\uD68C, \uAC80\uC0AC)",
+  "{n, plural, one {# chat command} other {# chat commands}}": "{n, plural, other {\uCC44\uD305 \uBA85\uB839 #\uAC1C}}",
+  "{n, plural, one {# row is} other {# rows are}} shared with the original: editing it in one changes the other.": "{n, plural, other {\uD589 #\uAC1C\uB97C}} \uC6D0\uBCF8\uACFC \uD568\uAED8 \uC501\uB2C8\uB2E4. \uD55C\uCABD\uC5D0\uC11C \uD3B8\uC9D1\uD558\uBA74 \uB2E4\uB978 \uCABD\uB3C4 \uBC14\uB01D\uB2C8\uB2E4.",
+  "{n, plural, one {0x{hex}, # byte} other {0x{hex}, # bytes}}": "{n, plural, other {0x{hex}, #\uBC14\uC774\uD2B8}}",
+  "{n, plural, one {Fix the problem above first.} other {Fix the # problems above first.}}": "{n, plural, other {\uC704\uC758 \uBB38\uC81C #\uAC1C\uB97C \uBA3C\uC800 \uACE0\uCE58\uC138\uC694.}}",
+  "{n, plural, one {It fires when {when}.} =2 {It fires when {when} both hold.} other {It fires when {when} all hold.}}": "{n, plural, =1 {\uB2E4\uC74C \uC870\uAC74\uC77C \uB54C \uC2E4\uD589\uB429\uB2C8\uB2E4: {when}.} =2 {\uB2E4\uC74C \uB450 \uC870\uAC74\uC774 \uBAA8\uB450 \uB9DE\uC744 \uB54C \uC2E4\uD589\uB429\uB2C8\uB2E4: {when}.} other {\uB2E4\uC74C \uC870\uAC74\uC774 \uBAA8\uB450 \uB9DE\uC744 \uB54C \uC2E4\uD589\uB429\uB2C8\uB2E4: {when}.}}",
+  "{n, plural, one {Its Waits hold the owner's other triggers for # second in all, every time it fires.} other {Its Waits hold the owner's other triggers for # seconds in all, every time it fires.}}": "{n, plural, other {\uC2E4\uD589\uB420 \uB54C\uB9C8\uB2E4 Wait\uC774 \uC18C\uC720\uC790\uC758 \uB2E4\uB978 \uD2B8\uB9AC\uAC70\uB97C \uBAA8\uB450 \uD569\uD574 #\uCD08 \uB3D9\uC548 \uBA48\uCDA5\uB2C8\uB2E4.}}",
+  "{n, plural, one {Its Waits hold the owner's other triggers for # second in all.} other {Its Waits hold the owner's other triggers for # seconds in all.}}": "{n, plural, other {Wait\uC774 \uC18C\uC720\uC790\uC758 \uB2E4\uB978 \uD2B8\uB9AC\uAC70\uB97C \uBAA8\uB450 \uD569\uD574 #\uCD08 \uB3D9\uC548 \uBA48\uCDA5\uB2C8\uB2E4.}}",
+  "{n, plural, one {One disabled condition is ignored.} other {# disabled conditions are ignored.}}": "{n, plural, other {\uBE44\uD65C\uC131\uD654\uB41C \uC870\uAC74 #\uAC1C\uB294 \uBB34\uC2DC\uB429\uB2C8\uB2E4.}}",
+  "{n, plural, one {The eight location slots the players' mice use ({from}\u2013{to}) must stay empty; slot {taken} is in use.} other {The eight location slots the players' mice use ({from}\u2013{to}) must stay empty; slots {taken} are in use.}}": "{n, plural, other {\uD50C\uB808\uC774\uC5B4 \uB9C8\uC6B0\uC2A4\uC6A9 \uB85C\uCF00\uC774\uC158 \uC2AC\uB86F 8\uAC1C({from}\u2013{to})\uB294 \uBE44\uC5B4 \uC788\uC5B4\uC57C \uD558\uB294\uB370 \uC2AC\uB86F {taken}\uC744(\uB97C) \uC4F0\uACE0 \uC788\uC2B5\uB2C8\uB2E4.}}",
+  "{name} \u2014 {where}, Remastered: {access}.": "{name} \u2014 {where}, Remastered: {access}.",
+  "{n} groups": "\uADF8\uB8F9 {n}\uAC1C",
+  "{n} records from 0x{hex}": "0x{hex}\uBD80\uD130 \uB808\uCF54\uB4DC {n}\uAC1C",
+  "{n} units": "\uC720\uB2DB {n}\uAE30",
+  "{n}-bit": "{n}\uBE44\uD2B8",
+  "{owner} brings at least 1 {unit} to {location}": "{owner}\uC774(\uAC00) {location}\uC5D0 {unit}\uC744(\uB97C) 1\uAE30 \uC774\uC0C1 \uAC00\uC838\uC634",
+  "{owner}'s deaths of {unit} reach 1 (any {unit} of theirs, not only this one)": "{owner}\uC758 {unit} \uB370\uC2A4\uAC00 1\uC774 \uB418\uBA74 (\uC774 \uC720\uB2DB\uB9CC\uC774 \uC544\uB2C8\uB77C \uADF8 \uD50C\uB808\uC774\uC5B4\uC758 {unit} \uBAA8\uB450)",
+  "{players} each run this trigger on their own.": "{players}\uC774(\uAC00) \uAC01\uC790 \uC774 \uD2B8\uB9AC\uAC70\uB97C \uC2E4\uD589\uD569\uB2C8\uB2E4.",
+  "{Player} accumulates {Comparison} {Amount} {Resource}": "{Player}\uC758 {Resource} \uB204\uC801\uB7C9\uC774 {Amount} {Comparison}",
+  "{Player} brings {Comparison} {Amount} {Unit} to {Location}": "{Player|\uC774} {Location}\uC5D0 {Unit|\uC744} {Amount}\uAE30 {Comparison} \uAC00\uC838\uC634",
+  "{player} clicked the {button} button": "{player|\uC774} \uB9C8\uC6B0\uC2A4 {button} \uBC84\uD2BC\uC744 \uD074\uB9AD\uD568",
+  "{Player} commands {Comparison} {Amount} {Unit}": "{Player|\uC774} {Unit|\uC744} {Amount}\uAE30 {Comparison} \uBCF4\uC720",
+  "{Player} has killed {Comparison} {Amount} {Unit}": "{Player|\uC774} {Unit|\uC744} {Amount}\uAE30 {Comparison} \uCC98\uCE58",
+  "{Player} has suffered {Comparison} {Amount} deaths of {Unit}": "{Player}\uC758 {Unit} \uB370\uC2A4\uAC00 {Amount} {Comparison}",
+  "{Player} has {Comparison} {Amount} opponents remaining": "{Player}\uC758 \uB0A8\uC740 \uC0C1\uB300\uAC00 {Amount}\uBA85 {Comparison}",
+  "{player} pressed {key}": "{player|\uC774} {key} \uD0A4\uB97C \uB204\uB984",
+  "{player} runs this trigger.": "{player}\uC774(\uAC00) \uC774 \uD2B8\uB9AC\uAC70\uB97C \uC2E4\uD589\uD569\uB2C8\uB2E4.",
+  "{player} {value}": "{player}: {value}",
+  "{player}'s mouse": "{player}\uC758 \uB9C8\uC6B0\uC2A4",
+  "{player}'s mouse is over {location}": "{player}\uC758 \uB9C8\uC6B0\uC2A4\uAC00 {location} \uC704\uC5D0 \uC788\uC74C",
+  "{Player}'s {Score} score is {Comparison} {Amount}": "{Player}\uC758 {Score} \uC810\uC218\uAC00 {Amount} {Comparison}",
+  "{player}'s {unit} deaths": "{player}\uC758 {unit} \uB370\uC2A4",
+  "{point} within {radius}": "{point}\uC5D0\uC11C {radius} \uC774\uB0B4",
+  "{State} computer players on the leader board": "\uB9AC\uB354\uBCF4\uB4DC\uC758 \uCEF4\uD4E8\uD130 \uD50C\uB808\uC774\uC5B4: {State}",
+  "{State} invincibility for {Unit} owned by {Player} at {Location}": "{Location}\uC5D0 \uC788\uB294 {Player}\uC758 {Unit} \uBB34\uC801: {State}",
+  "{State} the doodad state of {Unit} owned by {Player} at {Location}": "{Location}\uC5D0 \uC788\uB294 {Player}\uC758 {Unit} \uC7A5\uC2DD\uBB3C \uC0C1\uD0DC: {State}",
+  "{Switch} is {State}": "{Switch}: {State}",
+  "{Switch}: {Action}": "{Switch}: {Action}",
+  "{s} s": "{s}\uCD08",
+  "{s} s (paused)": "{s}\uCD08 (\uC77C\uC2DC \uC815\uC9C0)",
+  "{tech} for {player} is {value}": "{player}\uC758 {tech}: {value}",
+  "{unit} (slot {n})": "{unit} (\uC2AC\uB86F {n})",
+  "{unit} is {value}": "{unit}: {value}",
+  "{unit} owned by {owner} at {location}": "{location}\uC5D0 \uC788\uB294 {owner}\uC758 {unit}",
+  "{what} has no text.": "{what}\uC5D0 \uD14D\uC2A4\uD2B8\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.",
+  '{what} is each computer\'s own, and this trigger changes the game for everyone: the players can go out of sync. For a key or a click, use a synced press (search "key press"); a read like this fits only what one screen shows.': '{what}\uC740(\uB294) \uCEF4\uD4E8\uD130\uB9C8\uB2E4 \uB530\uB85C \uAC00\uC9C0\uB294 \uAC12\uC778\uB370, \uC774 \uD2B8\uB9AC\uAC70\uB294 \uBAA8\uB450\uC758 \uAC8C\uC784\uC744 \uBC14\uAFC9\uB2C8\uB2E4. \uD50C\uB808\uC774\uC5B4\uB4E4\uC758 \uB3D9\uAE30\uD654\uAC00 \uC5B4\uAE0B\uB0A0 \uC218 \uC788\uC2B5\uB2C8\uB2E4. \uD0A4\uB098 \uD074\uB9AD\uC5D0\uB294 \uB3D9\uAE30\uD654\uB41C \uC785\uB825\uC744 \uC4F0\uC138\uC694("key press" \uAC80\uC0C9). \uC774\uB7F0 \uC77D\uAE30\uB294 \uD55C \uD654\uBA74\uC5D0\uB9CC \uBCF4\uC774\uB294 \uAC83\uC5D0\uB9CC \uB9DE\uC2B5\uB2C8\uB2E4.',
+  "{what} names location {n}, which the map no longer has.": "{what}\uC774(\uAC00) \uB9F5\uC5D0\uC11C \uC5C6\uC5B4\uC9C4 \uB85C\uCF00\uC774\uC158 {n}\uC744(\uB97C) \uAC00\uB9AC\uD0B5\uB2C8\uB2E4.",
+  "{what} names no location.": "{what}\uC5D0 \uB85C\uCF00\uC774\uC158\uC774 \uC9C0\uC815\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.",
+  "{what} names string {n}, which the map does not have.": "{what}\uC774(\uAC00) \uB9F5\uC5D0 \uC5C6\uB294 \uBB38\uC790\uC5F4 {n}\uC744(\uB97C) \uAC00\uB9AC\uD0B5\uB2C8\uB2E4.",
+  "{what}: generated from the trigger it belongs to. Edit that trigger in Magenta; the run is rebuilt with it.": "{what}: \uC774 \uD2B8\uB9AC\uAC70\uAC00 \uC18D\uD55C \uD2B8\uB9AC\uAC70\uC5D0\uC11C \uB9CC\uB4E4\uC5B4\uC84C\uC2B5\uB2C8\uB2E4. \uADF8 \uD2B8\uB9AC\uAC70\uB97C Magenta\uC5D0\uC11C \uD3B8\uC9D1\uD558\uBA74 \uD568\uAED8 \uB2E4\uC2DC \uB9CC\uB4E4\uC5B4\uC9D1\uB2C8\uB2E4."
+};
+
 // plugin.ts
 function activate(api) {
+  const catalogue = api.i18n.register({ ko: KO });
+  setTranslator({ t: (text, params) => api.i18n.t(text, params), tc: (context, text, params) => api.i18n.tc(context, text, params) });
   let claims = null;
   const panel = createPanel(api, { afterCommit: () => claims?.refresh() });
-  const t = api.i18n.t;
+  const t2 = api.i18n.t;
   const lookup2 = () => void api.data.load().then(() => {
     const units = api.data.units();
     setGameLookup(units ? lookupOver(units.flingy) : null);
@@ -10265,7 +11657,7 @@ function activate(api) {
   api.commands.register({ id: "open", title: "Magenta", enabled: () => api.document.isOpen(), run: (options) => panel.open(options && typeof options === "object" && typeof options.index === "number" ? { index: options.index } : {}) });
   api.commands.register({
     id: "describe",
-    title: "Magenta: describe a trigger",
+    title: msg("Magenta: describe a trigger"),
     run: (trigger4) => {
       const tr = trigger4;
       const host = new Host(api);
@@ -10278,8 +11670,8 @@ function activate(api) {
     }
   });
   registerPreferencesPage(api, () => panel.relayout());
-  api.commands.register({ id: "settings", title: "Magenta Settings", run: () => openSettings(api) });
-  api.menu.add("Triggers", { label: t("Magenta\u2026"), shortcut: "Ctrl+Shift+M", icon: "plugin", after: "Text Trigger Editor\u2026", enabled: () => api.document.isOpen(), command: "open" });
+  api.commands.register({ id: "settings", title: msg("Magenta Settings"), run: () => openSettings(api) });
+  api.menu.add("Triggers", { label: msg("Magenta\u2026"), shortcut: "Ctrl+Shift+M", icon: "plugin", after: "Text Trigger Editor\u2026", enabled: () => api.document.isOpen(), command: "open" });
   api.hotkeys.add("Ctrl+Shift+M", { command: "open" });
   claims = installClaims(api, (index) => panel.open({ index }));
   const under = (ctx) => {
@@ -10316,7 +11708,7 @@ function activate(api) {
     return { unit, location };
   };
   const unitItem = api.contextMenu.add("viewport", {
-    label: (ctx) => t("New trigger about this {unit}\u2026", { unit: under(ctx).unit?.name ?? "" }),
+    label: (ctx) => t2("New trigger about this {unit}\u2026", { unit: under(ctx).unit?.name ?? "" }),
     visible: (ctx) => api.document.isOpen() && !!under(ctx).unit,
     run: (ctx) => {
       const s = under(ctx);
@@ -10324,7 +11716,7 @@ function activate(api) {
     }
   });
   const locationItem = api.contextMenu.add("viewport", {
-    label: (ctx) => t("New trigger at {location}\u2026", { location: under(ctx).location?.name ?? "" }),
+    label: (ctx) => t2("New trigger at {location}\u2026", { location: under(ctx).location?.name ?? "" }),
     visible: (ctx) => api.document.isOpen() && !!under(ctx).location,
     run: (ctx) => {
       const s = under(ctx);
@@ -10338,6 +11730,8 @@ function activate(api) {
     unitItem.dispose();
     locationItem.dispose();
     setGameLookup(null);
+    setTranslator(null);
+    catalogue.dispose();
   };
 }
 export {

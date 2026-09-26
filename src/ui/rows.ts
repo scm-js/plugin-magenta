@@ -17,6 +17,7 @@ import { allocate, cellKey, usage } from "../model/counters";
 import { pickChoice, pickKey, pickLocation, pickNamed, pickNumber, pickPlacedUnit, pickPlayer, pickSound, pickSwitch, pickText, pickUnitType } from "./chips";
 import type { Host } from "./host";
 import type { Store } from "./store";
+import { t as tr, translate } from "../i18n";
 
 export interface RowContext {
   api: PluginApi;
@@ -47,7 +48,7 @@ function chipEl(api: PluginApi, label: string, className: string, color?: string
 
 /** The choices of an enumerated native argument, from the editor's table. */
 function choicesOf(api: PluginApi, kind: ArgKind) {
-  return api.triggers.defs.choices(kind).map((c) => ({ value: c.value, label: c.label }));
+  return api.triggers.defs.choices(kind).map((c) => ({ value: c.value, label: translate(c.label) }));
 }
 
 export function renderRow(ctx: RowContext, kind: "condition", index: number, record: ConditionRecord, problems: Problem[], h: RowHandlers<ConditionRecord>): HTMLElement;
@@ -118,7 +119,7 @@ function renderNative<R extends ConditionRecord | ActionRecord>(ctx: RowContext,
     const { arg, value } = seg;
     const className = seg.role === "eud" ? "eud" : seg.role === "counter" ? "counter" : arg.kind === "text" ? "text" : "";
     const color = arg.kind === "player" ? ctx.namer.playerColor?.(value) ?? null : null;
-    const chip = chipEl(api, seg.label, className, color, arg.kind === "location" && value > 0 && value < 64 ? t("Click to change; hover to show on the map") : arg.label);
+    const chip = chipEl(api, seg.label, className, color, arg.kind === "location" && value > 0 && value < 64 ? t("Click to change; hover to show on the map") : translate(arg.label));
     if (arg.kind === "location") {
       chip.addEventListener("pointerenter", () => host.flashLocation(value));
     }
@@ -131,7 +132,7 @@ function renderNative<R extends ConditionRecord | ActionRecord>(ctx: RowContext,
         case "location": pickLocation(api, host, chip, value, (v) => set(arg.field, v)); break;
         case "switch": pickSwitch(api, host, chip, value, (v) => set(arg.field, v), (i, name) => { host.renameSwitch(i, name); store.reload(); }); break;
         case "wav": pickSound(api, host, chip, value, (v) => set(arg.field, v)); break;
-        case "text": pickText(api, chip, ctx.namer.string(value) ?? "", (text) => h.onChangeWithText(text, (i) => ({ ...record, [arg.field]: i })), { title: arg.label }); break;
+        case "text": pickText(api, chip, ctx.namer.string(value) ?? "", (text) => h.onChangeWithText(text, (i) => ({ ...record, [arg.field]: i })), { title: translate(arg.label) }); break;
         case "aiScript": pickNamed(api, chip, AI_SCRIPT_CHOICES.map((s) => ({ value: aiScriptCode(s.id), label: s.name, hint: s.id })), value, (v) => set(arg.field, v), 300); break;
         case "cuwp": pickNumber(api, chip, value, (v) => set(arg.field, v), { min: 0, max: 64, hint: t("A Unit Properties slot, 1 to 64; 0 for none") }); break;
         case "slot": pickNumber(api, chip, value + 1, (v) => set(arg.field, v - 1), { min: 1, max: 4, hint: t("Portrait slot, 1 to 4") }); break;
@@ -206,10 +207,11 @@ function pickCounter<R extends ConditionRecord | ActionRecord>(ctx: RowContext, 
 /* ── EUD rows ── */
 
 function eudTitle(entry: Entry, row: EudRow): string {
-  const address = entryAddress(entry, row.args);
-  const rw = entry.remastered.read && entry.remastered.write ? "read and write" : entry.remastered.read ? "read only" : "write only";
-  const where = entry.parts?.length ? `${entry.parts.length} records from 0x${address.toString(16).toUpperCase()}` : `0x${address.toString(16).toUpperCase()}, ${entry.width === "bit" ? "one bit" : `${entry.width} byte${entry.width > 1 ? "s" : ""}`}`;
-  return [`${entry.name} — ${where}, Remastered: ${rw}.`, entry.note, entry.verified ? "Seen working in Remastered." : "Not yet seen working in Remastered.", `Source: ${entry.source}.`].filter(Boolean).join("\n");
+  const hex = entryAddress(entry, row.args).toString(16).toUpperCase();
+  const rw = entry.remastered.read && entry.remastered.write ? tr("read and write") : entry.remastered.read ? tr("read only") : tr("write only");
+  const where = entry.parts?.length ? tr("{n} records from 0x{hex}", { n: entry.parts.length, hex }) : entry.width === "bit" ? tr("0x{hex}, one bit", { hex }) : tr("{n, plural, one {0x{hex}, # byte} other {0x{hex}, # bytes}}", { n: entry.width, hex });
+  // The source is a citation, and stays as it is written.
+  return [tr("{name} — {where}, Remastered: {access}.", { name: translate(entry.name), where, access: rw }), entry.note ? translate(entry.note) : "", entry.verified ? tr("Seen working in Remastered.") : tr("Not yet seen working in Remastered."), tr("Source: {source}.", { source: entry.source })].filter(Boolean).join("\n");
 }
 
 /** The sentence of a catalogue row with its chips. `onText` interns a string for a string-valued entry and writes the row `rowFor` makes of the index. */
@@ -217,7 +219,7 @@ function renderEud(ctx: RowContext, kind: "condition" | "action", row: EudRow, i
   const { api, host } = ctx;
   const t = api.i18n.t;
   const placed = new Map(host.placedUnits().map((u) => [u.slot, u]));
-  const extraWithSlots = { ...ctx.extra, slot: (n: number) => { const u = placed.get(n); return u ? `${ctx.namer.unit(u.unitId)} (slot ${n})` : `slot ${n}`; } };
+  const extraWithSlots = { ...ctx.extra, slot: (n: number) => { const u = placed.get(n); return u ? t("{unit} (slot {n})", { unit: ctx.namer.unit(u.unitId), n }) : t("slot {n}", { n }); } };
   const segments: EudSegment[] = describeEud(row, kind, ctx.namer, extraWithSlots);
   const entry = row.entry;
   const update = (patch: Partial<EudRow>) => onChange({ ...row, ...patch, args: { ...row.args, ...(patch.args ?? {}) } });
@@ -233,12 +235,12 @@ function renderEud(ctx: RowContext, kind: "condition" | "action", row: EudRow, i
       }
       if (seg.slot === "value") {
         const v = entry.value;
-        if (v?.choices) pickChoice(api, chip, v.choices, (value) => update({ value }), { current: row.value });
+        if (v?.choices) pickChoice(api, chip, v.choices.map((c) => ({ value: c.value, label: translate(c.label) })), (value) => update({ value }), { current: row.value });
         else if (v?.kind === "unit") pickUnitType(api, host, chip, row.value, (value) => update({ value }), { classes: false });
         else if (v?.kind === "player") pickPlayer(api, host, chip, row.value, (value) => update({ value }), { eud: false });
         else if (v?.kind === "weapon") pickNamed(api, chip, [...host.weapons(), { value: 130, label: t("No weapon") }], row.value, (value) => update({ value }));
-        else if (v?.kind === "string") pickText(api, chip, ctx.namer.string(row.value) ?? "", (text) => onText?.(text, (index) => ({ ...row, value: index })), { title: entry.name });
-        else pickNumber(api, chip, row.value, (value) => update({ value }), { min: v?.min ?? 0, max: v?.max ?? 4294967295, unit: v?.unit, integer: (v?.scale ?? 1) === 1, step: (v?.scale ?? 1) === 1 ? 1 : 0.01, hint: entry.note });
+        else if (v?.kind === "string") pickText(api, chip, ctx.namer.string(row.value) ?? "", (text) => onText?.(text, (index) => ({ ...row, value: index })), { title: translate(entry.name) });
+        else pickNumber(api, chip, row.value, (value) => update({ value }), { min: v?.min ?? 0, max: v?.max ?? 4294967295, unit: v?.unit ? translate(v.unit) : undefined, integer: (v?.scale ?? 1) === 1, step: (v?.scale ?? 1) === 1 ? 1 : 0.01, hint: entry.note ? translate(entry.note) : undefined });
         return;
       }
       const arg = seg.slot.arg;
@@ -251,7 +253,7 @@ function renderEud(ctx: RowContext, kind: "condition" | "action", row: EudRow, i
         case "tech": pickNamed(api, chip, host.techs().filter((u) => u.value < arg.max), seg.value, setArg); break;
         case "key": pickKey(api, chip, seg.value, setArg); break;
         case "unitIndex": pickPlacedUnit(api, host, chip, seg.value, setArg); break;
-        case "race": pickChoice(api, chip, RACES, setArg, { current: seg.value }); break;
+        case "race": pickChoice(api, chip, RACES.map((r) => ({ value: r.value, label: translate(r.label) })), setArg, { current: seg.value }); break;
         default: pickNumber(api, chip, seg.value, setArg, { min: 0, max: arg.max - 1 });
       }
     });

@@ -28,6 +28,7 @@ import { createSimulator } from "./simulate";
 import { closePopover, openPopover } from "./popover";
 import { Store } from "./store";
 import { STYLE } from "./styles";
+import { translate } from "../i18n";
 
 /** Under this width the list stacks over the trigger (a docked panel); under `NARROW` the rows tighten. */
 const STACKED = 440;
@@ -180,7 +181,8 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
     const offTriggers = api.events.on("triggers", () => { if (s.stale()) s.reload(); });
     const offFile = api.events.on("file", () => { if (s.sidecar !== h.sidecar()) s.reload(); });
     const offDoc = api.events.on("document", () => { if (!api.document.isOpen()) close(); else { s.forget(); s.reload(); } });
-    const offLang = api.events.on("language", render);
+    // The head, the search box and the hints are made once: a new language opens the panel again, where it was.
+    const offLang = api.events.on("language", () => setTimeout(relayout, 0));
     // Scenario ▸ Map Revision changes which rows the revision lines are under.
     const offSettings = api.events.on("settings", render);
     const resize = new ResizeObserver(() => {
@@ -220,7 +222,7 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
       return true;
     }
     function recipes(anchor: HTMLElement): void {
-      const items = RECIPES.map((r, i) => ({ value: i, label: r.label, hint: r.needsBuild ? "BUILD" : r.everyFrame ? "EUD" : undefined }));
+      const items = RECIPES.map((r, i) => ({ value: i, label: translate(r.label), hint: r.needsBuild ? "BUILD" : r.everyFrame ? "EUD" : undefined }));
       pickChoice(api, anchor, items, (i) => {
         const r = RECIPES[i];
         const locations = h.locations().map((l) => l.value).filter((n) => n !== 64);
@@ -237,7 +239,7 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
         };
         const ok = insertTriggers(t("Add recipe"), (intern) => r.build(recipeContext(intern, locations, input)), () => (msqc !== s.sidecar.msqc ? { msqc } : {}));
         if (!ok) { api.ui.toast({ kind: "error", title: t("No room for synced input"), detail: t("It needs a free counter unit and a free location slot.") }); return; }
-        api.ui.toast({ kind: "info", title: r.label, detail: r.description + (r.everyFrame && !everyFrame() ? " " + t("Turn on Run triggers every frame in the ⋯ menu for this one.") : "") });
+        api.ui.toast({ kind: "info", title: translate(r.label), detail: translate(r.description) + (r.everyFrame && !everyFrame() ? " " + t("Turn on Run triggers every frame in the ⋯ menu for this one.") : "") });
       }, { width: 300, searchable: true, placeholder: t("Recipe…") });
     }
     function moveTrigger(from: number, to: number, folder: string | null): void {

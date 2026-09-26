@@ -8,6 +8,7 @@ import type { PluginApi, TriggerClaimHandle, TriggerRecord } from "@scm-js/plugi
 import { locateRun } from "./model/expansions";
 import { decodeSidecar, MEMBER } from "./model/sidecar";
 import type { ExpansionRecord } from "./model/sync";
+import { msg, t, translate } from "./i18n";
 
 export interface ClaimsHandle {
   /** Ask again: after the panel wrote the map and its member. */
@@ -18,7 +19,8 @@ export interface ClaimsHandle {
 export function installClaims(api: PluginApi, open: (index: number) => void): ClaimsHandle {
   const handles = new Map<string, TriggerClaimHandle>();
   const text = (i: number) => api.names.string(i);
-  const label = (x: ExpansionRecord) => (x.kind === "compare" ? "Magenta's counter comparison" : x.kind === "forEachPlayer" ? "Magenta's per-player copies" : `Magenta's counter ${x.kind}`);
+  // In English: the editor shows a claim's label and button through this plugin's catalogue.
+  const label = (x: ExpansionRecord) => (x.kind === "compare" ? msg("Magenta's counter comparison") : x.kind === "forEachPlayer" ? msg("Magenta's per-player copies") : x.kind === "copy" ? msg("Magenta's counter copy") : x.kind === "add" ? msg("Magenta's counter add") : msg("Magenta's counter subtract"));
 
   const refresh = () => {
     const sidecar = api.document.isOpen() ? decodeSidecar(api.document.extras.get(MEMBER)) : null;
@@ -30,9 +32,9 @@ export function installClaims(api: PluginApi, open: (index: number) => void): Cl
         label: label(x),
         badge: "magenta",
         locate: (list: TriggerRecord[]) => locateRun(list, id, text),
-        describe: () => `${label(x)}: generated from the trigger it belongs to. Edit that trigger in Magenta; the run is rebuilt with it.`,
+        describe: () => t("{what}: generated from the trigger it belongs to. Edit that trigger in Magenta; the run is rebuilt with it.", { what: translate(label(x)) }),
         open: (index) => open(index),
-        openLabel: "Open Magenta",
+        openLabel: msg("Open Magenta"),
       }));
     }
   };
