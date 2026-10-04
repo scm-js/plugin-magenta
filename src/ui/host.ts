@@ -50,7 +50,7 @@ export class Host {
     return this.api.triggers.list();
   }
 
-  strings(): (string | null)[] {
+  strings(): readonly (string | null)[] {
     return this.api.document.scenario()?.strings.strings ?? [null];
   }
 
