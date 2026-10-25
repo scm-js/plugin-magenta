@@ -1,0 +1,23 @@
+Magenta probe 6 — units, built by TrigScript (2026-10-25). Play as Use Map Settings, single player is fine.
+Each line: what you did, what happened. "->" is where the answer goes.
+
+Start: are the four marines at 10/20/30/40 HP, and do you have 400 minerals? ->
+Q: do the enemy zerglings walk to the Beacon? ->
+W: select a marine after W — what rank does its panel show (was Private)? ->
+E: marines stimmed (fast, red tint)? enemy zerglings losing HP (plague)? hydralisks slowed (ensnare)? ->
+E: the tank, ordered to the Beacon — did it stay put (lockdown)? ->
+E: your zergling — a matrix bubble? attack it with a marine: did the matrix take the hits (HP unchanged for a while)? ->
+R: with hold fire ON, do the marines stop shooting? OFF again, do they shoot? ->
+T: the mineral fields show 5000 and the geyser 1? ->
+J: does your zergling run at boosted speed to the Mine? ->
+K: back to normal speed on the way home? ->
+Y: marines drawn blue? do they take double damage? do they vanish after a while (about a minute)? ->
+H: (press soon after Y) marines back to normal colour, and do they stay? ->
+Build a Barracks with the SCV, then press I while it is going up: the line "The first Barracks has N frames of building left" — N (bigger than 0)? ->
+N: does the Barracks finish within a second? ->
+O: the weakest marine dies and its HP is printed — which HP? ->
+L: the next weakest dies, inside the pick — which HP? ->
+P: the marine nearest the Beacon healed and pinged? ->
+Scans: which lines appeared — zergling attacking, marine under attack, marine has a target, your zergling burrowed, a marine moving, a marine in a transport (load one into the Dropship)? ->
+Every 2 s: "first zergling's order id = N, first mineral field = M" — N before and after Q, M after T? ->
+Anything odd (a crash, "EUD not supported", a line that never came)? ->

@@ -370,20 +370,25 @@ EUD maps. Each says on screen what to look for. All four were played on 2026-09-
 | `magenta-eud-3-reads.scx` | Triggers every frame; reads of the local player, the game speed, the mouse crossing the middle of the screen, and the A key's states. |
 | `magenta-aplus-counters.scx` | A comparison (A > B) at start, a copy of A into B on the beacon, then B = 1234 and A = B: the generated runs, 153 triggers in all. |
 
-Five more, the **probe maps**, test the candidates in `docs/candidates.md` — one key per
+Seven more, the **probe maps**, test the candidates in `docs/candidates.md` — one key per
 candidate, and each map says on screen what to press and what to look for. `npx tsx
-scripts/make-probe-maps.mts` writes them; 6, 7, 10 and 11 need a build. They were built through
-the eudplib plugin's command-line builder (`--build ../plugin-eudplib`, with the Python this
-repository carried until 0.12), and their `-eud.scx` copies were the ones played; the script's
-build path is to be redone on TrigScript's build, which is where the rows go now.
+scripts/make-probe-maps.mts` writes them. Maps 6, 7, 11 and 12 carry build rows, kept in the
+map's Magenta member as the editor keeps them, so opening one in the editor and saving builds
+it; `--build` builds them here too, through TrigScript's compiler and its own build (a
+`plugin-trigscript` checkout beside this repository, or `TRIGSCRIPT_DIR`), into `-ts.scx`
+copies with an answer sheet each, and `--copy <folder>` puts those where you play. Until 0.12
+the build was eudplib's (`-eud.scx` copies, played 2026-09-14 and 15); map 10, presentation,
+is gone with the two rows it probed, which failed in Remastered.
 
 | Map | What it probes |
 | --- | --- |
 | `magenta-probe-5-tables.scx` | Fixed-address writes and reads, no build: flingy speed, upgrade and tech costs, units.dat flags, the unit's name from the map's strings, player colour (two routes), supply, game speed, the frame counter, slot types. |
-| `magenta-probe-6-units-eud.scx` | The per-unit verbs and reads of Magenta's euddraft plugin: orders (two routes), spell timers, cooldown lock, resource amounts, cloak, no-clip, position, the weakest and nearest unit, and scans for attacking, under attack, target, burrowed, moving. |
-| `magenta-probe-7-input-eud.scx` | Held keys and the mouse through MSQC, chat commands with a number in them. |
+| `magenta-probe-6-units.scx` | The per-unit verbs and reads: the game's Order, the rank, spell timers and a defensive matrix, hold fire, resource amounts, the speed upgrade, hallucination, the remaining build time read and written, the weakest and nearest unit, and scans for attacking, under attack, target, burrowed, moving, in a transport. |
+| `magenta-probe-7-input.scx` | Key presses, the three mouse buttons, the mouse over a location, chat commands plain and with a number in them — the build's own synced input. |
 | `magenta-probe-8-catalogue.scx` | The 0.3 entries as the catalogue itself writes them (speed as four records, colour as two, the name from a string, the looks through units.dat, the flags, supply by race, upgrade and technology costs), the reads probe 5 left unreported (the frame counter, the clock, slot type and race), and the entries no map had touched: sight range, weapon range and cooldown, build time, gas, an upgrade's level, alliance, a placed unit's energy, shields, position and cloak, the screen. |
 | `magenta-probe-9-rest.scx` | What 8 left unverified: size class by a vulture's shots, the flags with an effect and the rest read back, unit costs and supply, sight, weapon swaps, a weapon's cooldown, factor, bonus and minimum range, vision and alliance both ways, the hallucination flag, and the slot, race, supply-used, cloak, position and screen reads. |
+| `magenta-probe-11-slice5.scx` | Damage and healing with a floor and a cap, a random pick, the unit under the mouse, a location slid by an offset and put back by numbers (its size read where it is), the type, owner and percent reads, the middle button. |
+| `magenta-probe-12-options.scx` | The map-wide options: the camera gliding after a location that two keys slide about, and a two-second tone looped as background music. |
 
 What a run of these settles, in the catalogue: the `verified` flag on each entry that worked,
 which way round the vision bit goes (map 2 with two players), and what the key states 1 and 2

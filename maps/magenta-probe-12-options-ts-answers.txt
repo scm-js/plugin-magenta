@@ -1,0 +1,10 @@
+Magenta probe 12 — camera and music, built by TrigScript (2026-10-25). Play as Use Map Settings, single player is fine.
+"->" is where the answer goes.
+
+Start: is the screen centred on the beacon? ->
+Scroll away (arrow keys or the minimap): does the camera glide back to the beacon, smoothly rather than snapping? ->
+1, three times: does the camera glide right with the ping each time? ->
+2: and back left? ->
+Music: a two-note tone (low, then higher) that repeats every two seconds for the whole game? any gap or overlap between repeats? ->
+Does the game's own music still play underneath, or is it quiet? ->
+Anything odd? ->

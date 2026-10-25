@@ -22,25 +22,27 @@
  *      alliance both ways, the hallucination flag, and the slot, race, supply-used, cloak,
  *      position and screen reads again.
  *
- *  10  presentation (slice 4): the terrain under a location rewritten in the MTXM array the
- *      game draws from, and a unit's look through its images' draw functions — the
- *      see-through of a cloaked unit, the blue of a hallucination, the warp flash.
  *  11  slice 5: percent fields, damage and healing with a floor and a cap, a random pick, the
- *      unit under a player's mouse, a location moved by an offset, the type and owner reads,
- *      and the middle mouse button.
+ *      unit under a player's mouse, a location moved by an offset or placed by numbers, the type
+ *      and owner reads, and the middle mouse button.
+ *  12  the map-wide options: the camera gliding after a location, a sound looped as music.
  *
- * Maps 6, 7, 10 and 11 need a build. Until Magenta 0.12 that was `--build ../plugin-eudplib` (a
- * checkout of the eudplib plugin, whose `scripts/build-map.mts` ran the same worker the editor
- * did under Node, with this repository's `python/magenta.py`, since deleted): their built copies
- * ended in `-eud.scx`, and those were the ones played. The rows go into TrigScript's build now
- * (`src/model/trigscript.ts`); this script's `--build` is to be redone on it, from the records
- * rather than the hand-written specs below. Maps 5, 8 and 9 play as written.
+ * (Map 10, presentation — the terrain under a location rewritten, a unit's look through its
+ * draw functions — is gone: both failed in Remastered and left the model; see docs/candidates.md.)
  *
- *   npx tsx scripts/make-probe-maps.mts [--build ../plugin-eudplib] [../scm-js]
+ * Maps 6, 7, 11 and 12 need a build. Their rows are Magenta's own records (`BuildRecord`), kept
+ * in the map's sidecar member as the editor keeps them — so the editor opens each source map and
+ * builds it on save — and `--build` builds them here too, the way the editor does: rendered as
+ * TrigScript (`src/model/trigscript.ts`), compiled by TrigScript's compiler (a plugin-trigscript
+ * checkout beside this repository, or TRIGSCRIPT_DIR) and laid out by its own build
+ * (`compiler/backend/build.ts`). The built copies end in `-ts.scx`, each with an answer sheet
+ * (`-ts-answers.txt`) to fill in from a play; `--copy <dir>` puts both in a folder of yours.
+ * Until Magenta 0.12 the build was eudplib's (`--build ../plugin-eudplib`, built copies `-eud.scx`).
+ * Maps 5, 8 and 9 play as written.
+ *
+ *   npx tsx scripts/make-probe-maps.mts [--build] [--source] [--copy <dir>] [../scm-js]
  */
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
-import { spawnSync } from "node:child_process";
-import { tmpdir } from "node:os";
+import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { SetModifier, Comparison, ActionType, ConditionType, PlayerGroup, ActionFlag, SwitchAction, SwitchState, type TriggerRecord, type ActionRecord, type ConditionRecord } from "../vendor/triggers";
 import { entry } from "../src/catalogue";
@@ -48,14 +50,18 @@ import type { Entry } from "../src/catalogue/types";
 import { lookupOver, lowerAction, lowerActions, lowerCondition, setGameLookup } from "../src/model/eud";
 import { setOwners } from "../src/model/records";
 import { encodeSidecar, MEMBER, type Sidecar } from "../src/model/sidecar";
-import type { BuildPlugins } from "../src/model/builds";
+import { DEFAULT_OPTIONS, type BuildOptions, type BuildRecord, type ChatCell, type Msqc } from "../src/model/builds";
+import type { Cell } from "../src/model/counters";
+import { renderScript } from "../src/model/trigscript";
 
 const argv = process.argv.slice(2);
-const buildAt = argv.includes("--build") ? resolve(argv[argv.indexOf("--build") + 1]) : null;
-const EDITOR = resolve(argv.find((a, i) => !a.startsWith("--") && argv[i - 1] !== "--build") ?? join(import.meta.dirname, "..", "..", "scm-js"));
+const doBuild = argv.includes("--build");
+const COPY = argv.includes("--copy") ? resolve(argv[argv.indexOf("--copy") + 1]) : null;
+const EDITOR = resolve(argv.find((a, i) => !a.startsWith("--") && argv[i - 1] !== "--copy") ?? join(import.meta.dirname, "..", "..", "scm-js"));
+const TRIGSCRIPT = resolve(process.env.TRIGSCRIPT_DIR ?? join(import.meta.dirname, "..", "..", "plugin-trigscript"));
 const ed = (p: string) => import(join(EDITOR, "src", p));
 const { createScenario } = await ed("formats/chk/create.ts");
-const { serializeScenario, parseScenario } = await ed("formats/chk/scenario.ts");
+const { serializeScenario, parseScenario, setScenarioName } = await ed("formats/chk/scenario.ts");
 const { saveMap, loadMap } = await ed("formats/mpq/scm.ts");
 const { applyTriggers, newTrigger, newAction, newCondition } = await ed("editor/triggers.ts");
 const { internString } = await ed("editor/settings.ts");
@@ -90,10 +96,10 @@ const SIZE = 64;
 const T = 32;
 
 /* ── Ids ── */
-const MARINE = 0, GHOST = 1, VULTURE = 2, SIEGE_TANK = 5, SCV = 7, MEDIC = 34, ZERGLING = 37, HYDRALISK = 38, OVERLORD = 42, ZEALOT = 65, COMMAND_CENTER = 106, SUPPLY_DEPOT = 109, BARRACKS = 111, ACADEMY = 112, ENGINEERING_BAY = 122, MINERAL_FIELD = 176, GEYSER = 188, BEACON_UNIT = 195, START = 214;
+const MARINE = 0, GHOST = 1, VULTURE = 2, SIEGE_TANK = 5, SCV = 7, DROPSHIP = 11, MEDIC = 34, ZERGLING = 37, HYDRALISK = 38, OVERLORD = 42, ZEALOT = 65, COMMAND_CENTER = 106, SUPPLY_DEPOT = 109, BARRACKS = 111, ACADEMY = 112, ENGINEERING_BAY = 122, MINERAL_FIELD = 176, GEYSER = 188, BEACON_UNIT = 195, START = 214;
 const P1 = PlayerGroup.Player1, P2 = PlayerGroup.Player2, ALL = PlayerGroup.AllPlayers, CP = PlayerGroup.CurrentPlayer;
 const flingyOf = (unit: number, fallback: number) => (unitsDat ? unitsDat.flingy[unit] : fallback);
-const KEY: Record<string, number> = { "0": 0x30, "1": 0x31, "2": 0x32, "3": 0x33, "4": 0x34, "5": 0x35, "6": 0x36, "7": 0x37, "8": 0x38, "9": 0x39, Q: 0x51, W: 0x57, E: 0x45, R: 0x52, T: 0x54, Y: 0x59, U: 0x55, I: 0x49, O: 0x4f, P: 0x50, H: 0x48, J: 0x4a, K: 0x4b, L: 0x4c, M: 0x4d, N: 0x4e };
+const KEY: Record<string, number> = { "0": 0x30, "1": 0x31, "2": 0x32, "3": 0x33, "4": 0x34, "5": 0x35, "6": 0x36, "7": 0x37, "8": 0x38, "9": 0x39, Q: 0x51, W: 0x57, E: 0x45, R: 0x52, T: 0x54, Y: 0x59, U: 0x55, I: 0x49, O: 0x4f, P: 0x50, H: 0x48, J: 0x4a, K: 0x4b, L: 0x4c, M: 0x4d, N: 0x4e, A: 0x41, S: 0x53, D: 0x44 };
 
 /* ── Records ── */
 /** A one-off entry for an address the catalogue does not have yet: the probe is the test of it. */
@@ -164,7 +170,32 @@ interface Helpers {
   once(sw: number, conditions: ConditionRecord[], text: string, extra?: ActionRecord[]): TriggerRecord;
 }
 
-interface ProbeMap { name: string; file: string; place(place: (unit: number, owner: number, x: number, y: number) => void, scn: any): void; build(scn: any, h: Helpers): { sidecar?: Partial<Sidecar>; plugins?: BuildPlugins } | void }
+/** The rows of a map that needs a build, as Magenta's own records; `extras` are archive members the rows need (a sound). */
+interface Rows { builds: BuildRecord[]; chat?: ChatCell | null; msqc?: Msqc | null; options?: Partial<BuildOptions>; extras?: Map<string, Uint8Array> }
+interface ProbeMap {
+  name: string;
+  file: string;
+  place(place: (unit: number, owner: number, x: number, y: number) => void, scn: any): void;
+  build(scn: any, h: Helpers): { sidecar?: Partial<Sidecar>; rows?: Rows } | void;
+  /** The answer sheet beside the built map: a question a line, "->" where the answer goes. */
+  sheet?: string;
+}
+
+/** A soft two-note tone as a 16-bit mono WAV, for the music option's loop. */
+function toneWav(seconds: number, rate = 22050): Uint8Array {
+  const n = Math.round(seconds * rate), data = new Int16Array(n);
+  for (let i = 0; i < n; i++) {
+    const hz = i < n / 2 ? 440 : 550, env = Math.min(1, i / 1500, (n - i) / 1500);
+    data[i] = Math.round(Math.sin((2 * Math.PI * hz * i) / rate) * 7000 * env);
+  }
+  const bytes = new Uint8Array(44 + n * 2), dv = new DataView(bytes.buffer);
+  const str = (o: number, t: string) => { for (let i = 0; i < 4; i++) bytes[o + i] = t.charCodeAt(i); };
+  str(0, "RIFF"); dv.setUint32(4, 36 + n * 2, true); str(8, "WAVE"); str(12, "fmt "); dv.setUint32(16, 16, true);
+  dv.setUint16(20, 1, true); dv.setUint16(22, 1, true); dv.setUint32(24, rate, true); dv.setUint32(28, rate * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+  str(36, "data"); dv.setUint32(40, n * 2, true);
+  bytes.set(new Uint8Array(data.buffer), 44);
+  return bytes;
+}
 
 function scaffold(m: ProbeMap, description: string) {
   const terrain = baseTerrain(jungle, 2);
@@ -217,7 +248,6 @@ function onKey(h: Helpers, k: string, what: string, actions: ActionRecord[]): Tr
 }
 
 const MAPS: ProbeMap[] = [
-  /* ────────────────────────────────────────────────────────────────────────────── */
   {
     name: "Magenta probe 5 — tables", file: "magenta-probe-5-tables.scx",
     place(place) {
@@ -323,6 +353,8 @@ const MAPS: ProbeMap[] = [
       // The four marines first: slots 0, 1699, 1698, 1697, so the start trigger can give them 10, 20, 30, 40 HP.
       for (let i = 0; i < 4; i++) place(MARINE, 0, 12.5 + i, 12.5);
       place(ZERGLING, 0, 14.5, 16.5);
+      place(SCV, 0, 10.5, 16.5);
+      place(DROPSHIP, 0, 17.5, 18.5);
       for (let i = 0; i < 4; i++) place(ZERGLING, 1, 36.5 + i, 12.5);
       for (let i = 0; i < 2; i++) place(HYDRALISK, 1, 36.5 + i, 16.5);
       place(SIEGE_TANK, 1, 41.5, 16.5);
@@ -331,71 +363,69 @@ const MAPS: ProbeMap[] = [
       place(BEACON_UNIT, 11, 20, 10);
     },
     build(scn, h) {
-      const cell = (u: number): [number, number] => [11, u];
-      const F = { orderQ: cell(181), orderW: cell(182), timers: cell(183), cooldown: cell(184), resources: cell(185), cloakOn: cell(186), cloakOff: cell(187), noclip: cell(188), nudge: cell(189), pickWeak: cell(190), pickNear: cell(191), readOrder: cell(192), readRes: cell(193), tell: cell(194), tellWeak: cell(195), speed: cell(196), sprint: cell(197), readStim: cell(198), tellStim: cell(199), pickKill: cell(210), tellKill: cell(211) };
-      const V = { weakest: cell(200), stim: cell(209), killed: cell(212), order: cell(201), resources: cell(202), attacking: cell(203), underAttack: cell(204), hasTarget: cell(205), burrowed: cell(206), moving: cell(207), cycle: cell(208) };
-      const flag = (c: [number, number]) => setDeaths(c, 1);
-      const P2ZERGLING = { unit: ZERGLING, owner: 1, location: null }, P2HYDRA = { unit: HYDRALISK, owner: 1, location: null }, P2TANK = { unit: SIEGE_TANK, owner: 1, location: null }, P1MARINE = { unit: MARINE, owner: 0, location: null };
-      const hooks = [
+      const cell = (u: number): Cell => [11, u];
+      const F = { orderQ: cell(181), rank: cell(182), timers: cell(183), cooldown: cell(184), resources: cell(185), fast: cell(186), slow: cell(187), halluc: cell(188), real: cell(189), pickWeak: cell(190), pickNear: cell(191), readOrder: cell(192), readRes: cell(193), tell: cell(194), tellWeak: cell(195), readBuild: cell(196), tellBuild: cell(197), pickKill: cell(210), tellKill: cell(211), finish: cell(213) };
+      const V = { weakest: cell(200), killed: cell(212), order: cell(201), resources: cell(202), attacking: cell(203), underAttack: cell(204), hasTarget: cell(205), burrowed: cell(206), moving: cell(207), cycle: cell(208), build: cell(214), riding: cell(215) };
+      const flag = (c: Cell) => setDeaths(c, 1);
+      const P2ZERGLING = { unit: ZERGLING, owner: 1, location: null }, P2HYDRA = { unit: HYDRALISK, owner: 1, location: null }, P2TANK = { unit: SIEGE_TANK, owner: 1, location: null };
+      const P1MARINE = { unit: MARINE, owner: 0, location: null }, P1ZERGLING = { unit: ZERGLING, owner: 0, location: null }, P1BARRACKS = { unit: BARRACKS, owner: 0, location: null };
+      const builds: BuildRecord[] = [
         { id: "q", kind: "foreach", flag: F.orderQ, ...P2ZERGLING, do: { order: "move", location: BEACON, scratch: SCRATCH } },
-        { id: "w", kind: "foreach", flag: F.orderW, ...P2HYDRA, do: { orderRaw: 6, location: BEACON } },
+        { id: "w", kind: "foreach", flag: F.rank, ...P1MARINE, do: { set: "rank", value: 5 } },
         { id: "e1", kind: "foreach", flag: F.timers, ...P1MARINE, do: { timer: "stim", value: 240 } },
         { id: "e2", kind: "foreach", flag: F.timers, ...P2ZERGLING, do: { timer: "plague", value: 250 } },
         { id: "e3", kind: "foreach", flag: F.timers, ...P2HYDRA, do: { timer: "ensnare", value: 250 } },
-        { id: "e4", kind: "foreach", flag: F.timers, ...P2TANK, do: { timer: "lockdown", value: 400 } },
-        { id: "e5", kind: "foreach", flag: F.timers, unit: ZERGLING, owner: 0, location: null, do: { timer: "matrix", value: 250 } },
-        { id: "e6", kind: "read", flag: F.readStim, ...P1MARINE, field: "stim", to: V.stim },
-        { id: "e7", kind: "text", flag: F.tellStim, parts: [{ text: "Read back: the first marine's stim timer is " }, { counter: V.stim }, { text: " (0 means the timer write did not take)." }], to: "all" },
+        { id: "e4", kind: "foreach", flag: F.timers, ...P2TANK, do: { timer: "lockdown", value: 250 } },
+        { id: "e5", kind: "foreach", flag: F.timers, ...P1ZERGLING, do: { timer: "matrix", value: 250 } },
         { id: "r", kind: "foreach", flag: F.cooldown, ...P1MARINE, do: { cooldown: 250 } },
-        { id: "j0", kind: "foreach", flag: F.speed, ...P1MARINE, do: { set: "movementType", value: 0 } },
-        { id: "j1", kind: "foreach", flag: F.speed, ...P1MARINE, do: { set: "topSpeed", value: 96 } },
-        { id: "j2", kind: "foreach", flag: F.speed, ...P1MARINE, do: { set: "acceleration", value: 8 } },
-        { id: "k0", kind: "foreach", flag: F.sprint, ...P1MARINE, do: { set: "movementType", value: 0 } },
-        { id: "k1", kind: "foreach", flag: F.sprint, ...P1MARINE, do: { set: "topSpeed", value: fl.topSpeed(flingyOf(VULTURE, 38)) * 2 } },
-        { id: "k2", kind: "foreach", flag: F.sprint, ...P1MARINE, do: { set: "acceleration", value: fl.accel(flingyOf(VULTURE, 38)) } },
         { id: "t1", kind: "foreach", flag: F.resources, unit: MINERAL_FIELD, owner: null, location: MINE, do: { set: "resources", value: 5000 } },
         { id: "t2", kind: "foreach", flag: F.resources, unit: GEYSER, owner: null, location: MINE, do: { set: "resources", value: 1 } },
-        { id: "y", kind: "foreach", flag: F.cloakOn, ...P1MARINE, do: { status: "cloak", on: true } },
-        { id: "h", kind: "foreach", flag: F.cloakOff, ...P1MARINE, do: { status: "cloak", on: false } },
-        { id: "u", kind: "foreach", flag: F.noclip, ...P1MARINE, do: { status: "noclip", on: true } },
+        { id: "j", kind: "foreach", flag: F.fast, ...P1ZERGLING, do: { speed: true } },
+        { id: "k", kind: "foreach", flag: F.slow, ...P1ZERGLING, do: { speed: false } },
+        { id: "y", kind: "foreach", flag: F.halluc, ...P1MARINE, do: { hallucination: true } },
+        { id: "h", kind: "foreach", flag: F.real, ...P1MARINE, do: { hallucination: false } },
+        { id: "i", kind: "read", flag: F.readBuild, ...P1BARRACKS, field: "buildTime", to: V.build },
+        { id: "i2", kind: "text", flag: F.tellBuild, parts: [{ text: "[I] The first Barracks has " }, { counter: V.build }, { text: " frames of building left (0: complete, or no Barracks)." }], to: "all" },
+        { id: "n", kind: "foreach", flag: F.finish, ...P1BARRACKS, do: { set: "buildTime", value: 24 } },
         { id: "l", kind: "pick", flag: F.pickKill, ...P1MARINE, by: "min", field: "hp", near: null, locate: null, to: V.killed, do: { kill: true } },
         { id: "tellKill", kind: "text", flag: F.tellKill, parts: [{ text: "[L] The pick killed the weakest marine itself; it had " }, { counter: V.killed }, { text: " HP." }], to: "all" },
-        { id: "o", kind: "pick", flag: F.pickWeak, ...P1MARINE, by: "min", field: "hp", near: null, locate: PICK, to: V.weakest },
-        { id: "p", kind: "pick", flag: F.pickNear, ...P1MARINE, by: "nearest", field: "hp", near: BEACON, locate: PICK, to: null },
+        { id: "o", kind: "pick", flag: F.pickWeak, ...P1MARINE, by: "min", field: "hp", near: null, locate: PICK, to: V.weakest, do: null },
+        { id: "p", kind: "pick", flag: F.pickNear, ...P1MARINE, by: "nearest", field: "hp", near: BEACON, locate: PICK, to: null, do: null },
         { id: "ro", kind: "read", flag: F.readOrder, ...P2ZERGLING, field: "order", to: V.order },
         { id: "rr", kind: "read", flag: F.readRes, unit: MINERAL_FIELD, owner: null, location: MINE, field: "resources", to: V.resources },
         { id: "tell", kind: "text", flag: F.tell, parts: [{ text: "Read: first zergling's order id = " }, { counter: V.order }, { text: ", first mineral field = " }, { counter: V.resources }], to: "all" },
         { id: "tellWeak", kind: "text", flag: F.tellWeak, parts: [{ text: "[O] Killed the weakest marine; it had " }, { counter: V.weakest }, { text: " HP." }], to: "all" },
-      ];
-      const scans = [
         { id: "s1", kind: "scan", cell: V.attacking, ...P2ZERGLING, field: "order", cmp: "=", value: 10 },
-        { id: "s2", kind: "scan", cell: V.underAttack, ...P1MARINE, field: "underAttack", cmp: ">", value: 0 },
+        { id: "s2", kind: "scan", cell: V.underAttack, ...P1MARINE, field: "underAttack", cmp: "=", value: 1 },
         { id: "s3", kind: "scan", cell: V.hasTarget, ...P1MARINE, field: "hasTarget", cmp: "=", value: 1 },
-        { id: "s4", kind: "scan", cell: V.burrowed, unit: ZERGLING, owner: 0, location: null, field: "burrowed", cmp: "=", value: 1 },
+        { id: "s4", kind: "scan", cell: V.burrowed, ...P1ZERGLING, field: "burrowed", cmp: "=", value: 1 },
         { id: "s5", kind: "scan", cell: V.moving, ...P1MARINE, field: "speed", cmp: ">", value: 0 },
+        { id: "s6", kind: "scan", cell: V.riding, ...P1MARINE, field: "inTransport", cmp: "=", value: 1 },
       ];
       applyTriggers(scn, [
         h.trigger([P1], [always()], [
-          h.comment("start: marines 10/20/30/40 HP, burrow researched"),
+          h.comment("start: marines 10/20/30/40 HP, burrow researched, 400 minerals"),
           eud("cunit.hp", { index: 0 }, 10), eud("cunit.hp", { index: 1699 }, 20), eud("cunit.hp", { index: 1698 }, 30), eud("cunit.hp", { index: 1697 }, 40),
           eud("player.techResearched", { player: 0, tech: 11 }, 1),
-          h.text("Probe 6, units. Q order zerglings to the beacon (game order), W hydralisks (raw order), E spell timers, R toggle cooldown lock, T resources 5000 / 1 at the Mine, J marines crawl, K marines sprint, Y cloak flags, H off, U no-clip, O kill the weakest marine by location, L kill it inside the pick, P heal the marine nearest the beacon."),
-          h.text("Marines have 10, 20, 30, 40 HP. Your zergling can burrow. Scans announce: a zergling attacking, a marine under attack, a marine with a target, your zergling burrowed, a marine moving. Every 2 s a line reads the first zergling's order id and the first mineral field."),
+          addMinerals(P1, 400),
+          h.text("Probe 6, units (TrigScript build). Q order enemy zerglings to the Beacon. W marines' rank +5 (select one and read its rank). E spell timers, and a defensive matrix on your zergling. R toggle hold fire. T resources at the Mine. J your zergling gets the speed upgrade and runs to the Mine, K loses it and runs home."),
+          h.text("Y marines become hallucinations (blue, double damage, gone after a while), H real again. Build a Barracks with the SCV, then I reads its build time left and N finishes it in a second. O kill the weakest marine by location, L inside the pick, P heal the marine nearest the Beacon. Load a marine into the Dropship: a scan says so."),
         ]),
         ...onKey(h, "Q", "every enemy zergling: the game's Order to the Beacon. Expect: they walk there.", [flag(F.orderQ)]),
-        ...onKey(h, "W", "every enemy hydralisk: order id 6 (Move) written in, target the Beacon. Expect: they walk there, or ignore it.", [flag(F.orderW)]),
-        ...onKey(h, "E", "timers: marines stim 240, enemy zerglings plague 250 (watch their HP fall), hydralisks ensnare, the tank lockdown 400 while it is ordered to the Beacon (it should not move), your zergling a defensive matrix. A read-back line follows.", [flag(F.timers), orderAll(SIEGE_TANK, P2, BEACON), setSwitch(4, true)]),
-        h.trigger([P1], [switchIs(4, true)], [h.comment("next cycle: read the stim timer back"), setSwitch(4, false), flag(F.readStim), flag(F.tellStim), preserve()]),
-        h.trigger([P1], [keyPressed("R"), switchIs(39, false), switchIs(1, false)], [h.comment("R: cooldown lock on"), setSwitch(39, true), setSwitch(1, true), h.text("[R] cooldown lock ON: marines' cooldowns are held at 250 every cycle. Expect: they cannot shoot."), preserve()]),
-        h.trigger([P1], [keyPressed("R"), switchIs(39, false), switchIs(1, true)], [h.comment("R: cooldown lock off"), setSwitch(39, true), setSwitch(1, false), h.text("[R] cooldown lock OFF."), preserve()]),
+        ...onKey(h, "W", "marines: rank +5. Expect: a selected marine's rank reads five steps up (Private → Master Sergeant or so).", [flag(F.rank)]),
+        ...onKey(h, "E", "timers: marines stim 240, enemy zerglings plague 250 (watch their HP fall), hydralisks ensnare, the tank lockdown while it is ordered to the Beacon (it should not move), your zergling a defensive matrix of 250 points (attack it: the matrix should take the hits).", [flag(F.timers), orderAll(SIEGE_TANK, P2, BEACON)]),
+        h.trigger([P1], [keyPressed("R"), switchIs(39, false), switchIs(1, false)], [h.comment("R: hold fire on"), setSwitch(39, true), setSwitch(1, true), h.text("[R] hold fire ON: marines' cooldowns are held at 250 every cycle. Expect: they cannot shoot."), preserve()]),
+        h.trigger([P1], [keyPressed("R"), switchIs(39, false), switchIs(1, true)], [h.comment("R: hold fire off"), setSwitch(39, true), setSwitch(1, false), h.text("[R] hold fire OFF."), preserve()]),
         h.trigger([P1], [eudIs("game.key", { key: KEY.R }, 0), switchIs(39, true)], [h.comment("R: released"), setSwitch(39, false), preserve()]),
-        h.trigger([P1], [switchIs(1, true)], [h.comment("while locked: flag every cycle"), flag(F.cooldown), preserve()]),
+        h.trigger([P1], [switchIs(1, true)], [h.comment("while holding fire: flag every cycle"), flag(F.cooldown), preserve()]),
         ...onKey(h, "T", "mineral fields at the Mine (pinged, south-west) 5000, the geyser 1. Expect: click them.", [flag(F.resources), ping(MINE)]),
-        ...onKey(h, "J", "marines: their own movement control 0 and top speed 96 (the unit's copy of the flingy table), then ordered to the Mine. Expect: these marines crawl.", [flag(F.speed), orderAll(MARINE, P1, MINE)]),
-        ...onKey(h, "K", "marines: top speed twice a vulture's, then ordered home. Expect: they sprint.", [flag(F.sprint), orderAll(MARINE, P1, HOME)]),
-        ...onKey(h, "Y", "marines: cloak flags on (0x300). Expect: they shimmer.", [flag(F.cloakOn)]),
-        ...onKey(h, "H", "marines: cloak flags off.", [flag(F.cloakOff)]),
-        ...onKey(h, "U", "marines: no-clip. Expect: they walk through each other.", [flag(F.noclip)]),
+        ...onKey(h, "J", "your zergling: the speed upgrade, without the research, then ordered to the Mine. Expect: it runs at boosted speed.", [flag(F.fast), orderAll(ZERGLING, P1, MINE)]),
+        ...onKey(h, "K", "your zergling: the speed upgrade taken away, then ordered home. Expect: normal speed.", [flag(F.slow), orderAll(ZERGLING, P1, HOME)]),
+        ...onKey(h, "Y", "marines: hallucinated. Expect: drawn blue, take double damage, gone after a while.", [flag(F.halluc)]),
+        ...onKey(h, "H", "marines: real again. Expect: normal colour, and they stay.", [flag(F.real)]),
+        ...onKey(h, "I", "read the first Barracks' remaining build time; a line follows.", [flag(F.readBuild), setSwitch(6, true)]),
+        h.trigger([P1], [switchIs(6, true)], [h.comment("next cycle: tell the build time"), setSwitch(6, false), flag(F.tellBuild), preserve()]),
+        ...onKey(h, "N", "every Barracks of yours: 24 frames of building left. Expect: one under construction finishes within a second.", [flag(F.finish)]),
         ...onKey(h, "L", "pick the weakest marine and kill it inside the pick (no location, no vanilla action). Expect: the weakest marine dies and its HP is printed.", [flag(F.pickKill), setSwitch(5, true)]),
         h.trigger([P1], [switchIs(5, true)], [h.comment("next cycle: say what L killed"), setSwitch(5, false), flag(F.tellKill), preserve()]),
         h.trigger([P1], [keyPressed("O")], [h.comment("O: pick the weakest marine"), flag(F.pickWeak), setSwitch(2, true), preserve()]),
@@ -403,17 +433,41 @@ const MAPS: ProbeMap[] = [
         h.trigger([P1], [keyPressed("P")], [h.comment("P: pick the marine nearest the Beacon"), flag(F.pickNear), setSwitch(3, true), preserve()]),
         h.trigger([P1], [switchIs(3, true)], [h.comment("next cycle: heal at Pick, ping it"), setSwitch(3, false), healAt(MARINE, P1, PICK), ping(PICK), h.text("[P] The marine nearest the Beacon is healed and pinged."), preserve()]),
         h.once(10, [deathsIs(V.attacking, 1)], "Scan: an enemy zergling's order is 10 (attacking a unit)."),
-        h.once(11, [deathsIs(V.underAttack, 1, Comparison.AtLeast)], "Scan: a marine is under attack."),
+        h.once(11, [deathsIs(V.underAttack, 1)], "Scan: a marine is under attack."),
         h.once(12, [deathsIs(V.hasTarget, 1)], "Scan: a marine has an order target."),
         h.once(13, [deathsIs(V.burrowed, 1)], "Scan: your zergling is burrowed."),
         h.once(14, [deathsIs(V.moving, 1)], "Scan: a marine is moving (speed > 0)."),
+        h.once(15, [deathsIs(V.riding, 1)], "Scan: a marine is in a transport."),
         h.trigger([P1], [always()], [h.comment("cycle counter"), setDeaths(V.cycle, 1, SetModifier.Add), preserve()]),
         h.trigger([P1], [deathsIs(V.cycle, 48, Comparison.AtLeast)], [h.comment("every 2 s: read and tell"), setDeaths(V.cycle, 0), flag(F.readOrder), flag(F.readRes), flag(F.tell), preserve()]),
         h.trigger([P1], [always()], [h.comment("Magenta: run triggers every frame"), everyFrame(), preserve()]),
       ]);
-      const spec = { version: 3, everyFrame: true, chat: null, hooks, scans, msqc: null };
-      return { plugins: { magenta: { spec: JSON.stringify(spec) }, eudTurbo: {} } };
+      return { rows: { builds } };
     },
+    sheet: `Magenta probe 6 — units, built by TrigScript (${new Date().toISOString().slice(0, 10)}). Play as Use Map Settings, single player is fine.
+Each line: what you did, what happened. "->" is where the answer goes.
+
+Start: are the four marines at 10/20/30/40 HP, and do you have 400 minerals? ->
+Q: do the enemy zerglings walk to the Beacon? ->
+W: select a marine after W — what rank does its panel show (was Private)? ->
+E: marines stimmed (fast, red tint)? enemy zerglings losing HP (plague)? hydralisks slowed (ensnare)? ->
+E: the tank, ordered to the Beacon — did it stay put (lockdown)? ->
+E: your zergling — a matrix bubble? attack it with a marine: did the matrix take the hits (HP unchanged for a while)? ->
+R: with hold fire ON, do the marines stop shooting? OFF again, do they shoot? ->
+T: the mineral fields show 5000 and the geyser 1? ->
+J: does your zergling run at boosted speed to the Mine? ->
+K: back to normal speed on the way home? ->
+Y: marines drawn blue? do they take double damage? do they vanish after a while (about a minute)? ->
+H: (press soon after Y) marines back to normal colour, and do they stay? ->
+Build a Barracks with the SCV, then press I while it is going up: the line "The first Barracks has N frames of building left" — N (bigger than 0)? ->
+N: does the Barracks finish within a second? ->
+O: the weakest marine dies and its HP is printed — which HP? ->
+L: the next weakest dies, inside the pick — which HP? ->
+P: the marine nearest the Beacon healed and pinged? ->
+Scans: which lines appeared — zergling attacking, marine under attack, marine has a target, your zergling burrowed, a marine moving, a marine in a transport (load one into the Dropship)? ->
+Every 2 s: "first zergling's order id = N, first mineral field = M" — N before and after Q, M after T? ->
+Anything odd (a crash, "EUD not supported", a line that never came)? ->
+`,
   },
   /* ────────────────────────────────────────────────────────────────────────────── */
   {
@@ -423,47 +477,50 @@ const MAPS: ProbeMap[] = [
       place(BEACON_UNIT, 11, 20, 10);
     },
     build(scn, h) {
-      const CHAT: [number, number] = [11, 181], PATTERN: [number, number] = [11, 183], PTR: [number, number] = [11, 184], LEN: [number, number] = [11, 185], NUMBER: [number, number] = [11, 186], TELL: [number, number] = [11, 187], TELL_HELD: [number, number] = [11, 188], CYCLE: [number, number] = [11, 189], LATCH: [number, number] = [11, 196], DOWNS: [number, number] = [11, 197], TICK: [number, number] = [11, 198];
-      const addr = (c: [number, number]) => `0x${(0x58a364 + c[0] * 4 + c[1] * 48).toString(16).toUpperCase()}`;
-      const W_DOWN = 190, W_UP = 191, W_HELD = 192, D_PRESS = 193, CLICK = 194, OVER_BEACON = 195;
+      const CHAT: Cell = [11, 181], PATTERN: Cell = [11, 183], PTR: Cell = [11, 184], LEN: Cell = [11, 185], NUMBER: Cell = [11, 186], TELL: Cell = [11, 187], TELL_STATUS: Cell = [11, 188], TICK: Cell = [11, 189], PRESSES: Cell = [11, 190];
+      const W_PRESS = 191, D_PRESS = 193, CLICK_L = 194, OVER_BEACON = 195, CLICK_R = 196, CLICK_M = 197;
+      const flag = (c: Cell) => setDeaths(c, 1);
       applyTriggers(scn, [
         h.trigger([ALL], [always()], [
           h.comment("start"),
-          h.text("Probe 7, input (play as Player 1). Hold W: 'W down' once, minerals climb while held, 'W up' on release; a status line every second counts the down events. Press D: 'D pressed'. Left-click: 'click'. Mouse over the beacon: 'over the beacon'. Chat: -give (100 minerals), -set 250 (the number is read back)."),
+          h.text("Probe 7, input (TrigScript build; play as Player 1 — with a second person for the chat, which single player does not show). Press W: counted, and a status line every second says how many. Press D: 'D pressed'. Left, right and middle click: a line each. Mouse over the beacon: 'over' and 'off'. Chat -give for 100 minerals, -set 250 to read the number back."),
         ]),
-        h.trigger([P1], [deathsIs([0, W_HELD], 1, Comparison.AtLeast), deathsIs(LATCH, 0)], [h.comment("W down (latched in a counter, not a switch)"), h.text("W down: the held state is on."), setDeaths(LATCH, 1), preserve()]),
-        h.trigger([P1], [deathsIs([0, W_HELD], 0), deathsIs(LATCH, 1)], [h.comment("W up"), h.text("W up: the held state is off."), setDeaths(LATCH, 0), preserve()]),
-        h.trigger([P1], [deathsIs([0, W_DOWN], 1, Comparison.AtLeast)], [h.comment("count every down event that arrives"), setDeaths(DOWNS, 1, SetModifier.Add), preserve()]),
+        h.trigger([P1], [deathsIs([0, W_PRESS], 1, Comparison.AtLeast)], [h.comment("count every W press that arrives"), setDeaths(PRESSES, 1, SetModifier.Add), preserve()]),
         h.trigger([P1], [always()], [h.comment("status line every second"), setDeaths(TICK, 1, SetModifier.Add), preserve()]),
-        h.trigger([P1], [deathsIs(TICK, 24, Comparison.AtLeast)], [h.comment("status"), setDeaths(TICK, 0), setDeaths(TELL_HELD, 1), preserve()]),
-        h.trigger([ALL], [deathsIs([CP, W_HELD], 1, Comparison.AtLeast)], [h.comment("while W is held: +1 mineral a cycle"), addMinerals(CP, 1), preserve()]),
-        h.trigger([ALL], [deathsIs([CP, D_PRESS], 1, Comparison.AtLeast)], [h.comment("D pressed"), h.text("D pressed (synced through MSQC)."), preserve()]),
-        h.trigger([ALL], [deathsIs([CP, CLICK], 1, Comparison.AtLeast)], [h.comment("left click"), h.text("Left click."), preserve()]),
+        h.trigger([P1], [deathsIs(TICK, 24, Comparison.AtLeast)], [h.comment("status"), setDeaths(TICK, 0), flag(TELL_STATUS), preserve()]),
+        h.trigger([ALL], [deathsIs([CP, D_PRESS], 1, Comparison.AtLeast)], [h.comment("D pressed"), h.text("D pressed (carried by the build)."), preserve()]),
+        h.trigger([ALL], [deathsIs([CP, CLICK_L], 1, Comparison.AtLeast)], [h.comment("left click"), h.text("Left click."), preserve()]),
+        h.trigger([ALL], [deathsIs([CP, CLICK_R], 1, Comparison.AtLeast)], [h.comment("right click"), h.text("Right click."), preserve()]),
+        h.trigger([ALL], [deathsIs([CP, CLICK_M], 1, Comparison.AtLeast)], [h.comment("middle click"), h.text("Middle click."), preserve()]),
         h.trigger([ALL], [deathsIs([CP, OVER_BEACON], 1), switchIs(2, false)], [h.comment("mouse over the beacon"), h.text("Mouse over the beacon."), setSwitch(2, true), preserve()]),
         h.trigger([ALL], [deathsIs([CP, OVER_BEACON], 0), switchIs(2, true)], [h.comment("mouse off the beacon"), h.text("Mouse off the beacon."), setSwitch(2, false), preserve()]),
         h.trigger([ALL], [deathsIs(CHAT, 2)], [h.comment("chat -give"), addMinerals(CP, 100), h.text("-give: 100 minerals."), preserve()]),
-        h.trigger([ALL], [deathsIs(PATTERN, 3)], [h.comment("chat -set N: read the number back"), setDeaths(TELL, 1), preserve()]),
-
+        h.trigger([ALL], [deathsIs(PATTERN, 3)], [h.comment("chat -set N: read the number back"), flag(TELL), preserve()]),
         h.trigger([ALL], [always()], [h.comment("Magenta: run triggers every frame"), everyFrame(), preserve()]),
       ]);
-      const spec = {
-        version: 3, everyFrame: true,
-        chat: { cell: CHAT, args: { ptr: PTR, len: LEN, pattern: PATTERN, number: NUMBER } },
-        hooks: [
-          { id: "tell", kind: "text", flag: TELL, parts: [{ text: "-set: the number in the message is " }, { counter: NUMBER }], to: "all" },
-          { id: "tellHeld", kind: "text", flag: TELL_HELD, parts: [{ text: "Status: W downs so far = " }, { counter: DOWNS }, { text: ", held state = " }, { counter: [0, W_HELD] }, { text: ", latch = " }, { counter: LATCH }], to: "all" },
-        ],
-        scans: [],
-        msqc: { clear: [W_DOWN, W_UP, D_PRESS, CLICK], held: [{ down: W_DOWN, up: W_UP, state: W_HELD }], mouseBase: 50, mouseIn: [{ location: BEACON, unit: OVER_BEACON }], select: null },
-      };
-      const plugins: BuildPlugins = {
-        chatEvent: { __addr__: addr(CHAT), __patternAddr__: addr(PATTERN), __ptrAddr__: addr(PTR), __lenAddr__: addr(LEN), "-give": 2, "^-set .*.*$": 3 },
-        MSQC: { QCUnit: 58, QCLoc: 62, QCPlayer: 11, QCDebug: "false", "KeyDown(W); NotTyping": `${W_DOWN}, 1`, "KeyUp(W)": `${W_UP}, 1`, "KeyPress(D); NotTyping": `${D_PRESS}, 1`, "MouseDown(L)": `${CLICK}, 1`, Mouse: 50 },
-        magenta: { spec: JSON.stringify(spec) },
-        eudTurbo: {},
-      };
-      return { plugins };
+      const builds: BuildRecord[] = [
+        { id: "c1", kind: "chat", message: "-give", value: 2 },
+        { id: "c2", kind: "chat", message: "-set", value: 3, arg: "number" },
+        { id: "tell", kind: "text", flag: TELL, parts: [{ text: "-set: the number in the message is " }, { counter: NUMBER }], to: "all" },
+        { id: "status", kind: "text", flag: TELL_STATUS, parts: [{ text: "Status: W presses so far = " }, { counter: PRESSES }], to: "all" },
+      ];
+      const chat: ChatCell = { cell: CHAT, args: { ptr: PTR, len: LEN, pattern: PATTERN, number: NUMBER } };
+      const msqc: Msqc = { qcUnit: 58, qcLoc: 62, qcPlayer: 10, keys: { [String(KEY.W)]: W_PRESS, [String(KEY.D)]: D_PRESS }, clicks: { L: CLICK_L, R: CLICK_R, M: CLICK_M }, mouseBase: null, mouseIn: { [String(BEACON)]: OVER_BEACON }, select: null };
+      return { rows: { builds, chat, msqc } };
     },
+    sheet: `Magenta probe 7 — input, built by TrigScript (${new Date().toISOString().slice(0, 10)}). Play as Player 1; for the chat lines a second person has to be in the game (single player shows no typed line).
+"->" is where the answer goes.
+
+Press W five times, one at a time: does the status line (every second) reach "W presses so far = 5"? ->
+Hold W down for two seconds: does the count go up by one, or keep climbing? ->
+D: "D pressed" each press? ->
+Left, right, middle click on the ground: a line each? (a right click also moves the marine, fine) ->
+Move the mouse over the beacon and off it: "Mouse over the beacon" and "Mouse off the beacon", once each time? ->
+Chat "-give" (in a game with two people): "-give: 100 minerals", and do the minerals go up? ->
+Chat "-set 250": "-set: the number in the message is 250"? Try "-set 7" too. ->
+Did you type while holding a key — did presses while typing count? (they should not) ->
+Anything odd? ->
+`,
   },
   /* ────────────────────────────────────────────────────────────────────────────── */
   {
@@ -691,52 +748,6 @@ const MAPS: ProbeMap[] = [
   },
   /* ────────────────────────────────────────────────────────────────────────────── */
   {
-    name: "Magenta probe 10 — presentation", file: "magenta-probe-10-presentation.scx",
-    place(place) {
-      for (let i = 0; i < 4; i++) place(MARINE, 0, 12.5 + i, 12.5);
-      place(ZERGLING, 1, 38.5, 14.5); place(ZERGLING, 1, 40.5, 14.5);
-      place(BEACON_UNIT, 11, 20, 10);
-    },
-    build(scn, h) {
-      const cell = (u: number): [number, number] => [11, u];
-      const F = { dirt: cell(181), water: cell(182), black: cell(183), cloaked: cell(184), halluc: cell(185), flash: cell(186), normal: cell(187), enemy: cell(188) };
-      const flag = (c: [number, number]) => setDeaths(c, 1);
-      // Tiles of other terrains of the tileset, for a change that shows: the flat map is terrain 2.
-      const tileOf = (isomId: number) => (jungle ? flatTerrain(2, 2, baseTerrain(jungle, isomId), jungle, () => 0.5, ERA_JUNGLE).tiles[0] : isomId * 16);
-      const other = tileOf(3), water = tileOf(4);
-      const P1MARINE = { unit: MARINE, owner: 0, location: null };
-      const hooks = [
-        { id: "t1", kind: "terrain", flag: F.dirt, location: HOME, tile: other },
-        { id: "t2", kind: "terrain", flag: F.water, location: PEN, tile: water },
-        { id: "t3", kind: "terrain", flag: F.black, location: BEACON, tile: 0 },
-        { id: "c", kind: "foreach", flag: F.cloaked, ...P1MARINE, do: { tint: "cloaked" } },
-        { id: "h", kind: "foreach", flag: F.halluc, ...P1MARINE, do: { tint: "hallucination" } },
-        { id: "f", kind: "foreach", flag: F.flash, ...P1MARINE, do: { tint: "flash" } },
-        { id: "n", kind: "foreach", flag: F.normal, ...P1MARINE, do: { tint: "normal" } },
-        { id: "e", kind: "foreach", flag: F.enemy, unit: ZERGLING, owner: 1, location: null, do: { tint: "hallucination" } },
-      ];
-      applyTriggers(scn, [
-        h.trigger([P1], [always()], [
-          h.comment("start"),
-          h.text(`Probe 10, presentation. Terrain: 1 rewrites the ground under Home (your yard) to tile ${other}, 2 the Pen (enemy yard, east) to tile ${water}, 3 the Beacon's tiles to 0. Scroll away and back if nothing changes at once.`),
-          h.text("Looks: 4 your marines drawn see-through (cloaked look), 5 blue (hallucination look), 6 white flash, 7 back to normal, 8 the enemy zerglings blue. Say for each whether the look shows, and whether it stays."),
-        ]),
-        ...onKey(h, "1", `terrain under Home = tile ${other}. Expect: the ground there changes.`, [flag(F.dirt)]),
-        ...onKey(h, "2", `terrain under the Pen = tile ${water}. Expect: the ground there changes (pinged).`, [flag(F.water), ping(PEN)]),
-        ...onKey(h, "3", "terrain under the Beacon = tile 0. Expect: black, or the tileset's tile 0.", [flag(F.black)]),
-        ...onKey(h, "4", "marines: cloaked look (draw function 6).", [flag(F.cloaked)]),
-        ...onKey(h, "5", "marines: hallucination look (16).", [flag(F.halluc)]),
-        ...onKey(h, "6", "marines: warp flash look (17).", [flag(F.flash)]),
-        ...onKey(h, "7", "marines: normal look (0).", [flag(F.normal)]),
-        ...onKey(h, "8", "enemy zerglings: hallucination look.", [flag(F.enemy)]),
-        h.trigger([P1], [always()], [h.comment("Magenta: run triggers every frame"), everyFrame(), preserve()]),
-      ]);
-      const spec = { version: 4, everyFrame: true, chat: null, hooks, scans: [], msqc: null };
-      return { plugins: { magenta: { spec: JSON.stringify(spec) }, eudTurbo: {} } };
-    },
-  },
-  /* ────────────────────────────────────────────────────────────────────────────── */
-  {
     name: "Magenta probe 11 — slice 5", file: "magenta-probe-11-slice5.scx",
     place(place) {
       // Marines first: slots 0, 1699, 1698, 1697 for the start trigger's HP.
@@ -746,31 +757,31 @@ const MAPS: ProbeMap[] = [
       place(BEACON_UNIT, 11, 20, 10);
     },
     build(scn, h) {
-      const cell = (u: number): [number, number] => [11, u];
-      const F = { damage: cell(181), heal: cell(182), random: cell(183), mouse: cell(184), slide: cell(185), readType: cell(186), readOwner: cell(187), readPct: cell(188), tell: cell(189), tellPct: cell(190) };
+      const cell = (u: number): Cell => [11, u];
+      const F = { damage: cell(181), heal: cell(182), random: cell(183), mouse: cell(184), slide: cell(185), readType: cell(186), readOwner: cell(187), readPct: cell(188), tell: cell(189), tellPct: cell(190), place: cell(191) };
       const V = { low: cell(200), type: cell(201), owner: cell(202), pct: cell(203) };
       const CLICK_M = 195;
-      const MOUSE_BASE = 50;
-      const flag = (c: [number, number]) => setDeaths(c, 1);
+      const flag = (c: Cell) => setDeaths(c, 1);
       const P1MARINE = { unit: MARINE, owner: 0, location: null }, P1ZERGLING = { unit: ZERGLING, owner: 0, location: null };
-      const hooks = [
+      const builds: BuildRecord[] = [
         { id: "d", kind: "foreach", flag: F.damage, ...P1MARINE, do: { adjust: "hp", delta: -15 } },
         { id: "h", kind: "foreach", flag: F.heal, ...P1MARINE, do: { adjust: "hp", delta: 10 } },
         { id: "r", kind: "pick", flag: F.random, ...P1ZERGLING, by: "random", field: "hp", near: null, locate: null, to: null, do: { kill: true } },
         { id: "m", kind: "pick", flag: F.mouse, unit: null, owner: 0, location: null, by: "nearest", field: "hp", near: { mouse: 0 }, radius: 48, locate: null, to: null, do: { kill: true } },
-        { id: "s", kind: "setloc", flag: F.slide, location: BEACON, relative: true, x: 64, y: 0 },
+        { id: "s", kind: "setloc", flag: F.slide, location: BEACON, x: 64, y: 0, width: null, height: null, relative: true },
+        { id: "s2", kind: "setloc", flag: F.place, location: BEACON, x: 18 * T, y: 8 * T, width: null, height: null },
         { id: "rt", kind: "read", flag: F.readType, unit: null, owner: null, location: PEN, field: "unitType", to: V.type },
         { id: "ro", kind: "read", flag: F.readOwner, unit: null, owner: null, location: PEN, field: "owner", to: V.owner },
         { id: "rp", kind: "read", flag: F.readPct, ...P1MARINE, field: "hpPct", to: V.pct },
         { id: "t", kind: "text", flag: F.tell, parts: [{ text: "Read: the first unit in the Pen has type id " }, { counter: V.type }, { text: " (38 = Hydralisk) and owner " }, { counter: V.owner }, { text: " (1 = Player 2)." }], to: "all" },
         { id: "tp", kind: "text", flag: F.tellPct, parts: [{ text: "Read: the first marine is at " }, { counter: V.pct }, { text: "% hit points." }], to: "all" },
+        { id: "s1", kind: "scan", cell: V.low, ...P1MARINE, field: "hpPct", cmp: "<", value: 30 },
       ];
-      const scans = [{ id: "s1", kind: "scan", cell: V.low, ...P1MARINE, field: "hpPct", cmp: "<", value: 30 }];
       applyTriggers(scn, [
         h.trigger([P1], [always()], [
           h.comment("start: marines at 40, 20, 12, 8 HP"),
           eud("cunit.hp", { index: 0 }, 40), eud("cunit.hp", { index: 1699 }, 20), eud("cunit.hp", { index: 1698 }, 12), eud("cunit.hp", { index: 1697 }, 8),
-          h.text("Probe 11, slice 5. Marines at 40, 20, 12, 8 HP. 1 takes 15 HP off every marine (dies at 0), 2 gives 10 back (capped at 40), 3 kills a random zergling, 4 kills the unit under your mouse (within 48 px), 5 slides the Beacon 64 px right (pinged), 6 reads the Pen's first unit and the first marine's HP %, middle click prints a line."),
+          h.text("Probe 11, slice 5 (TrigScript build). Marines at 40, 20, 12, 8 HP. 1 takes 15 HP off every marine (dies at 0), 2 gives 10 back (capped at 40), 3 kills a random zergling, 4 kills the unit under your mouse (within 48 px), 5 slides the Beacon 64 px right (pinged), 7 puts it back where it started, 6 reads the Pen's first unit and the first marine's HP %. Middle click: a line."),
           h.text("A line comes at once if any marine is below 30% (the 8 HP one is at 20%)."),
         ]),
         ...onKey(h, "1", "every marine: take 15 hit points. Expect: 40→25→10→dead, 20→5→dead, 12 and 8 die at once.", [flag(F.damage)]),
@@ -779,55 +790,126 @@ const MAPS: ProbeMap[] = [
         ...onKey(h, "4", "the unit of yours nearest your mouse, within 48 px, dies. Expect: point at a unit and press; pointing at nothing does nothing.", [flag(F.mouse)]),
         ...onKey(h, "5", "the Beacon location slides 64 px right, then a ping. Expect: the ping moves right each press.", [flag(F.slide), setSwitch(4, true)]),
         h.trigger([P1], [switchIs(4, true)], [h.comment("next cycle: ping the moved Beacon"), setSwitch(4, false), ping(BEACON), preserve()]),
+        ...onKey(h, "7", "the Beacon location back to its first place, its size kept, then a ping. Expect: the ping is on the beacon again.", [flag(F.place), setSwitch(6, true)]),
+        h.trigger([P1], [switchIs(6, true)], [h.comment("next cycle: ping the replaced Beacon"), setSwitch(6, false), ping(BEACON), preserve()]),
         ...onKey(h, "6", "read the Pen's first unit's type and owner, and the first marine's HP %; two lines follow.", [flag(F.readType), flag(F.readOwner), flag(F.readPct), setSwitch(5, true)]),
         h.trigger([P1], [switchIs(5, true)], [h.comment("next cycle: tell"), setSwitch(5, false), flag(F.tell), flag(F.tellPct), preserve()]),
         h.once(10, [deathsIs(V.low, 1)], "Scan: a marine is below 30% hit points."),
-        h.trigger([ALL], [deathsIs([CP, CLICK_M], 1, Comparison.AtLeast)], [h.comment("middle click"), h.text("Middle click (synced through MSQC)."), preserve()]),
+        h.trigger([ALL], [deathsIs([CP, CLICK_M], 1, Comparison.AtLeast)], [h.comment("middle click"), h.text("Middle click (carried by the build)."), preserve()]),
         h.trigger([P1], [always()], [h.comment("Magenta: run triggers every frame"), everyFrame(), preserve()]),
       ]);
-      const spec = { version: 5, everyFrame: true, chat: null, hooks, scans, msqc: { clear: [CLICK_M], mouseBase: MOUSE_BASE, mouseIn: [], select: null } };
-      const plugins: BuildPlugins = {
-        MSQC: { QCUnit: 58, QCLoc: 62, QCPlayer: 11, QCDebug: "false", "MouseDown(M)": `${CLICK_M}, 1`, Mouse: MOUSE_BASE },
-        magenta: { spec: JSON.stringify(spec) },
-        eudTurbo: {},
-      };
-      return { plugins };
+      const msqc: Msqc = { qcUnit: 58, qcLoc: 62, qcPlayer: 10, keys: {}, clicks: { M: CLICK_M }, mouseBase: null, mouseIn: {}, select: null };
+      return { rows: { builds, msqc } };
     },
+    sheet: `Magenta probe 11 — slice 5, built by TrigScript (${new Date().toISOString().slice(0, 10)}). Play as Use Map Settings, single player is fine.
+"->" is where the answer goes.
+
+Start: marines at 40, 20, 12, 8 HP, and the line "a marine is below 30%" at once? ->
+1 once: marines at 25, 5, dead, dead? 1 again: 10, dead? ->
+2: each living marine up by 10, never past 40? ->
+3, three times: a different zergling dies each time? ->
+4 pointing at a zergling: it dies? 4 pointing at the ground away from units: nothing? ->
+5, three times: does the ping move 64 px right each time (two tiles)? ->
+7: does the ping land back on the beacon? then 5 again: does it slide from there? ->
+6: "type id 38 ... owner 1", and "the first marine is at N%" — N? ->
+Middle click: "Middle click" line? ->
+Anything odd? ->
+`,
   },
+  /* ────────────────────────────────────────────────────────────────────────────── */
+  {
+    name: "Magenta probe 12 — camera and music", file: "magenta-probe-12-options.scx",
+    place(place) {
+      for (let i = 0; i < 2; i++) place(MARINE, 0, 12.5 + i, 12.5);
+      place(BEACON_UNIT, 11, 20, 10);
+    },
+    build(scn, h) {
+      const cell = (u: number): Cell => [11, u];
+      const F = { right: cell(181), left: cell(182) };
+      const flag = (c: Cell) => setDeaths(c, 1);
+      const BGM = "staredit\\wav\\magenta-bgm.wav";
+      const builds: BuildRecord[] = [
+        { id: "r", kind: "setloc", flag: F.right, location: BEACON, x: 128, y: 0, width: null, height: null, relative: true },
+        { id: "l", kind: "setloc", flag: F.left, location: BEACON, x: -128, y: 0, width: null, height: null, relative: true },
+      ];
+      applyTriggers(scn, [
+        h.trigger([P1], [always()], [
+          h.comment("start"),
+          h.text("Probe 12, the map-wide options (TrigScript build). The camera follows the Beacon location: try to scroll away, it glides back. 1 slides the Beacon 128 px right (pinged), 2 left: the camera follows. A two-note tone (two seconds) loops as background music the whole game."),
+        ]),
+        ...onKey(h, "1", "the Beacon slides 128 px right. Expect: the camera glides after it.", [flag(F.right), setSwitch(4, true)]),
+        ...onKey(h, "2", "the Beacon slides 128 px left. Expect: the camera glides after it.", [flag(F.left), setSwitch(4, true)]),
+        h.trigger([P1], [switchIs(4, true)], [h.comment("next cycle: ping the Beacon"), setSwitch(4, false), ping(BEACON), preserve()]),
+        h.trigger([P1], [always()], [h.comment("Magenta: run triggers every frame"), everyFrame(), preserve()]),
+      ]);
+      return { rows: { builds, options: { camera: { location: BEACON, name: "Beacon", inertia: 5, maxspeed: 48 }, bgm: { path: BGM, length: 2 } }, extras: new Map([[BGM, toneWav(2)]]) } };
+    },
+    sheet: `Magenta probe 12 — camera and music, built by TrigScript (${new Date().toISOString().slice(0, 10)}). Play as Use Map Settings, single player is fine.
+"->" is where the answer goes.
+
+Start: is the screen centred on the beacon? ->
+Scroll away (arrow keys or the minimap): does the camera glide back to the beacon, smoothly rather than snapping? ->
+1, three times: does the camera glide right with the ping each time? ->
+2: and back left? ->
+Music: a two-note tone (low, then higher) that repeats every two seconds for the whole game? any gap or overlap between repeats? ->
+Does the game's own music still play underneath, or is it quiet? ->
+Anything odd? ->
+`,
+  },
+
 ];
 
-async function build(eudplib: string, map: Uint8Array, plugins: BuildPlugins): Promise<{ map: Uint8Array; log: string }> {
-  // The eudplib plugin's own command-line builder: the same worker the editor runs, under Node.
-  const dir = mkdtempSync(join(tmpdir(), "magenta-probe-"));
-  const inPath = join(dir, "in.scx"), outPath = join(dir, "out.scx"), pluginsPath = join(dir, "plugins.json");
-  writeFileSync(inPath, map);
-  writeFileSync(pluginsPath, JSON.stringify(plugins));
-  const magenta = join(import.meta.dirname, "..", "python", "magenta.py");
-  const r = spawnSync("npx", ["tsx", join(eudplib, "scripts", "build-map.mts"), inPath, outPath, pluginsPath, `magenta=${magenta}`], { cwd: eudplib, encoding: "utf8", env: { ...process.env, EUDPLIB_LOG: "1" } });
-  if (r.status !== 0) throw new Error(`build failed: ${r.stderr || r.stdout}`);
-  const out = new Uint8Array(readFileSync(outPath));
-  rmSync(dir, { recursive: true, force: true });
-  return { map: out, log: r.stdout };
+/**
+ * The rows built as the editor builds them on save: rendered as TrigScript, compiled with TrigScript's compiler, laid out by
+ * its own build into the scenario. The map's name says it is the TrigScript build (the lobby shows the name).
+ */
+async function buildWithTrigScript(scn: any, name: string, rows: Rows): Promise<{ chk: Uint8Array; source: string; lines: string[]; warnings: string[] }> {
+  if (!existsSync(join(TRIGSCRIPT, "compiler", "compiler.ts"))) throw new Error(`no plugin-trigscript checkout at ${TRIGSCRIPT} (set TRIGSCRIPT_DIR)`);
+  const bounds = (n: number) => { const l = scn.locations[n - 1]; return l && (l.right > l.left || l.bottom > l.top) ? { left: l.left, top: l.top, right: l.right, bottom: l.bottom } : null; };
+  const rendered = renderScript({ builds: rows.builds, chat: rows.chat ?? null, msqc: rows.msqc ?? null, options: { ...DEFAULT_OPTIONS, ...rows.options }, humans: [0], owner: 0, bounds });
+  if (rendered.unsupported.length) throw new Error(`rows the renderer cannot take: ${rendered.unsupported.map((u) => `${u.id ?? "(map)"}: ${u.why}`).join("; ")}`);
+  const ts = (await import(join(TRIGSCRIPT, "node_modules", "typescript", "lib", "typescript.js"))).default;
+  const { compileScript } = await import(join(TRIGSCRIPT, "compiler", "compiler.ts"));
+  const { defaultScriptNames } = await import(join(TRIGSCRIPT, "compiler", "names.ts"));
+  const { defaultLib } = await import(join(TRIGSCRIPT, "bundle", "lib.mjs"));
+  const { buildOwnMap, isRefused } = await import(join(TRIGSCRIPT, "compiler", "backend", "build.ts"));
+  const compiled = compileScript(ts, { "main.ts": rendered.source }, defaultScriptNames(), { lib: defaultLib() });
+  if (compiled.diagnostics.length) throw new Error(`the rendered file does not compile:\n${compiled.diagnostics.map((d: { line: number; message: string }) => `  ${d.line}: ${d.message}`).join("\n")}\n${rendered.source}`);
+  setScenarioName(scn, name);
+  const built = buildOwnMap({ chk: serializeScenario(scn), compiled: { ...compiled, triggers: [] } });
+  if (isRefused(built)) throw new Error(`TrigScript's own build does not take the rows: ${built.refused}`);
+  return { chk: built.chk, source: rendered.source, lines: built.lines, warnings: built.warnings };
 }
 
+if (COPY) mkdirSync(COPY, { recursive: true });
 for (const m of MAPS) {
   resetKeySwitches();
   const { scn, h } = scaffold(m, "A probe map for the Magenta plugin's candidate conditions and actions. Play as Use Map Settings in StarCraft: Remastered; press the keys it names.");
   const out = m.build(scn, h) ?? {};
-  const extras = new Map<string, Uint8Array>();
-  if (out.sidecar) extras.set(MEMBER, encodeSidecar({ version: 1, folders: [], counters: [], settings: {}, expansions: [], builds: [], chat: null, msqc: null, ...out.sidecar }));
+  const rows = out.rows;
+  const extras = new Map<string, Uint8Array>(rows?.extras ?? []);
+  // The rows as the editor keeps them: open the source map in the editor and it builds them on save, as --build does here.
+  if (rows || out.sidecar) extras.set(MEMBER, encodeSidecar({ version: 1, folders: [], counters: [], settings: { everyFrame: true, ...(rows?.options ? { build: rows.options } : {}) }, expansions: [], builds: rows?.builds ?? [], chat: rows?.chat ?? null, msqc: rows?.msqc ?? null, ...out.sidecar }));
   const bytes = await saveMap(serializeScenario(scn), { listfile: true, compress: "pkware", extras });
   const path = join(OUT, m.file);
   writeFileSync(path, bytes);
   const back = parseScenario((await loadMap(new Uint8Array(readFileSync(path)))).chk);
-  console.log(`${m.file}: ${bytes.length} bytes, ${back.triggers.length} triggers`);
-  if (out.plugins) {
-    if (!buildAt) { console.log(`   needs a build (--build ../plugin-eudplib) to play; the plugins object is in the script`); continue; }
-    const built = await build(buildAt, bytes, out.plugins);
-    const builtPath = path.replace(/\.scx$/, "-eud.scx");
-    writeFileSync(builtPath, built.map);
-    const again = parseScenario((await loadMap(built.map)).chk);
-    console.log(`   built: ${builtPath.split("/").pop()} ${built.map.length} bytes, opens with ${again.triggers.length} triggers`);
-    if (argv.includes("--log")) console.log(built.log.split("\n").filter((l) => /warn|error|MouseLoc|Memory\(|: \d+$|Total/i.test(l)).map((l) => `   | ${l}`).join("\n"));
+  console.log(`${m.file}: ${bytes.length} bytes, ${back.triggers.length} triggers${rows ? `, ${rows.builds.length} rows in the sidecar` : ""}`);
+  if (!rows) continue;
+  if (!doBuild) { console.log("   needs --build to play (or open it in the editor, which builds it on save)"); continue; }
+  const built = await buildWithTrigScript(scn, `${m.name} (TrigScript)`, rows);
+  const builtPath = path.replace(/\.scx$/, "-ts.scx");
+  const builtBytes = await saveMap(built.chk, { listfile: true, compress: "pkware", extras });
+  writeFileSync(builtPath, builtBytes);
+  const again = parseScenario((await loadMap(builtBytes)).chk);
+  console.log(`   built: ${builtPath.split("/").pop()} ${builtBytes.length} bytes, opens with ${again.triggers.length} triggers; ${built.lines.at(-1)}`);
+  for (const w of built.warnings) console.log(`   warning: ${w}`);
+  if (argv.includes("--source")) writeFileSync(builtPath.replace(/\.scx$/, ".ts"), built.source);
+  const sheetPath = builtPath.replace(/\.scx$/, "-answers.txt");
+  if (m.sheet) writeFileSync(sheetPath, m.sheet);
+  if (COPY) {
+    writeFileSync(join(COPY, builtPath.split("/").pop()!), builtBytes);
+    if (m.sheet) writeFileSync(join(COPY, sheetPath.split("/").pop()!), m.sheet);
+    console.log(`   copied to ${COPY}`);
   }
 }
