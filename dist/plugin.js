@@ -3827,7 +3827,7 @@ function josa(value, particle) {
   const vowelLike = final === 0 || pair[0] === "\uC73C\uB85C" && final === 8;
   return value + (vowelLike ? pair[1] : pair[0]);
 }
-function compose(template, parts, textOf) {
+function compose(template, parts, textOf2) {
   const out = [];
   const re = /\{([^{}|]+)(?:\|([^{}]+))?\}/g;
   let last = 0;
@@ -3840,7 +3840,7 @@ function compose(template, parts, textOf) {
     const list = Array.isArray(value) ? value : [value];
     out.push(...list);
     if (m[2]) {
-      const tail = list.map((p) => typeof p === "string" ? p : textOf(p)).join("");
+      const tail = list.map((p) => typeof p === "string" ? p : textOf2(p)).join("");
       out.push(josa(tail, m[2].trim()).slice(tail.length));
     }
     last = re.lastIndex;
@@ -3872,8 +3872,8 @@ var DEATHS_TABLE = 5808996;
 var MASK_MARKER = 17235;
 var UNIT_STRIDE = 48;
 var epd = (address2) => ((address2 & ~3) - DEATHS_TABLE) / 4 >>> 0;
-var addressOf = (player, unit = 0) => DEATHS_TABLE + player * 4 + unit * UNIT_STRIDE >>> 0;
-var isEud = (player) => player >= PLAYER_GROUP_COUNT;
+var addressOf = (player2, unit = 0) => DEATHS_TABLE + player2 * 4 + unit * UNIT_STRIDE >>> 0;
+var isEud = (player2) => player2 >= PLAYER_GROUP_COUNT;
 var lookup = null;
 function setGameLookup(next) {
   lookup = next;
@@ -3983,13 +3983,13 @@ function lowerActions(row) {
   if (!parts?.length) return [lowerAction(row)];
   return parts.map((part) => partRecord(row.entry, part, row.args, row.value));
 }
-function accessOf(player, unit, mask, location) {
-  if (!isEud(player)) return null;
-  const dword = addressOf(player, unit);
-  if (mask !== MASK_MARKER || location === 0) return { dword, masked: false, shift: 0, mask: 4294967295, address: dword };
+function accessOf(player2, unit, mask, location2) {
+  if (!isEud(player2)) return null;
+  const dword = addressOf(player2, unit);
+  if (mask !== MASK_MARKER || location2 === 0) return { dword, masked: false, shift: 0, mask: 4294967295, address: dword };
   let shift = 0;
-  while (shift < 32 && !(location >>> shift & 1)) shift++;
-  return { dword, masked: true, shift, mask: location >>> 0, address: dword + (shift >> 3) >>> 0 };
+  while (shift < 32 && !(location2 >>> shift & 1)) shift++;
+  return { dword, masked: true, shift, mask: location2 >>> 0, address: dword + (shift >> 3) >>> 0 };
 }
 function solveAt(spec, entry2, address2) {
   let offset = address2 - spec.base;
@@ -4001,9 +4001,9 @@ function solveAt(spec, entry2, address2) {
     if (!arg) return null;
     const n = Math.floor(offset / term.stride);
     if (term.via) {
-      const units = lookup?.unitsOfFlingy(n) ?? [];
-      if (!units.length) return null;
-      args[term.arg] = units[0];
+      const units2 = lookup?.unitsOfFlingy(n) ?? [];
+      if (!units2.length) return null;
+      args[term.arg] = units2[0];
     } else {
       if (n >= arg.max) return null;
       args[term.arg] = n;
@@ -4018,8 +4018,8 @@ function matchField(access, width, spec, entry2) {
   if (!access.masked || access.mask !== (1 << width * 8) - 1 << access.shift >>> 0) return null;
   return solveAt(spec, entry2, access.address);
 }
-function recognize(kind, player, unit, mask, location, amount, op) {
-  const access = accessOf(player, unit, mask, location);
+function recognize(kind, player2, unit, mask, location2, amount, op) {
+  const access = accessOf(player2, unit, mask, location2);
   if (!access) return null;
   for (const entry2 of ENTRIES) {
     if (!offers(entry2, kind) || grouped(entry2) || !available(entry2)) continue;
@@ -4189,8 +4189,8 @@ function setOwners(trigger4, groups) {
 }
 
 // vendor/triggerDefs.ts
-var c = (kind, field, label) => ({ kind, field, label });
-var a = (kind, field, label) => ({ kind, field, label });
+var c = (kind, field2, label) => ({ kind, field: field2, label });
+var a = (kind, field2, label) => ({ kind, field: field2, label });
 var COMPARE_AMOUNT = [c("comparison", "comparison", "Comparison"), c("amount", "amount", "Amount")];
 var CONDITION_DEFS = [
   { type: ConditionType.Accumulate, name: "Accumulate", args: [c("player", "player", "Player"), ...COMPARE_AMOUNT, c("resource", "resource", "Resource")] },
@@ -4711,7 +4711,7 @@ function rawAction(a2) {
   ])];
 }
 var segmentsOf = (template, parts) => compose(template, parts, (seg) => seg.kind === "text" ? seg.text : seg.label).map((p) => typeof p === "string" ? { kind: "text", text: p } : p);
-var counterChip = (name, player, unit) => ({ kind: "chip", arg: { kind: "player", field: "player", label: "Counter" }, value: player * 65536 + unit, label: name, role: "counter" });
+var counterChip = (name, player2, unit) => ({ kind: "chip", arg: { kind: "player", field: "player", label: "Counter" }, value: player2 * 65536 + unit, label: name, role: "counter" });
 function describeCondition(c2, namer) {
   const def = conditionDef(c2.type);
   if (!def) return { segments: rawCondition(c2), def: null, name: t("Condition {n}", { n: c2.type }) };
@@ -4866,14 +4866,14 @@ var MARKER_PREFIX = "magenta:";
 var beginMarker = (id) => `${MARKER_PREFIX}begin:${id}`;
 var endMarker = (id) => `${MARKER_PREFIX}end:${id}`;
 var rowMarker = (id) => `${MARKER_PREFIX}${id}`;
-function bitCondition(cell, bit) {
-  return { ...emptyCondition(), type: ConditionType.Deaths, player: epd(addressOf(cell[0], cell[1])), unitId: 0, comparison: Comparison.Exactly, amount: 1 << bit >>> 0, location: 1 << bit >>> 0, mask: MASK_MARKER };
+function bitCondition(cell2, bit) {
+  return { ...emptyCondition(), type: ConditionType.Deaths, player: epd(addressOf(cell2[0], cell2[1])), unitId: 0, comparison: Comparison.Exactly, amount: 1 << bit >>> 0, location: 1 << bit >>> 0, mask: MASK_MARKER };
 }
-function deathsIs(cell, comparison, amount) {
-  return { ...emptyCondition(), type: ConditionType.Deaths, player: cell[0], unitId: cell[1], comparison, amount };
+function deathsIs(cell2, comparison, amount) {
+  return { ...emptyCondition(), type: ConditionType.Deaths, player: cell2[0], unitId: cell2[1], comparison, amount };
 }
-function setDeaths(cell, modifier, amount) {
-  return { ...emptyAction(), type: ActionType.SetDeaths, player: cell[0], unitId: cell[1], modifier, target: amount >>> 0 };
+function setDeaths(cell2, modifier, amount) {
+  return { ...emptyAction(), type: ActionType.SetDeaths, player: cell2[0], unitId: cell2[1], modifier, target: amount >>> 0 };
 }
 var preserve = () => ({ ...emptyAction(), type: ActionType.PreserveTrigger });
 var comment = (text) => ({ ...emptyAction(), type: ActionType.Comment, text });
@@ -4989,8 +4989,8 @@ function readSidecar(bytes) {
 function decodeArgs(args) {
   if (!args || typeof args !== "object") return null;
   const a2 = args;
-  const cell = (v) => Array.isArray(v) && v.length === 2 ? [Number(v[0]), Number(v[1])] : null;
-  const ptr = cell(a2.ptr), len = cell(a2.len), pattern = cell(a2.pattern), number = cell(a2.number);
+  const cell2 = (v) => Array.isArray(v) && v.length === 2 ? [Number(v[0]), Number(v[1])] : null;
+  const ptr = cell2(a2.ptr), len = cell2(a2.len), pattern = cell2(a2.pattern), number = cell2(a2.number);
   return ptr && len && pattern && number ? { ptr, len, pattern, number } : null;
 }
 function encodeSidecar(sidecar) {
@@ -5092,13 +5092,13 @@ function slotsOf(unitIds) {
 // src/model/counters.ts
 var PLAYER_SLOTS = 12;
 var UNIT_CLASS_FIRST = 228;
-var cellKey = (player, unit) => unit * PLAYER_SLOTS + player;
+var cellKey = (player2, unit) => unit * PLAYER_SLOTS + player2;
 var cellOf = (key) => [key % PLAYER_SLOTS, Math.floor(key / PLAYER_SLOTS)];
-function playerSlots(player, triggerOwners) {
-  if (player < PLAYER_SLOTS) return [player];
-  if (player >= PLAYER_GROUP_COUNT) return [];
-  if (player === PlayerGroup.None) return [];
-  if (player === PlayerGroup.CurrentPlayer) {
+function playerSlots(player2, triggerOwners) {
+  if (player2 < PLAYER_SLOTS) return [player2];
+  if (player2 >= PLAYER_GROUP_COUNT) return [];
+  if (player2 === PlayerGroup.None) return [];
+  if (player2 === PlayerGroup.CurrentPlayer) {
     const out = /* @__PURE__ */ new Set();
     for (const o of triggerOwners) for (const p of playerSlots(o, [])) out.add(p);
     return [...out].sort((a2, b) => a2 - b);
@@ -5162,8 +5162,8 @@ var COUNTER_UNITS = [
 function allocate(used, placedUnitIds = /* @__PURE__ */ new Set()) {
   for (const unit of COUNTER_UNITS) {
     if (placedUnitIds.has(unit)) continue;
-    for (let player = 0; player < PLAYER_SLOTS; player++) {
-      if (!used.has(cellKey(player, unit))) return [player, unit];
+    for (let player2 = 0; player2 < PLAYER_SLOTS; player2++) {
+      if (!used.has(cellKey(player2, unit))) return [player2, unit];
     }
   }
   return null;
@@ -5216,7 +5216,7 @@ var Host = class {
       aiScript: (code) => this.api.names.aiScript(code),
       wav: (i) => i === 0 ? t2("no sound") : (names.string(i) ?? t2("sound {n}", { n: i })).split("\\").pop() ?? t2("sound {n}", { n: i }),
       choice: (kind, value) => this.api.triggers.defs.choiceLabel(kind, value),
-      counter: (player, unit) => sidecar.counters.find((c2) => c2.player === player && c2.unit === unit)?.name ?? null
+      counter: (player2, unit) => sidecar.counters.find((c2) => c2.player === player2 && c2.unit === unit)?.name ?? null
     };
   }
   extra() {
@@ -5279,6 +5279,11 @@ var Host = class {
     if (!scn) return true;
     const l = scn.locations[n - 1];
     return !!l && (n === 64 || l.left !== l.right || l.top !== l.bottom);
+  }
+  /** A location's edges in map pixels, by its 1-based number; null when the map has no such location. */
+  locationBounds(n) {
+    const l = this.api.document.scenario()?.locations[n - 1];
+    return l ? { left: l.left, top: l.top, right: l.right, bottom: l.bottom } : null;
   }
   locationRect(n) {
     const l = this.api.document.scenario()?.locations[n - 1];
@@ -5383,9 +5388,9 @@ var Host = class {
   }
   /** The placed units with the unit-table slot each takes in the game, for the placed-unit chip. Start locations are left out. */
   placedUnits() {
-    const units = this.api.document.scenario()?.units ?? [];
-    const slots = slotsOf(units.map((u) => u.unitId));
-    return units.map((u, index) => ({ index, slot: slots[index], unitId: u.unitId, owner: u.owner, x: u.x, y: u.y })).filter((u) => u.slot >= 0);
+    const units2 = this.api.document.scenario()?.units ?? [];
+    const slots = slotsOf(units2.map((u) => u.unitId));
+    return units2.map((u, index) => ({ index, slot: slots[index], unitId: u.unitId, owner: u.owner, x: u.x, y: u.y })).filter((u) => u.slot >= 0);
   }
   /** Everything the add row's parser can name. */
   parseNames() {
@@ -5470,6 +5475,563 @@ var Host = class {
     this.sidecarCache = { bytes: this.api.document.extras.get(MEMBER), value: sidecar, problem: null };
   }
 };
+
+// src/model/builds.ts
+var UNIT_FIELDS = [
+  { field: "hp", label: msg("hit points") },
+  { field: "shields", label: msg("shields") },
+  { field: "energy", label: msg("energy") },
+  { field: "kills", label: msg("kills") },
+  { field: "x", label: msg("x") },
+  { field: "y", label: msg("y") },
+  { field: "order", label: msg("order id") },
+  { field: "hasTarget", label: msg("targeting something"), yesNo: true },
+  { field: "underAttack", label: msg("under attack"), yesNo: true },
+  { field: "burrowed", label: msg("burrowed"), yesNo: true },
+  { field: "inTransport", label: msg("in a transport"), yesNo: true },
+  { field: "speed", label: msg("moving"), yesNo: true },
+  { field: "buildTime", label: msg("remaining build time") },
+  { field: "resources", label: msg("resources") },
+  { field: "cooldown", label: msg("weapon cooldown") },
+  { field: "hpPct", label: msg("hit points %") },
+  { field: "shieldsPct", label: msg("shields %") },
+  { field: "energyPct", label: msg("energy %") },
+  { field: "unitType", label: msg("unit type id") },
+  { field: "owner", label: msg("owner") }
+];
+var TIMERS = [
+  { timer: "stim", label: msg("stim") },
+  { timer: "ensnare", label: msg("ensnare") },
+  { timer: "plague", label: msg("plague") },
+  { timer: "lockdown", label: msg("lockdown") },
+  { timer: "stasis", label: msg("stasis") },
+  { timer: "maelstrom", label: msg("maelstrom") },
+  { timer: "irradiate", label: msg("irradiate") },
+  { timer: "matrix", label: msg("a defensive matrix") }
+];
+var TIMER_TICKS_PER_SECOND = 3;
+var HOLD_FIRE_COOLDOWN = 250;
+var isChatPattern = (c2) => c2.arg === "number" || c2.message.startsWith("^") && c2.message.endsWith("$");
+var DEFAULT_OPTIONS = { camera: null, bgm: null, noAirCollision: false, unlimiter: false };
+var DEFAULT_MSQC = { qcUnit: 58, qcLoc: 62, qcPlayer: 10, keys: {}, clicks: {}, mouseBase: null, mouseIn: {}, select: null };
+function nextChatValue(builds) {
+  let n = 2;
+  const used = new Set(builds.filter((b) => b.kind === "chat").map((b) => b.value));
+  while (used.has(n)) n++;
+  return n;
+}
+function checkChatMessage(text) {
+  if (!text.trim()) return t("Type the message players will send.");
+  if (/[\r\n]/.test(text)) return t("One line.");
+  if (new TextEncoder().encode(text).length > 78) return t("Up to 78 bytes, which is what the game lets a player type.");
+  if (/[:=]/.test(text)) return t("A message cannot contain : or =.");
+  if (text.startsWith("^") && text.endsWith("$")) {
+    const n = text.slice(1, -1).split(".*").length - 1;
+    if (n < 1 || n > 2) return t("A pattern is ^start.*end$ or ^start.*middle.*end$.");
+  }
+  return null;
+}
+
+// src/model/ownership.ts
+var readsCell = (c2, cell2) => c2.type === ConditionType.Deaths && c2.player === cell2[0] && c2.unitId === cell2[1];
+function privateCell(record) {
+  if ("flag" in record) return record.flag;
+  if (record.kind === "scan") return record.cell;
+  return null;
+}
+function carries(trigger4, record) {
+  const cell2 = privateCell(record);
+  if (!cell2) return false;
+  if (record.kind === "scan") return liveConditions(trigger4).some((c2) => readsCell(c2, cell2));
+  return liveActions(trigger4).some((a2) => isFlagAction(a2, { cell: cell2 }));
+}
+function refs(list, record) {
+  const out = [];
+  list.forEach((t2, i) => {
+    if (carries(t2, record)) out.push(i);
+  });
+  return out;
+}
+var sharedElsewhere = (list, record, except) => refs(list, record).some((i) => i !== except);
+var serial = 0;
+var freshId = (prefix) => `${prefix}${Date.now().toString(36)}${(serial++ % 1296).toString(36).padStart(2, "0")}`;
+function detach(trigger4, builds, expansions, alloc) {
+  const taken = [];
+  let moved = 0, stuck = 0;
+  const actions = [...trigger4.actions];
+  const conditions = [...trigger4.conditions];
+  const nextBuilds = [...builds];
+  const nextExpansions = [...expansions];
+  const fresh = () => {
+    const c2 = alloc(taken);
+    if (c2) taken.push(c2);
+    return c2;
+  };
+  for (const b of builds) {
+    const cell2 = privateCell(b);
+    if (!cell2 || !carries(trigger4, b)) continue;
+    const to = fresh();
+    if (!to) {
+      stuck++;
+      continue;
+    }
+    if (b.kind === "scan") {
+      nextBuilds.push({ ...b, id: freshId("s"), cell: to });
+      conditions.forEach((c2, i) => {
+        if (readsCell(c2, cell2)) conditions[i] = { ...c2, player: to[0], unitId: to[1] };
+      });
+    } else {
+      nextBuilds.push({ ...b, id: freshId("b"), flag: to });
+      actions.forEach((a2, i) => {
+        if (isFlagAction(a2, { cell: cell2 })) actions[i] = { ...a2, player: to[0], unitId: to[1] };
+      });
+    }
+    moved++;
+  }
+  for (const x of expansions) {
+    if (!("flag" in x) || !carries(trigger4, x)) continue;
+    const to = fresh();
+    if (!to) {
+      stuck++;
+      continue;
+    }
+    nextExpansions.push({ ...x, id: freshId("c"), flag: to });
+    actions.forEach((a2, i) => {
+      if (isFlagAction(a2, { cell: x.flag })) actions[i] = { ...a2, player: to[0], unitId: to[1] };
+    });
+    moved++;
+  }
+  return { trigger: { ...trigger4, actions, conditions }, builds: nextBuilds, expansions: nextExpansions, moved, stuck };
+}
+function prune(builds, list, removed) {
+  const gone = new Set(removed);
+  return builds.filter((b) => {
+    if (!privateCell(b)) return true;
+    const r = refs(list, b);
+    return r.length === 0 || r.some((i) => !gone.has(i));
+  });
+}
+function orderBuilds(builds, list) {
+  const at = (b) => {
+    const cell2 = privateCell(b);
+    if (!cell2) return -1;
+    for (let i = 0; i < list.length; i++) {
+      const rows = b.kind === "scan" ? liveConditions(list[i]).findIndex((c2) => readsCell(c2, cell2)) : liveActions(list[i]).findIndex((a2) => isFlagAction(a2, { cell: cell2 }));
+      if (rows >= 0) return i * 1024 + rows;
+    }
+    return Number.MAX_SAFE_INTEGER;
+  };
+  return builds.map((b, i) => ({ b, i, at: at(b) })).sort((x, y) => x.at - y.at || x.i - y.i).map((x) => x.b);
+}
+
+// src/model/trigscript.ts
+var ENTRY = "magenta/main.ts";
+var player = (slot) => `P${slot + 1}`;
+var unitType = (id) => `(${id} as UnitType)`;
+var location = (n) => `(${n} as Location)`;
+var cell = (c2) => `deaths(${player(c2[0])}, ${unitType(c2[1])})`;
+var setCell = (c2, value) => `setDeaths(${player(c2[0])}, ${unitType(c2[1])}, "set", ${value});`;
+function units(f) {
+  const parts = [];
+  if (f.unit !== null) parts.push(`type: ${unitType(f.unit)}`);
+  if (f.owner !== null) parts.push(`owner: ${player(f.owner)}`);
+  if (f.location !== null) parts.push(`at: ${location(f.location)}`);
+  return parts.length ? `allUnits({ ${parts.join(", ")} })` : "allUnits()";
+}
+function field(u, f) {
+  switch (f) {
+    case "hp":
+    case "shields":
+    case "energy":
+    case "kills":
+    case "x":
+    case "y":
+    case "resources":
+    case "cooldown":
+    case "buildTime":
+    case "speed":
+      return `${u}.${f}`;
+    case "order":
+      return `${u}.orderId`;
+    case "underAttack":
+    case "burrowed":
+    case "hasTarget":
+    case "inTransport":
+      return `(${u}.${f} ? 1 : 0)`;
+    case "hpPct":
+      return `${u}.hp * 100 / ${u}.maxHp`;
+    case "shieldsPct":
+      return `${u}.shields * 100 / ${u}.maxShields`;
+    case "energyPct":
+      return `${u}.energy * 100 / 250`;
+    case "unitType":
+      return `${u}.type`;
+    case "owner":
+      return `${u}.owner`;
+  }
+}
+function literal(text) {
+  return text.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\{/g, "\\${").replace(/<([0-9A-Fa-f]{2})>/g, (_, hex) => `\\x${hex.toUpperCase()}`);
+}
+function textOf(parts) {
+  return "`" + parts.map((p) => "text" in p ? literal(p.text) : "counter" in p ? `\${${cell(p.counter)}}` : "player" in p ? `\${name(${player(p.player)})}` : `\${color(${player(p.color)})}`).join("") + "`";
+}
+function verb(u, d) {
+  if ("set" in d) return { lines: [`${u}.${d.set} = ${d.value};`] };
+  if ("kill" in d) return { lines: [`${u}.kill();`] };
+  if ("remove" in d) return { lines: [`${u}.remove();`] };
+  if ("invincible" in d) return { lines: [`${u}.invincible = ${d.invincible};`] };
+  if ("hallucination" in d) return { lines: [`${u}.hallucinated = ${d.hallucination};`] };
+  if ("speed" in d) return { lines: [`${u}.speedUpgrade = ${d.speed};`] };
+  if ("status" in d) return null;
+  if ("give" in d) return { lines: [`${u}.give(${player(d.give)});`] };
+  if ("locate" in d) return { lines: [`${u}.locate(${location(d.locate)});`] };
+  if ("order" in d) return { lines: [`${u}.order("${d.order}", ${location(d.location)});`] };
+  if ("timer" in d) return { lines: [`${u}.${d.timer} = ${d.value};`] };
+  if ("cooldown" in d) return { lines: [`${u}.cooldown = ${d.cooldown};`] };
+  if ("adjust" in d) {
+    const n = Math.abs(d.delta);
+    if (d.adjust === "hp") return { lines: [d.delta < 0 ? `${u}.damage(${n});` : `${u}.heal(${n});`] };
+    const top = d.adjust === "shields" ? `${u}.maxShields` : "250";
+    return { lines: [d.delta < 0 ? `${u}.${d.adjust} = Math.max(${u}.${d.adjust} - ${n}, 0);` : `${u}.${d.adjust} = Math.min(${u}.${d.adjust} + ${n}, ${top});`] };
+  }
+  return null;
+}
+function keyNameOf(code) {
+  if (code >= 65 && code <= 90) return String.fromCharCode(code);
+  if (code >= 48 && code <= 57) return String.fromCharCode(code);
+  if (code >= 112 && code <= 123) {
+    const n = code - 111;
+    return n >= 2 && n <= 6 ? null : `F${n}`;
+  }
+  if (code >= 96 && code <= 105) return `Numpad${code - 96}`;
+  const named = { 32: "Space", 13: "Enter", 27: "Escape", 9: "Tab", 16: "Shift", 17: "Ctrl", 18: "Alt", 37: "Left", 38: "Up", 39: "Right", 40: "Down", 8: "Backspace", 46: "Delete", 45: "Insert", 36: "Home", 35: "End", 33: "PageUp", 34: "PageDown" };
+  return named[code] ?? null;
+}
+var BUTTONS = { L: "left", R: "right", M: "middle" };
+function renderScript(input) {
+  const unsupported = [];
+  const notes = [];
+  const body = [];
+  const line = (depth, text) => body.push("  ".repeat(depth) + text);
+  const chats = input.builds.filter((b) => b.kind === "chat");
+  const hooks = input.builds.filter((b) => b.kind !== "chat" && b.kind !== "scan");
+  const scans = input.builds.filter((b) => b.kind === "scan");
+  const msqc = input.msqc;
+  const keys = msqc ? Object.entries(msqc.keys).map(([code, unit]) => ({ code: Number(code), unit })) : [];
+  const clicks = msqc ? Object.entries(msqc.clicks) : [];
+  const mouseIn = msqc ? Object.entries(msqc.mouseIn).map(([loc, unit]) => ({ location: Number(loc), unit })) : [];
+  const no = (id, why) => unsupported.push({ id, why });
+  const cleared = [];
+  if (chats.length && input.chat) {
+    cleared.push(setCell(input.chat.cell, "0"));
+    if (input.chat.args && chats.some(isChatPattern)) cleared.push(setCell(input.chat.args.pattern, "0"));
+  }
+  for (const p of input.humans) {
+    for (const k of keys) cleared.push(setCell([p, k.unit], "0"));
+    for (const [, unit] of clicks) cleared.push(setCell([p, unit], "0"));
+  }
+  if (cleared.length) {
+    line(2, "// A press, a click or a typed line is true for one frame of triggers: cleared before this frame's are read.");
+    for (const c2 of cleared) line(2, c2);
+  }
+  const lastOf = /* @__PURE__ */ new Map();
+  for (const h of hooks) lastOf.set(`${h.flag[0]}:${h.flag[1]}`, h.id);
+  if (hooks.length) line(2, "// The build rows: each when its trigger set the flag this frame, in the order of the list.");
+  for (const h of hooks) {
+    const inner = [];
+    const put = (text) => inner.push(text);
+    let ok = true;
+    switch (h.kind) {
+      case "text":
+        put(`print(${textOf(h.parts)}, { to: ${h.to === "all" ? "AllPlayers" : player(h.to)} });`);
+        break;
+      case "math": {
+        const a2 = cell(h.a), b = typeof h.b === "number" ? String(h.b) : cell(h.b);
+        put(setCell(h.to, h.op === "mul" ? `${a2} * ${b}` : h.op === "div" ? `${a2} / ${b}` : h.op === "mod" ? `${a2} % ${b}` : `random(${b})`));
+        break;
+      }
+      case "foreach": {
+        const v = verb("u", h.do);
+        if (!v) {
+          no(h.id, t("this pass's verb is not in the language yet"));
+          ok = false;
+          break;
+        }
+        if (v.note) notes.push({ id: h.id, note: v.note });
+        put(`for (const u of ${units(h)}) {`);
+        for (const l of v.lines) put(`  ${l}`);
+        put("}");
+        break;
+      }
+      case "count":
+        put("let n = 0;");
+        put(`for (const u of ${units(h)}) n += 1;`);
+        put(setCell(h.to, "n"));
+        break;
+      case "read": {
+        const f = field("u", h.field);
+        put("let v = 0;");
+        put("let seen = 0;");
+        put(`for (const u of ${units(h)}) {`);
+        put(`  if (seen == 0) { v = ${f}; seen = 1; }`);
+        put("}");
+        put(setCell(h.to, "v"));
+        break;
+      }
+      case "pick": {
+        const measure = h.by === "nearest" ? "distance" : h.by === "random" ? null : field("u", h.field);
+        if (h.by === "random") {
+          put(`const found = randomUnit(${units(h)});`);
+          put("const best = 0;");
+        } else {
+          if (h.by === "nearest") {
+            if (typeof h.near === "number") {
+              if (!input.bounds(h.near)) {
+                no(h.id, t("the pick measures from location {n}, which the map no longer has", { n: h.near }));
+                ok = false;
+                break;
+              }
+              put(`const b = bounds(${location(h.near)});`);
+              put("const cx = (b.left + b.right) / 2, cy = (b.top + b.bottom) / 2;");
+            } else if (h.near && typeof h.near === "object") {
+              put(`const cx = mouse(${player(h.near.mouse)}).x, cy = mouse(${player(h.near.mouse)}).y;`);
+            } else {
+              no(h.id, t("the pick measures from nothing"));
+              ok = false;
+              break;
+            }
+          }
+          put(`let best = ${h.by === "max" ? "-1" : "2147483647"};`);
+          put("let found: Unit | null = null;");
+          put(`for (const u of ${units(h)}) {`);
+          put(`  const v = ${h.by === "nearest" ? "Math.abs(u.x - cx) + Math.abs(u.y - cy)" : measure};`);
+          put(`  if (v ${h.by === "max" ? ">" : "<"} best) { best = v; found = u; }`);
+          put("}");
+          if (h.by === "nearest" && h.radius !== null && h.radius !== void 0) put(`if (best > ${h.radius}) found = null;`);
+        }
+        const v = h.do ? verb("found", h.do) : null;
+        if (h.do && !v) {
+          no(h.id, t("this pick's verb is not in the language yet"));
+          ok = false;
+          break;
+        }
+        if (v?.note) notes.push({ id: h.id, note: v.note });
+        put("if (found) {");
+        if (h.locate !== null) put(`  found.locate(${location(h.locate)});`);
+        if (h.to) put(`  ${setCell(h.to, "best")}`);
+        for (const l of v?.lines ?? []) put(`  ${l}`);
+        put("}");
+        if (h.to) {
+          put("else {");
+          put(`  ${setCell(h.to, "0")}`);
+          put("}");
+        }
+        break;
+      }
+      case "setloc": {
+        if (!input.bounds(h.location)) {
+          no(h.id, t("the row moves location {n}, which the map no longer has", { n: h.location }));
+          ok = false;
+          break;
+        }
+        put(`const b = bounds(${location(h.location)});`);
+        if (h.relative) {
+          const by = (edge, d) => {
+            if (d > 0) put(`b.${edge} += ${d};`);
+            else if (d < 0) put(`b.${edge} -= ${-d};`);
+          };
+          by("left", h.x);
+          by("top", h.y);
+          if (h.width === null) by("right", h.x);
+          else put(`b.right = b.left + ${h.width};`);
+          if (h.height === null) by("bottom", h.y);
+          else put(`b.bottom = b.top + ${h.height};`);
+        } else {
+          if (h.width === null) put("const w = b.right - b.left;");
+          if (h.height === null) put("const h = b.bottom - b.top;");
+          put(`b.left = ${h.x}; b.top = ${h.y};`);
+          put(`b.right = ${h.width === null ? `${h.x} + w` : h.x + h.width}; b.bottom = ${h.height === null ? `${h.y} + h` : h.y + h.height};`);
+        }
+        break;
+      }
+    }
+    if (!ok) {
+      line(2, `// Row ${h.id} left out: ${unsupported[unsupported.length - 1].why}`);
+      continue;
+    }
+    line(2, `if (${cell(h.flag)} == 1) {`);
+    for (const l of inner) line(3, l);
+    if (lastOf.get(`${h.flag[0]}:${h.flag[1]}`) === h.id) line(3, setCell(h.flag, "0"));
+    line(2, "}");
+  }
+  const input_ = [];
+  if (chats.length && input.chat) {
+    const chat = input.chat;
+    let k = 0;
+    for (const c2 of chats) {
+      if (c2.arg === "number") {
+        if (!chat.args) {
+          no(c2.id, t("the chat command's number has no cell to land in; add the command again"));
+          continue;
+        }
+        for (const p of input.humans) {
+          const m = `m${k++}`;
+          input_.push(`const ${m} = chatted(${player(p)}, ${JSON.stringify(`${c2.message} {n}`)});`);
+          input_.push(`if (${m}) { ${setCell(chat.args.pattern, String(c2.value))} ${setCell(chat.args.number, `${m}.n`)} }`);
+        }
+      } else if (isChatPattern(c2)) {
+        no(c2.id, t("a chat pattern of your own (^\u2026$) is not in the language yet; write the message, or the message followed by a number"));
+      } else {
+        for (const p of input.humans) input_.push(`if (chatted(${player(p)}, ${JSON.stringify(c2.message)})) ${setCell(chat.cell, String(c2.value))}`);
+      }
+    }
+  }
+  for (const k of keys) {
+    const name = keyNameOf(k.code);
+    if (!name) {
+      no(null, t("the key with code {code} is one StarCraft: Remastered reports no press of, or none the language names", { code: k.code }));
+      continue;
+    }
+    for (const p of input.humans) input_.push(`if (keyPressed(${player(p)}, ${JSON.stringify(name)})) ${setCell([p, k.unit], "1")}`);
+  }
+  for (const [button, unit] of clicks) {
+    for (const p of input.humans) input_.push(`if (clicked(${player(p)}, "${BUTTONS[button] ?? "left"}")) ${setCell([p, unit], "1")}`);
+  }
+  for (const m of mouseIn) {
+    if (!input.bounds(m.location)) {
+      no(null, t("the mouse is read over location {n}, which the map no longer has", { n: m.location }));
+      continue;
+    }
+    const b = `mb${m.location}`;
+    input_.push(`const ${b} = bounds(${location(m.location)});`);
+    for (const p of input.humans) {
+      input_.push(`const mp${p}_${m.location} = mouse(${player(p)});`);
+      input_.push(`if (mp${p}_${m.location}.x >= ${b}.left && mp${p}_${m.location}.x <= ${b}.right && mp${p}_${m.location}.y >= ${b}.top && mp${p}_${m.location}.y <= ${b}.bottom) ${setCell([p, m.unit], "1")}`);
+      input_.push(`else ${setCell([p, m.unit], "0")}`);
+    }
+  }
+  if (msqc?.select) no(null, t("the selected unit is not carried yet"));
+  if (input_.length) {
+    line(2, "// What the players did this frame, for the next frame's triggers.");
+    for (const l of input_) line(2, l);
+  }
+  if (scans.length) line(2, "// The unit checks: 1 while some matching unit's field compares so, else 0.");
+  for (const s of scans) {
+    const f = field("u", s.field);
+    const cmp = s.cmp === "=" ? "==" : s.cmp;
+    line(2, "{");
+    line(3, "let hit = 0;");
+    line(3, `for (const u of ${units(s)}) {`);
+    line(4, `if (${f} ${cmp} ${s.value}) hit = 1;`);
+    line(3, "}");
+    line(3, setCell(s.cell, "hit"));
+    line(2, "}");
+  }
+  const extra = [];
+  const everyone = input.humans.map(player).join(", ");
+  if (input.options.camera && input.humans.length) {
+    const c2 = input.options.camera;
+    if (!input.bounds(c2.location)) no(null, t("the camera follows location {n}, which the map no longer has", { n: c2.location }));
+    else extra.push(...[
+      "// The camera glides after the location, for each human: every frame a step of the way there, the distance divided by the",
+      "// inertia and capped at the top speed, as euddraft's cammove did.",
+      `const VIEW = reserveLocation("Magenta: where the camera looks");`,
+      "program(() => {",
+      `  const b0 = bounds(${location(c2.location)});`,
+      "  let cx = (b0.left + b0.right) / 2;",
+      "  let cy = (b0.top + b0.bottom) / 2;",
+      "  while (true) {",
+      `    const b = bounds(${location(c2.location)});`,
+      "    const tx = (b.left + b.right) / 2, ty = (b.top + b.bottom) / 2;",
+      `    cx += clamp((tx - cx) / ${Math.max(1, c2.inertia)}, -${c2.maxspeed}, ${c2.maxspeed});`,
+      `    cy += clamp((ty - cy) / ${Math.max(1, c2.inertia)}, -${c2.maxspeed}, ${c2.maxspeed});`,
+      "    centerLocation(VIEW, cx, cy, 32, 32);",
+      "    centerView(VIEW);",
+      "    sleep(frames(1));",
+      "  }",
+      `}, { owner: [${everyone}], name: "Magenta camera" });`
+    ]);
+  }
+  if (input.options.bgm && input.humans.length) {
+    const m = input.options.bgm;
+    extra.push(...[
+      "// The background music: the sound played again each time its length has passed, for each human.",
+      "program(() => {",
+      "  while (true) {",
+      `    playWav(${JSON.stringify(m.path)}, ${Math.round(m.length * 1e3)});`,
+      `    sleep(frames(${Math.max(1, Math.round(m.length * 24))}));`,
+      "  }",
+      `}, { owner: [${everyone}], name: "Magenta music" });`
+    ]);
+  }
+  if (input.options.noAirCollision) no(null, t("air units passing through one another was a code patch of euddraft's, which TrigScript's build does not have"));
+  if (input.options.unlimiter) no(null, t("lifting the sprite and image limits was a code patch of euddraft's, which TrigScript's build does not have"));
+  const source = [
+    "// Magenta's rows, rendered for TrigScript's build. Made from the map's Magenta data on every save: do not edit.",
+    "// Each build row runs when its trigger set the flag, after the map's triggers; what the players did, and what the unit",
+    "// checks find, goes into its cell for the next frame's triggers.",
+    "program(() => {",
+    "  while (true) {",
+    ...body,
+    "    sleep(frames(1));",
+    "  }",
+    `}, { owner: ${player(input.owner)}, name: "Magenta" });`,
+    ...extra.length ? ["", ...extra] : [],
+    ""
+  ].join("\n");
+  return { source, unsupported, notes };
+}
+
+// vendor/trigscript.ts
+var TRIGSCRIPT_BUILD_SERVICE = "trigscript.build";
+
+// src/ui/contribute.ts
+var PLAYER_HUMAN = 6;
+var PLAYER_COMPUTER = 5;
+var trigscript = (api) => api.services.get(TRIGSCRIPT_BUILD_SERVICE);
+function renderForMap(host) {
+  if (!host.isOpen()) return null;
+  const sidecar = host.sidecar();
+  const list = host.triggers();
+  const builds = orderBuilds(sidecar.builds, list);
+  const options = { ...DEFAULT_OPTIONS, ...sidecar.settings.build };
+  const types = host.playerTypes();
+  const humans = types.flatMap((type, slot) => slot < 8 && type === PLAYER_HUMAN ? [slot] : []);
+  const owner = humans[0] ?? types.findIndex((type, slot) => slot < 8 && type === PLAYER_COMPUTER);
+  const msqc = sidecar.msqc;
+  const inputs = msqc ? Object.keys(msqc.keys).length + Object.keys(msqc.clicks).length + Object.keys(msqc.mouseIn).length + (msqc.select ? 1 : 0) : 0;
+  const rendered = renderScript({ builds, chat: sidecar.chat, msqc, options, humans, owner: Math.max(0, owner), bounds: (n) => host.locationBounds(n) });
+  return { rendered, options, rows: builds.filter((b) => b.kind !== "chat").length, chats: builds.filter((b) => b.kind === "chat").length, inputs };
+}
+function hasWork(host) {
+  const r = renderForMap(host);
+  return !!r && (r.rows + r.chats + r.inputs > 0 || !!r.options.camera || !!r.options.bgm || r.options.noAirCollision || r.options.unlimiter);
+}
+function installContribution(api, host) {
+  let mine = null;
+  const watching = api.services.watch(TRIGSCRIPT_BUILD_SERVICE, (svc) => {
+    mine?.dispose();
+    mine = svc?.contribute({
+      id: "magenta",
+      label: "Magenta",
+      applies: () => hasWork(host),
+      collect: async () => {
+        const r = renderForMap(host);
+        if (!r) throw new Error(t("No map is open."));
+        if (r.rendered.unsupported.length) {
+          const first = r.rendered.unsupported[0];
+          throw new Error(r.rendered.unsupported.length === 1 ? t("{why}. The map's Build dialog (\u22EF \u25B8 Build\u2026) lists it.", { why: first.why }) : t("{why}, and {n, plural, one {# more row} other {# more rows}} the same. The map's Build dialog (\u22EF \u25B8 Build\u2026) lists them.", { why: first.why, n: r.rendered.unsupported.length - 1 }));
+        }
+        return { files: { [ENTRY]: r.rendered.source }, entries: [ENTRY] };
+      }
+    }) ?? null;
+  });
+  return { dispose: () => {
+    mine?.dispose();
+    watching.dispose();
+  } };
+}
 
 // src/ui/frame.ts
 function isFrameTrigger(tr) {
@@ -5579,9 +6141,9 @@ var always = () => cond(C2.Always);
 var preserve2 = () => act(A2.PreserveTrigger);
 var comment2 = (ctx, text) => act(A2.Comment, { text: ctx.intern(text) });
 var display = (ctx, text) => act(A2.DisplayText, { text: ctx.intern(text), flags: ActionFlag.AlwaysDisplay });
-var bring = (player, unit, location, comparison, amount) => cond(C2.Bring, { player, unitId: unit, location, comparison, amount });
-var deaths = (player, unit, comparison, amount) => cond(C2.Deaths, { player, unitId: unit, comparison, amount });
-var setDeaths2 = (player, unit, modifier, amount) => act(A2.SetDeaths, { player, unitId: unit, modifier, target: amount });
+var bring = (player2, unit, location2, comparison, amount) => cond(C2.Bring, { player: player2, unitId: unit, location: location2, comparison, amount });
+var deaths = (player2, unit, comparison, amount) => cond(C2.Deaths, { player: player2, unitId: unit, comparison, amount });
+var setDeaths2 = (player2, unit, modifier, amount) => act(A2.SetDeaths, { player: player2, unitId: unit, modifier, target: amount });
 var trigger2 = (ctx, title, owners2, conditions, actions) => setOwners({ ...emptyTrigger(), conditions, actions: [comment2(ctx, title), ...actions] }, owners2);
 var RECIPES = [
   {
@@ -5722,215 +6284,6 @@ function recipeContext(intern, locations, input = () => null) {
   return { intern, location: locations[0] ?? ANYWHERE, location2: locations[1] ?? locations[0] ?? ANYWHERE, input };
 }
 
-// src/model/ownership.ts
-var readsCell = (c2, cell) => c2.type === ConditionType.Deaths && c2.player === cell[0] && c2.unitId === cell[1];
-function privateCell(record) {
-  if ("flag" in record) return record.flag;
-  if (record.kind === "scan") return record.cell;
-  return null;
-}
-function carries(trigger4, record) {
-  const cell = privateCell(record);
-  if (!cell) return false;
-  if (record.kind === "scan") return liveConditions(trigger4).some((c2) => readsCell(c2, cell));
-  return liveActions(trigger4).some((a2) => isFlagAction(a2, { cell }));
-}
-function refs(list, record) {
-  const out = [];
-  list.forEach((t2, i) => {
-    if (carries(t2, record)) out.push(i);
-  });
-  return out;
-}
-var sharedElsewhere = (list, record, except) => refs(list, record).some((i) => i !== except);
-var serial = 0;
-var freshId = (prefix) => `${prefix}${Date.now().toString(36)}${(serial++ % 1296).toString(36).padStart(2, "0")}`;
-function detach(trigger4, builds, expansions, alloc) {
-  const taken = [];
-  let moved = 0, stuck = 0;
-  const actions = [...trigger4.actions];
-  const conditions = [...trigger4.conditions];
-  const nextBuilds = [...builds];
-  const nextExpansions = [...expansions];
-  const fresh = () => {
-    const c2 = alloc(taken);
-    if (c2) taken.push(c2);
-    return c2;
-  };
-  for (const b of builds) {
-    const cell = privateCell(b);
-    if (!cell || !carries(trigger4, b)) continue;
-    const to = fresh();
-    if (!to) {
-      stuck++;
-      continue;
-    }
-    if (b.kind === "scan") {
-      nextBuilds.push({ ...b, id: freshId("s"), cell: to });
-      conditions.forEach((c2, i) => {
-        if (readsCell(c2, cell)) conditions[i] = { ...c2, player: to[0], unitId: to[1] };
-      });
-    } else {
-      nextBuilds.push({ ...b, id: freshId("b"), flag: to });
-      actions.forEach((a2, i) => {
-        if (isFlagAction(a2, { cell })) actions[i] = { ...a2, player: to[0], unitId: to[1] };
-      });
-    }
-    moved++;
-  }
-  for (const x of expansions) {
-    if (!("flag" in x) || !carries(trigger4, x)) continue;
-    const to = fresh();
-    if (!to) {
-      stuck++;
-      continue;
-    }
-    nextExpansions.push({ ...x, id: freshId("c"), flag: to });
-    actions.forEach((a2, i) => {
-      if (isFlagAction(a2, { cell: x.flag })) actions[i] = { ...a2, player: to[0], unitId: to[1] };
-    });
-    moved++;
-  }
-  return { trigger: { ...trigger4, actions, conditions }, builds: nextBuilds, expansions: nextExpansions, moved, stuck };
-}
-function prune(builds, list, removed) {
-  const gone = new Set(removed);
-  return builds.filter((b) => {
-    if (!privateCell(b)) return true;
-    const r = refs(list, b);
-    return r.length === 0 || r.some((i) => !gone.has(i));
-  });
-}
-function orderBuilds(builds, list) {
-  const at = (b) => {
-    const cell = privateCell(b);
-    if (!cell) return -1;
-    for (let i = 0; i < list.length; i++) {
-      const rows = b.kind === "scan" ? liveConditions(list[i]).findIndex((c2) => readsCell(c2, cell)) : liveActions(list[i]).findIndex((a2) => isFlagAction(a2, { cell }));
-      if (rows >= 0) return i * 1024 + rows;
-    }
-    return Number.MAX_SAFE_INTEGER;
-  };
-  return builds.map((b, i) => ({ b, i, at: at(b) })).sort((x, y) => x.at - y.at || x.i - y.i).map((x) => x.b);
-}
-
-// src/model/builds.ts
-var UNIT_FIELDS = [
-  { field: "hp", label: msg("hit points") },
-  { field: "shields", label: msg("shields") },
-  { field: "energy", label: msg("energy") },
-  { field: "kills", label: msg("kills") },
-  { field: "x", label: msg("x") },
-  { field: "y", label: msg("y") },
-  { field: "order", label: msg("order id") },
-  { field: "hasTarget", label: msg("targeting something"), yesNo: true },
-  { field: "underAttack", label: msg("under attack"), yesNo: true },
-  { field: "burrowed", label: msg("burrowed"), yesNo: true },
-  { field: "inTransport", label: msg("in a transport"), yesNo: true },
-  { field: "speed", label: msg("moving"), yesNo: true },
-  { field: "buildTime", label: msg("remaining build time") },
-  { field: "resources", label: msg("resources") },
-  { field: "cooldown", label: msg("weapon cooldown") },
-  { field: "hpPct", label: msg("hit points %") },
-  { field: "shieldsPct", label: msg("shields %") },
-  { field: "energyPct", label: msg("energy %") },
-  { field: "unitType", label: msg("unit type id") },
-  { field: "owner", label: msg("owner") }
-];
-var TIMERS = [
-  { timer: "stim", label: msg("stim") },
-  { timer: "ensnare", label: msg("ensnare") },
-  { timer: "plague", label: msg("plague") },
-  { timer: "lockdown", label: msg("lockdown") },
-  { timer: "stasis", label: msg("stasis") },
-  { timer: "maelstrom", label: msg("maelstrom") },
-  { timer: "irradiate", label: msg("irradiate") },
-  { timer: "matrix", label: msg("a defensive matrix") }
-];
-var TIMER_TICKS_PER_SECOND = 3;
-var HOLD_FIRE_COOLDOWN = 250;
-var isChatPattern = (c2) => c2.arg === "number" || c2.message.startsWith("^") && c2.message.endsWith("$");
-function chatKey(c2) {
-  if (c2.arg === "number") return `^${c2.message} .*.*$`;
-  if (c2.message.startsWith("^") && c2.message.endsWith("$")) {
-    const parts = c2.message.slice(1, -1).split(".*");
-    if (parts.length === 2) return `^${parts[0]}.*.*${parts[1]}$`;
-    return c2.message;
-  }
-  return c2.message;
-}
-var DEFAULT_OPTIONS = { camera: null, bgm: null, noAirCollision: false, unlimiter: false };
-var DEFAULT_MSQC = { qcUnit: 58, qcLoc: 62, qcPlayer: 10, keys: {}, clicks: {}, mouseBase: null, mouseIn: {}, select: null };
-var MAGENTA_SPEC_VERSION = 5;
-var cellAddress = (cell) => 5808996 + cell[0] * 4 + cell[1] * 48;
-function msqcKeyName(code) {
-  if (code >= 65 && code <= 90) return String.fromCharCode(code);
-  if (code >= 48 && code <= 57) return String.fromCharCode(code);
-  if (code >= 112 && code <= 123) return `F${code - 111}`;
-  const named = { 32: "SPACE", 13: "ENTER", 27: "ESC", 9: "TAB", 16: "SHIFT", 17: "LCTRL", 18: "LALT", 37: "LEFT", 38: "UP", 39: "RIGHT", 40: "DOWN", 8: "BACK", 46: "DELETE", 45: "INSERT", 36: "HOME", 35: "END", 33: "PGUP", 34: "PGDN" };
-  return named[code] ?? `0x${code.toString(16).toUpperCase()}`;
-}
-var usesMsqc = (m) => !!m && (Object.keys(m.keys).length > 0 || Object.keys(m.clicks).length > 0 || Object.keys(m.mouseIn).length > 0 || m.select !== null);
-function composePlugins(builds, chat, everyFrame, msqc = null, options = DEFAULT_OPTIONS, cammoveLoc = null) {
-  const plugins = {};
-  if (options.camera && cammoveLoc !== null) plugins.cammove = { targetloc: options.camera.name, inertia: options.camera.inertia, maxspeed: options.camera.maxspeed };
-  if (options.bgm) plugins.bgmplayer = { path: options.bgm.path, length: options.bgm.length };
-  if (options.noAirCollision) plugins.noAirCollision = {};
-  if (options.unlimiter) plugins.unlimiter = {};
-  const chats = builds.filter((b) => b.kind === "chat");
-  if (chats.length && chat) {
-    const section = { __addr__: `0x${cellAddress(chat.cell).toString(16).toUpperCase()}` };
-    if (chat.args && chats.some(isChatPattern)) {
-      section.__patternAddr__ = `0x${cellAddress(chat.args.pattern).toString(16).toUpperCase()}`;
-      section.__ptrAddr__ = `0x${cellAddress(chat.args.ptr).toString(16).toUpperCase()}`;
-      section.__lenAddr__ = `0x${cellAddress(chat.args.len).toString(16).toUpperCase()}`;
-    }
-    for (const c2 of chats) section[chatKey(c2)] = c2.value;
-    plugins.chatEvent = section;
-  }
-  let msqcSpec = null;
-  if (usesMsqc(msqc)) {
-    const section = { QCUnit: msqc.qcUnit, QCLoc: msqc.qcLoc, QCPlayer: msqc.qcPlayer + 1, QCDebug: "false" };
-    const clear = [];
-    for (const [code, unit] of Object.entries(msqc.keys)) {
-      section[`KeyPress(${msqcKeyName(Number(code))}); NotTyping`] = `${unit}, 1`;
-      clear.push(unit);
-    }
-    for (const [button, unit] of Object.entries(msqc.clicks)) {
-      section[`MouseDown(${button})`] = `${unit}, 1`;
-      clear.push(unit);
-    }
-    const mouseIn = Object.entries(msqc.mouseIn).map(([location, unit]) => ({ location: Number(location), unit }));
-    if ((mouseIn.length || Object.keys(msqc.clicks).length) && msqc.mouseBase !== null) section["Mouse"] = msqc.mouseBase;
-    if (msqc.select) section["MouseUp(L); val, 0x597208"] = String(msqc.select.ptr);
-    plugins.MSQC = section;
-    msqcSpec = { clear, mouseBase: msqc.mouseBase, mouseIn, select: msqc.select };
-  }
-  const hooks = builds.filter((b) => "flag" in b);
-  const scans = builds.filter((b) => b.kind === "scan");
-  const spec = { version: MAGENTA_SPEC_VERSION, everyFrame, chat: chats.length && chat ? { cell: chat.cell, args: chats.some(isChatPattern) ? chat.args ?? null : null } : null, hooks, scans, msqc: msqcSpec };
-  if (hooks.length || scans.length || spec.chat || msqcSpec) plugins.magenta = { spec: JSON.stringify(spec) };
-  if (everyFrame) plugins.eudTurbo = {};
-  return plugins;
-}
-function nextChatValue(builds) {
-  let n = 2;
-  const used = new Set(builds.filter((b) => b.kind === "chat").map((b) => b.value));
-  while (used.has(n)) n++;
-  return n;
-}
-function checkChatMessage(text) {
-  if (!text.trim()) return t("Type the message players will send.");
-  if (/[\r\n]/.test(text)) return t("One line.");
-  if (new TextEncoder().encode(text).length > 78) return t("Up to 78 bytes, which is what the game lets a player type.");
-  if (/[:=]/.test(text)) return t("A message cannot contain : or =.");
-  if (text.startsWith("^") && text.endsWith("$")) {
-    const n = text.slice(1, -1).split(".*").length - 1;
-    if (n < 1 || n > 2) return t("A pattern is ^start.*end$ or ^start.*middle.*end$.");
-  }
-  return null;
-}
-
 // src/model/textParts.ts
 function partsToText(parts, names) {
   return parts.map((p) => {
@@ -5960,18 +6313,18 @@ function textToParts(text, names) {
       const end = text.indexOf("}", i + 1);
       if (end > i) {
         const inner = text.slice(i + 1, end).trim();
-        const player = /^player\s*(\d{1,2})('s)?\s*(colou?r)?$/i.exec(inner);
-        if (player && Number(player[1]) >= 1 && Number(player[1]) <= 12) {
+        const player2 = /^player\s*(\d{1,2})('s)?\s*(colou?r)?$/i.exec(inner);
+        if (player2 && Number(player2[1]) >= 1 && Number(player2[1]) <= 12) {
           flush();
-          out.push(player[3] ? { color: Number(player[1]) - 1 } : { player: Number(player[1]) - 1 });
+          out.push(player2[3] ? { color: Number(player2[1]) - 1 } : { player: Number(player2[1]) - 1 });
           i = end;
           continue;
         }
         const raw = /^(\d{1,2}):(\d{1,3})$/.exec(inner);
-        const cell = raw ? [Number(raw[1]), Number(raw[2])] : names.cell(inner);
-        if (cell) {
+        const cell2 = raw ? [Number(raw[1]), Number(raw[2])] : names.cell(inner);
+        if (cell2) {
           flush();
-          out.push({ counter: cell });
+          out.push({ counter: cell2 });
           i = end;
           continue;
         }
@@ -6198,14 +6551,14 @@ function pickPlayer(api, host, anchor, current3, onPick, options = {}) {
   return pickChoice(api, anchor, items, onPick, { current: current3, actions, width: 240 });
 }
 function pickUnitType(api, host, anchor, current3, onPick, options = {}) {
-  const units = host.units();
+  const units2 = host.units();
   const items = [];
   if (options.classes !== false) {
     items.push({ value: -1, label: api.i18n.t("Classes"), group: true });
-    for (const u of units) if (u.value >= 228) items.push(u);
+    for (const u of units2) if (u.value >= 228) items.push(u);
   }
   items.push({ value: -2, label: api.i18n.t("Units"), group: true });
-  for (const u of units) if (u.value < 228) items.push(u);
+  for (const u of units2) if (u.value < 228) items.push(u);
   return pickChoice(api, anchor, items, onPick, {
     current: current3,
     searchable: true,
@@ -6307,7 +6660,7 @@ function compareOf(store, index, trigger4) {
   const clean2 = store.cleanIndex(index);
   const x = store.sidecar.expansions.find((e) => e.kind === "compare" && e.anchor.i === clean2);
   if (!x) return null;
-  const reads = (c2, cell) => c2.type === ConditionType.Deaths && c2.player === cell[0] && c2.unitId === cell[1];
+  const reads = (c2, cell2) => c2.type === ConditionType.Deaths && c2.player === cell2[0] && c2.unitId === cell2[1];
   const rows = trigger4.conditions.map((c2, i) => reads(c2, x.scratch[0]) || reads(c2, x.scratch[1]) ? i : -1).filter((i) => i >= 0);
   const found = rows.map((i) => trigger4.conditions[i]);
   let relation = "==";
@@ -6317,8 +6670,8 @@ function compareOf(store, index, trigger4) {
   }
   return { x, rows, relation };
 }
-function cellLabel(cell, namer) {
-  return namer.counter?.(cell[0], cell[1]) ?? t("{player}'s {unit} deaths", { player: namer.player(cell[0]), unit: namer.unit(cell[1]).replace(/ \(Unused\)$/, "") });
+function cellLabel(cell2, namer) {
+  return namer.counter?.(cell2[0], cell2[1]) ?? t("{player}'s {unit} deaths", { player: namer.player(cell2[0]), unit: namer.unit(cell2[1]).replace(/ \(Unused\)$/, "") });
 }
 function freeCell(store, host, taken = []) {
   const used = usage(store.list).cells;
@@ -6381,15 +6734,15 @@ function pickCell(api, host, store, anchor, current3, onPick) {
     searchable: true,
     actions: [{ label: t2("New counter\u2026"), run: (p) => {
       p.close();
-      const cell = freeCell(store, host);
-      if (!cell) {
+      const cell2 = freeCell(store, host);
+      if (!cell2) {
         api.ui.toast({ kind: "error", title: t2("No free counter cell") });
         return;
       }
       void api.ui.prompt(t2("Name for the new counter"), { title: t2("New counter") }).then((name) => {
         if (typeof name !== "string" || !name.trim()) return;
-        store.sidecar.counters.push({ player: cell[0], unit: cell[1], name: name.trim() });
-        onPick(cell);
+        store.sidecar.counters.push({ player: cell2[0], unit: cell2[1], name: name.trim() });
+        onPick(cell2);
       });
     } }]
   });
@@ -6402,9 +6755,9 @@ function renderCounterExpansion(api, host, store, x, into) {
   const namer = host.namer(store.sidecar);
   const update = (patch) => store.updateSidecar(t2("Edit counter step"), { expansions: store.sidecar.expansions.map((e) => e.id === x.id ? { ...e, ...patch } : e) });
   const from = chip(api, cellLabel(x.from, namer));
-  from.addEventListener("click", () => pickCell(api, host, store, from, x.from, (cell) => update({ from: cell })));
+  from.addEventListener("click", () => pickCell(api, host, store, from, x.from, (cell2) => update({ from: cell2 })));
   const to = chip(api, cellLabel(x.to, namer));
-  to.addEventListener("click", () => pickCell(api, host, store, to, x.to, (cell) => update({ to: cell })));
+  to.addEventListener("click", () => pickCell(api, host, store, to, x.to, (cell2) => update({ to: cell2 })));
   const bits = chip(api, t2("{n}-bit", { n: x.bits ?? 32 }), "");
   bits.title = t2("How many bits of the counter to carry: 16 is half the triggers for a counter that stays under 65536");
   bits.addEventListener("click", () => pickChoice(api, bits, [{ value: 16, label: t2("16-bit (up to 65,535)") }, { value: 32, label: t2("32-bit (any count)") }], (v) => update({ bits: v }), { current: x.bits ?? 32 }));
@@ -6418,9 +6771,9 @@ function renderCompare(api, host, store, index, trigger4, cmp, into) {
   const { x } = cmp;
   const update = (patch) => store.updateSidecar(t2("Edit comparison"), { expansions: store.sidecar.expansions.map((e) => e.id === x.id ? { ...e, ...patch } : e) });
   const a2 = chip(api, cellLabel(x.a, namer));
-  a2.addEventListener("click", () => pickCell(api, host, store, a2, x.a, (cell) => update({ a: cell })));
+  a2.addEventListener("click", () => pickCell(api, host, store, a2, x.a, (cell2) => update({ a: cell2 })));
   const b = chip(api, cellLabel(x.b, namer));
-  b.addEventListener("click", () => pickCell(api, host, store, b, x.b, (cell) => update({ b: cell })));
+  b.addEventListener("click", () => pickCell(api, host, store, b, x.b, (cell2) => update({ b: cell2 })));
   const relation = RELATIONS.find((r) => r.rel === cmp.relation);
   const rel = chip(api, relation ? translate(relation.label) : "?", "");
   rel.addEventListener("click", () => pickChoice(api, rel, RELATIONS.map((r) => ({ ...r, label: translate(r.label) })), (v) => {
@@ -6472,20 +6825,20 @@ function conditionRowOf(store, c2) {
   if (m) {
     for (const [code, unit] of Object.entries(m.keys)) if (unit === c2.unitId) return { kind: "key", player: c2.player, code: Number(code) };
     for (const [button, unit] of Object.entries(m.clicks)) if (unit === c2.unitId) return { kind: "click", player: c2.player, button };
-    for (const [location, unit] of Object.entries(m.mouseIn)) if (unit === c2.unitId) return { kind: "mouseIn", player: c2.player, location: Number(location) };
+    for (const [location2, unit] of Object.entries(m.mouseIn)) if (unit === c2.unitId) return { kind: "mouseIn", player: c2.player, location: Number(location2) };
   }
   return null;
 }
-var deathsIs2 = (cell, comparison, amount) => ({ location: 0, player: cell[0], amount, unitId: cell[1], comparison, type: ConditionType.Deaths, resource: 0, flags: 0, mask: 0 });
+var deathsIs2 = (cell2, comparison, amount) => ({ location: 0, player: cell2[0], amount, unitId: cell2[1], comparison, type: ConditionType.Deaths, resource: 0, flags: 0, mask: 0 });
 var chatCondition = (chat, record) => deathsIs2(isChatPattern(record) && chat.args ? chat.args.pattern : chat.cell, Comparison.Exactly, record.value);
 function counterNames(store, host) {
   const namer = host.namer(store.sidecar);
   return {
-    name: (cell) => store.sidecar.counters.find((c2) => c2.player === cell[0] && c2.unit === cell[1])?.name ?? cellLabel(cell, namer),
+    name: (cell2) => store.sidecar.counters.find((c2) => c2.player === cell2[0] && c2.unit === cell2[1])?.name ?? cellLabel(cell2, namer),
     cell: (name) => {
       const c2 = store.sidecar.counters.find((x) => x.name.toLowerCase() === name.toLowerCase());
       if (c2) return [c2.player, c2.unit];
-      const byLabel = store.sidecar.counters.map((x) => [x.player, x.unit]).find((cell) => cellLabel(cell, namer).toLowerCase() === name.toLowerCase());
+      const byLabel = store.sidecar.counters.map((x) => [x.player, x.unit]).find((cell2) => cellLabel(cell2, namer).toLowerCase() === name.toLowerCase());
       return byLabel ?? null;
     }
   };
@@ -6498,7 +6851,7 @@ var INPUT_NOTE = msg("Needs a Build (\u22EF menu). The MSQC plugin in the built 
 var tag = (api, title = translate(BUILD_NOTE)) => api.ui.el("span", { className: "mg-tag", title }, "BUILD");
 var FIELDS = UNIT_FIELDS.map((f, value) => ({ value, label: f.label, field: f.field, yesNo: f.yesNo === true }));
 var fields = () => FIELDS.map((f) => ({ ...f, label: translate(f.label) }));
-var fieldIndex = (field) => Math.max(0, FIELDS.findIndex((f) => f.field === field));
+var fieldIndex = (field2) => Math.max(0, FIELDS.findIndex((f) => f.field === field2));
 var CHAT_NUMBER_NAME = "Chat number";
 function ensureChatArgs(host, store) {
   const have = store.sidecar.chat?.args;
@@ -6541,13 +6894,13 @@ function renderHook(api, host, store, hook, into) {
   if (hook.kind === "math") {
     const OPS = [{ value: 0, label: t2("times"), op: "mul" }, { value: 1, label: t2("divided by"), op: "div" }, { value: 2, label: t2("modulo"), op: "mod" }, { value: 3, label: t2("a random number below"), op: "rand" }];
     const to = chip2(api, cellLabel(hook.to, namer));
-    to.addEventListener("click", () => pickCell(api, host, store, to, hook.to, (cell) => update({ to: cell })));
+    to.addEventListener("click", () => pickCell(api, host, store, to, hook.to, (cell2) => update({ to: cell2 })));
     const a2 = chip2(api, cellLabel(hook.a, namer));
-    a2.addEventListener("click", () => pickCell(api, host, store, a2, hook.a, (cell) => update({ a: cell })));
+    a2.addEventListener("click", () => pickCell(api, host, store, a2, hook.a, (cell2) => update({ a: cell2 })));
     const op = chip2(api, OPS.find((o) => o.op === hook.op)?.label ?? hook.op, "");
     op.addEventListener("click", () => pickChoice(api, op, OPS, (v) => update({ op: OPS[v].op }), { current: OPS.findIndex((o) => o.op === hook.op) }));
     const b = chip2(api, typeof hook.b === "number" ? String(hook.b) : cellLabel(hook.b, namer));
-    b.addEventListener("click", () => pickCell(api, host, store, b, typeof hook.b === "number" ? hook.a : hook.b, (cell) => update({ b: cell })));
+    b.addEventListener("click", () => pickCell(api, host, store, b, typeof hook.b === "number" ? hook.a : hook.b, (cell2) => update({ b: cell2 })));
     const num = chip2(api, "#", "");
     num.title = t2("A number instead of a counter");
     num.addEventListener("click", () => pickNumber(api, num, typeof hook.b === "number" ? hook.b : 2, (v) => update({ b: v }), { min: hook.op === "mul" ? 0 : 1 }));
@@ -6557,16 +6910,16 @@ function renderHook(api, host, store, hook, into) {
   }
   if (hook.kind === "count") {
     const to = chip2(api, cellLabel(hook.to, namer));
-    to.addEventListener("click", () => pickCell(api, host, store, to, hook.to, (cell) => update({ to: cell })));
+    to.addEventListener("click", () => pickCell(api, host, store, to, hook.to, (cell2) => update({ to: cell2 })));
     into.append(...sentence2(t2("Set {counter} to the number of {units}"), { counter: to, units: filterChips(api, host, store, hook, update) }), tag(api));
     return;
   }
   if (hook.kind === "read") {
     const to = chip2(api, cellLabel(hook.to, namer));
-    to.addEventListener("click", () => pickCell(api, host, store, to, hook.to, (cell) => update({ to: cell })));
-    const field = chip2(api, translate(FIELDS[fieldIndex(hook.field)].label), "");
-    field.addEventListener("click", () => pickChoice(api, field, fields(), (v) => update({ field: FIELDS[v].field }), { current: fieldIndex(hook.field) }));
-    into.append(...sentence2(t2("Set {counter} to the {field} of the first {units}"), { counter: to, field, units: filterChips(api, host, store, hook, update) }), tag(api));
+    to.addEventListener("click", () => pickCell(api, host, store, to, hook.to, (cell2) => update({ to: cell2 })));
+    const field2 = chip2(api, translate(FIELDS[fieldIndex(hook.field)].label), "");
+    field2.addEventListener("click", () => pickChoice(api, field2, fields(), (v) => update({ field: FIELDS[v].field }), { current: fieldIndex(hook.field) }));
+    into.append(...sentence2(t2("Set {counter} to the {field} of the first {units}"), { counter: to, field: field2, units: filterChips(api, host, store, hook, update) }), tag(api));
     return;
   }
   if (hook.kind === "pick") {
@@ -6738,16 +7091,16 @@ function renderPick(api, host, store, hook, into, update) {
   } else if (hook.by === "random") {
   } else {
     const numeric = FIELDS.filter((f) => !f.yesNo);
-    const field = chip2(api, translate(FIELDS[fieldIndex(hook.field)].label), "");
-    field.addEventListener("click", () => pickChoice(api, field, numeric.map((f) => ({ ...f, label: translate(f.label) })), (v) => update({ field: FIELDS[v].field }), { current: fieldIndex(hook.field) }));
-    measure = [field];
+    const field2 = chip2(api, translate(FIELDS[fieldIndex(hook.field)].label), "");
+    field2.addEventListener("click", () => pickChoice(api, field2, numeric.map((f) => ({ ...f, label: translate(f.label) })), (v) => update({ field: FIELDS[v].field }), { current: fieldIndex(hook.field) }));
+    measure = [field2];
   }
   const locate = chip2(api, hook.locate ? namer.location(hook.locate) : t2("no location"), "");
   locate.title = t2("A small box is centred on the unit once this cycle's triggers have all run, so a trigger in the next cycle can act on it through the location. A row below this one in the same trigger still sees the location where it was.");
   locate.addEventListener("click", () => pickLocation(api, host, locate, hook.locate ?? 64, (v) => update({ locate: v > 0 && v < 64 ? v : null })));
   const to = chip2(api, hook.to ? cellLabel(hook.to, namer) : t2("no counter"));
   to.title = t2("The field's value \u2014 or the distance, for the nearest \u2014 goes into this counter; 0 when nothing matched.");
-  to.addEventListener("click", () => pickCell(api, host, store, to, hook.to ?? store.sidecar.chat?.cell ?? [0, 181], (cell) => update({ to: cell })));
+  to.addEventListener("click", () => pickCell(api, host, store, to, hook.to ?? store.sidecar.chat?.cell ?? [0, 181], (cell2) => update({ to: cell2 })));
   const counter = [to];
   if (hook.to) {
     const clear = chip2(api, "\xD7", "");
@@ -6762,9 +7115,9 @@ function renderPick(api, host, store, hook, into, update) {
 function renderConditionRow(api, host, store, row, into, replace) {
   const t2 = api.i18n.t;
   const namer = host.namer(store.sidecar);
-  const playerChip = (player, onPick) => {
-    const c2 = chip2(api, namer.player(player), "");
-    c2.addEventListener("click", () => pickChoice(api, c2, [{ value: PlayerGroup.CurrentPlayer, label: namer.player(PlayerGroup.CurrentPlayer) }, ...Array.from({ length: 8 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null }))], onPick, { current: player }));
+  const playerChip = (player2, onPick) => {
+    const c2 = chip2(api, namer.player(player2), "");
+    c2.addEventListener("click", () => pickChoice(api, c2, [{ value: PlayerGroup.CurrentPlayer, label: namer.player(PlayerGroup.CurrentPlayer) }, ...Array.from({ length: 8 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null }))], onPick, { current: player2 }));
     return c2;
   };
   if (row.kind === "chat") {
@@ -6809,14 +7162,14 @@ function renderConditionRow(api, host, store, row, into, replace) {
     const s = row.record;
     const update = (patch) => store.updateSidecar(t2("Edit unit check"), { builds: store.sidecar.builds.map((b) => b.id === s.id ? { ...b, ...patch } : b) });
     const fi = FIELDS[fieldIndex(s.field)];
-    const field = chip2(api, translate(fi.label), "");
-    field.addEventListener("click", () => pickChoice(api, field, fields(), (v) => update(FIELDS[v].yesNo ? { field: FIELDS[v].field, cmp: "=", value: s.cmp === "=" && s.value === 0 ? 0 : 1 } : { field: FIELDS[v].field }), { current: fieldIndex(s.field) }));
+    const field2 = chip2(api, translate(fi.label), "");
+    field2.addEventListener("click", () => pickChoice(api, field2, fields(), (v) => update(FIELDS[v].yesNo ? { field: FIELDS[v].field, cmp: "=", value: s.cmp === "=" && s.value === 0 ? 0 : 1 } : { field: FIELDS[v].field }), { current: fieldIndex(s.field) }));
     const note = tag(api, t2("Needs a Build (\u22EF menu): the built map checks this every cycle, before the triggers run, and leaves the answer in a cell this condition reads."));
     if (fi.yesNo) {
       const IS = [{ value: 1, label: t2("is") }, { value: 0, label: t2("is not") }];
       const is = chip2(api, s.value === 0 ? IS[1].label : IS[0].label, "");
       is.addEventListener("click", () => pickChoice(api, is, IS, (v) => update({ cmp: "=", value: v }), { current: s.value === 0 ? 0 : 1 }));
-      into.append(...sentence2(t2("Any {units} {is} {field}"), { units: filterChips(api, host, store, s, update), is, field }), note);
+      into.append(...sentence2(t2("Any {units} {is} {field}"), { units: filterChips(api, host, store, s, update), is, field: field2 }), note);
       return;
     }
     const CMP = [{ value: 0, label: t2("below"), cmp: "<" }, { value: 1, label: t2("above"), cmp: ">" }, { value: 2, label: tc("comparison", "exactly"), cmp: "=" }];
@@ -6824,7 +7177,7 @@ function renderConditionRow(api, host, store, row, into, replace) {
     cmp.addEventListener("click", () => pickChoice(api, cmp, CMP, (v) => update({ cmp: CMP[v].cmp }), { current: CMP.findIndex((c2) => c2.cmp === s.cmp) }));
     const value = chip2(api, String(s.value), "");
     value.addEventListener("click", () => pickNumber(api, value, s.value, (v) => update({ value: v }), { min: 0, max: 65535 }));
-    into.append(...sentence2(t2("Any {units} has {field} {cmp} {value}"), { units: filterChips(api, host, store, s, update), field, cmp, value }), note);
+    into.append(...sentence2(t2("Any {units} has {field} {cmp} {value}"), { units: filterChips(api, host, store, s, update), field: field2, cmp, value }), note);
     return;
   }
   const m = store.sidecar.msqc ?? DEFAULT_MSQC;
@@ -6863,8 +7216,8 @@ function renderConditionRow(api, host, store, row, into, replace) {
 }
 function newChat(host, store, message = "-command", arg = null) {
   const chat = store.sidecar.chat ?? (() => {
-    const cell = freeCell(store, host);
-    return cell ? { cell, args: null } : null;
+    const cell2 = freeCell(store, host);
+    return cell2 ? { cell: cell2, args: null } : null;
   })();
   if (!chat) return null;
   const value = nextChatValue(store.sidecar.builds);
@@ -6879,29 +7232,8 @@ function newChat(host, store, message = "-command", arg = null) {
   }
   return { condition: chatCondition(withArgs, record), builds: [...store.sidecar.builds, record], chat: withArgs, ...counters ? { counters } : {} };
 }
-function withMsqc(host, store, needMouse) {
-  const m = store.sidecar.msqc ? { ...store.sidecar.msqc } : { ...DEFAULT_MSQC, keys: {}, clicks: {}, mouseIn: {} };
-  if (!store.sidecar.msqc) {
-    const free = host.freeLocationSlots();
-    if (!free.length) return null;
-    m.qcLoc = free[0];
-  }
-  if (needMouse && m.mouseBase === null) {
-    const free = new Set(host.freeLocationSlots().filter((i) => i !== m.qcLoc));
-    for (let slot = 0; slot + 8 <= 63; slot++) {
-      let ok = true;
-      for (let p = 0; p < 8; p++) if (!free.has(slot + p)) {
-        ok = false;
-        break;
-      }
-      if (ok) {
-        m.mouseBase = slot + 1;
-        break;
-      }
-    }
-    if (m.mouseBase === null) return null;
-  }
-  return m;
+function withMsqc(_host, store, _needMouse) {
+  return store.sidecar.msqc ? { ...store.sidecar.msqc } : { ...DEFAULT_MSQC, keys: {}, clicks: {}, mouseIn: {} };
 }
 function newInput(host, store, what, options = {}) {
   const m = withMsqc(host, store, what !== "key");
@@ -6920,21 +7252,21 @@ function newInput(host, store, what, options = {}) {
     m.clicks = { ...m.clicks, [b]: unit2 };
     return { condition: deathsIs2([PlayerGroup.CurrentPlayer, unit2], Comparison.AtLeast, 1), msqc: m };
   }
-  const location = options.location ?? host.locations().find((l) => l.value !== 64)?.value ?? 0;
-  if (!location) return null;
-  const unit = m.mouseIn[String(location)] ?? freeUnit({ ...store, sidecar: { ...store.sidecar, msqc: m } }, host);
+  const location2 = options.location ?? host.locations().find((l) => l.value !== 64)?.value ?? 0;
+  if (!location2) return null;
+  const unit = m.mouseIn[String(location2)] ?? freeUnit({ ...store, sidecar: { ...store.sidecar, msqc: m } }, host);
   if (unit === null) return null;
-  m.mouseIn = { ...m.mouseIn, [String(location)]: unit };
+  m.mouseIn = { ...m.mouseIn, [String(location2)]: unit };
   return { condition: deathsIs2([PlayerGroup.CurrentPlayer, unit], Comparison.Exactly, 1), msqc: m };
 }
 function newScan(host, store, query = "", unit = 0) {
-  const cell = freeCell(store, host);
-  if (!cell) return null;
+  const cell2 = freeCell(store, host);
+  if (!cell2) return null;
   const pct = /percent|%/i.test(query);
-  const field = /shield/i.test(query) ? pct ? "shieldsPct" : "shields" : /energy|mana/i.test(query) ? pct ? "energyPct" : "energy" : /under attack/i.test(query) ? "underAttack" : /target/i.test(query) ? "hasTarget" : /burrow/i.test(query) ? "burrowed" : /moving/i.test(query) ? "speed" : /attacking|order/i.test(query) ? "order" : /kills/i.test(query) ? "kills" : pct ? "hpPct" : "hp";
-  const yesNo = FIELDS[fieldIndex(field)].yesNo;
-  const record = { id: `s${Date.now().toString(36)}`, kind: "scan", cell, unit, owner: PlayerGroup.Player1, location: null, field, cmp: yesNo ? "=" : /above|over|more/i.test(query) ? ">" : "<", value: yesNo ? 1 : pct ? 30 : 20 };
-  return { condition: deathsIs2(cell, Comparison.Exactly, 1), builds: [...store.sidecar.builds, record] };
+  const field2 = /shield/i.test(query) ? pct ? "shieldsPct" : "shields" : /energy|mana/i.test(query) ? pct ? "energyPct" : "energy" : /under attack/i.test(query) ? "underAttack" : /target/i.test(query) ? "hasTarget" : /burrow/i.test(query) ? "burrowed" : /moving/i.test(query) ? "speed" : /attacking|order/i.test(query) ? "order" : /kills/i.test(query) ? "kills" : pct ? "hpPct" : "hp";
+  const yesNo = FIELDS[fieldIndex(field2)].yesNo;
+  const record = { id: `s${Date.now().toString(36)}`, kind: "scan", cell: cell2, unit, owner: PlayerGroup.Player1, location: null, field: field2, cmp: yesNo ? "=" : /above|over|more/i.test(query) ? ">" : "<", value: yesNo ? 1 : pct ? 30 : 20 };
+  return { condition: deathsIs2(cell2, Comparison.Exactly, 1), builds: [...store.sidecar.builds, record] };
 }
 function newHook(host, store, what, query = "", named_ = {}) {
   const flag = freeCell(store, host);
@@ -6950,60 +7282,15 @@ function needsBuild(store, trigger4) {
   return trigger4.actions.some((a2) => a2.type === ActionType.SetDeaths && a2.modifier === SetModifier.SetTo && hookOf(store, a2) !== null) || trigger4.conditions.some((c2) => conditionRowOf(store, c2) !== null);
 }
 
-// src/generated/magentaPy.ts
-var MAGENTA_PY = '"""\n[magenta]\nspec : {"version": 3, "everyFrame": false, "chat": {"cell": [p, u], "args": {...} | null} | null, "hooks": [...], "scans": [...], "msqc": {...} | null}\n\nThe Magenta plugin: the rows the scmJS Magenta editor adds that only a euddraft build can\ndo, described as data and turned into eudplib code here. A cell is a death counter,\n`[player, unit]`. A hook watches one private cell \u2014 a "flag" a map trigger sets to 1 with\nan ordinary Set Deaths action \u2014 and, after the map\'s triggers have run in that cycle,\ndoes its work and clears the flag:\n\n  text     {"flag", "parts": [{"text": "Score: "}, {"counter": [p, u]}], "to": "all" | slot}\n  math     {"flag", "op": "mul" | "div" | "mod" | "rand", "a": cell, "b": cell | number, "to": cell}\n  foreach  {"flag", "unit": id | null, "owner": slot | null, "location": number | null, "do": ...}\n           do: {"set": "hp" | "shields" | "energy" | "kills" | "resources" | "buildTime" | "rank" | "topSpeed" | "acceleration" | "movementType", "value": n} | {"kill": true} | {"remove": true}\n               | {"invincible": bool} | {"hallucination": bool} | {"speed": bool} | {"give": slot} | {"locate": location}\n               | {"order": "move" | "patrol" | "attack", "location": dest, "scratch": location}   \u2014 the game\'s own Order, one unit at a time through a scratch location\n               | {"orderRaw": orders.dat id, "location": dest}                                    \u2014 the order id and target written into the unit (an experiment)\n               | {"timer": "stim" | "ensnare" | "plague" | "lockdown" | "stasis" | "maelstrom" | "irradiate" | "matrix", "value": frames}\n               | {"cooldown": frames}                                                              \u2014 ground, air and spell cooldowns at once\n               | {"status": "cloak" | "noclip" | "cooldownUpgrade", "on": bool}\n               | {"nudge": {"dx": px, "dy": px}}                                                   \u2014 the position written directly (an experiment)\n               | {"adjust": "hp" | "shields" | "energy", "delta": \xB1n}                              \u2014 since version 5: damage or heal, floored at 0 (hit points at 0 kill) and capped at the type\'s maximum\n  pick     {"flag", <filter>, "by": "min" | "max" | "nearest" | "random", "field": ..., "near": location | {"mouse": slot} | null, "radius": px | null, "locate": location | null, "to": cell | null}\n           \u2014 the one matching unit with the least / greatest field, nearest the centre of `near` (since version 5 also a player\'s mouse, the\n             location MSQC keeps it in, and no farther than `radius`), or since version 5 one at random: centre `locate` on it, its field (or distance) into `to`\n  count    {"flag", <filter>, "to": cell}          \u2014 how many units match\n  read     {"flag", <filter>, "field": ..., "to": cell} \u2014 the first match\'s field, 0 for none\n  setloc   {"flag", "location": number, "x": px, "y": px, "width": px | null, "height": px | null}\n           since version 5 also {"flag", "location": number, "relative": true, "x": dx, "y": dy} \u2014 moved by an offset from where it is\n  terrain  {"flag", "location": number, "tile": MTXM id}   \u2014 since version 4: every tile under the location becomes that tile, in the array the game draws from (walkability does not follow)\n\nSince version 4 the foreach / pick verbs also take {"tint": "normal" | "cloaked" | "hallucination" | "flash"}:\nthe draw function of every image of the unit\'s sprite is rewritten \u2014 0 plain, 6 the see-through\nof a visible cloaked unit, 16 the blue of a hallucination, 17 the white warp flash.\n\nBoth version-4 additions FAILED in Remastered (probe 10, 2026-09-15) and the editor does not offer\nthem: `terrain` changed nothing on screen (the EUD layer does not reach the buffer the renderer\ndraws from), and the first `tint` write ended the game with "EUD not supported", as `nudge` does.\n\nText parts are {"text": "..."} (with the editor\'s <HH> escapes for the game\'s colour and\neffect codes), {"counter": cell}, {"player": slot} for the player\'s name, {"color": slot}\nfor the switch to that player\'s colour.\n\nA scan runs every cycle and leaves 1 or 0 in its cell for a condition to read:\n\n  scan     {"cell", <filter>, "field": ..., "cmp": "<" | ">" | "=", "value": n}\n\nFields, for read / scan / pick: hp, shields, energy, kills, x, y, and since version 3 order\n(the orders.dat id of the unit\'s main order), hasTarget (1 with an order target unit),\nunderAttack (the attack-notify timer, > 0 for ~ a second after a hit), burrowed, inTransport,\nbuildTime (remaining, for an incomplete building), resources (a mineral field\'s or geyser\'s\namount), cooldown (the ground weapon\'s, in frames), speed (the current speed, px/frame \xD7 256);\nsince version 5 hpPct, shieldsPct, energyPct (0 to 100, against the type\'s maximum from units.dat,\n250 for energy), unitType and owner.\n\n`chat.args`, since version 3, is {"ptr": cell, "len": cell, "pattern": cell, "number": cell}: the\nchat plugin\'s __ptrAddr__ / __lenAddr__ / __patternAddr__ cells; before the map\'s triggers run,\nwhen `pattern` is set, the first number in the message (after its first space) is parsed into\n`number`, so "-set 250" leaves 250 there. `pattern` is cleared after the triggers like `cell`.\n\n`msqc.held`, since version 3, is [{"down": unit, "up": unit, "state": unit}]: MSQC lands a\nKeyDown in `down` and a KeyUp in `up` (per player), and before the triggers run the hook turns\nthose into `state` \u2014 a countdown refreshed by every down (auto-repeat keeps it alive while the\nkey is held) and ended by an up \u2014 so a condition can say "while W is held" as `state \u2265 1`.\n\nKept but not offered by the editor after the 2026-09-14 play-through in Remastered: `orderRaw`\n(the game\'s Order works), `nudge` (the game ends with "EUD not supported"), `status cloak` and\n`cooldownUpgrade` (no visible effect), `set topSpeed / acceleration / movementType` (a unit\'s\nown copy changes nothing; only the flingy table, for units made afterwards), and `msqc.held`\n(Remastered reports one down per press and nothing while a key is held).\n\n`chat` names the cell the chatEvent plugin writes a message\'s number into; it is cleared\nafter the map\'s triggers have seen it, so a chat command fires once. `msqc` follows the\nMSQC plugin: `clear` are the event units (one per key or click) whose per-player cells\nare cleared each cycle, `mouseIn` compares each player\'s mouse location (MSQC moves one\nlocation per human, from `mouseBase`) against a location and leaves 1 or 0 in that\nplayer\'s cell of `unit`, and `select` reads the unit pointer MSQC delivered into\n`ptr`\'s cells and leaves the unit\'s type + 1 in `type`\'s. Nothing in the spec is code.\n"""\nimport json\nimport re\n\nfrom eudplib import *\n\nDEATHS = 0x58A364\nMRGN = 0x58DC60\nHUMANS = 8\n# The map\'s size in tiles (a word each), and the pointer to the MTXM tile array the game draws from (eud-book).\nMAP_SIZE = 0x57F1D4\nMTXM_PTR = 0x5993C4\n\n# The newest spec this plugin reads; the server reports it on /health so the editor can tell before it uploads a map.\nSPEC_VERSION = 5\n\nspec = json.loads(settings["spec"])\nif not isinstance(spec.get("version"), int) or spec["version"] < 1 or spec["version"] > SPEC_VERSION:\n    raise RuntimeError("magenta: spec version %r is not 1 to %d; this server\'s Magenta plugin is older than the map\'s rows need" % (spec.get("version"), SPEC_VERSION))\n\n# units.dat: max hit points (dword \xD7 256) and max shields (word, in points) by unit type; a unit\'s energy tops out at 250 with its upgrade.\nUNITS_MAX_HP = 0x662350\nUNITS_MAX_SHIELDS = 0x660E00\nMAX_ENERGY = 250\n\n\ndef cell_addr(cell):\n    p, u = int(cell[0]), int(cell[1])\n    if not (0 <= p < 12 and 0 <= u < 228):\n        raise RuntimeError("magenta: bad cell %r" % (cell,))\n    return DEATHS + p * 4 + u * 48\n\n\ndef cell_epd(cell):\n    return EPD(cell_addr(cell))\n\n\ndef loc_epd(number):\n    """EPD of a 1-based location\'s record: left, top, right, bottom, then the flags."""\n    return EPD(MRGN + (int(number) - 1) * 20)\n\n\ndef loc_bounds(number):\n    base = loc_epd(number)\n    return [f_dwread_epd(base + i) for i in range(4)]\n\n\ndef box_on(cu, number, half=2):\n    """Centre a 1-based location on the unit as a small box, not a point: the game\'s Order and\n    counted Kill did nothing with a zero-size location in the probes, while a heal at it worked."""\n    base = loc_epd(number)\n    x, y = cu.posX, cu.posY\n    f_dwwrite_epd(base, x - half)\n    f_dwwrite_epd(base + 1, y - half)\n    f_dwwrite_epd(base + 2, x + half)\n    f_dwwrite_epd(base + 3, y + half)\n\n\n# \u2500\u2500 units \u2500\u2500\n\ndef unit_matches(cu, h, bounds):\n    conds = []\n    if h.get("unit") is not None:\n        conds.append(cu.eqattr("unitType", int(h["unit"])))\n    if h.get("owner") is not None:\n        conds.append(cu.eqattr("owner", int(h["owner"])))\n    if bounds:\n        left, top, right, bottom = bounds\n        x, y = cu.posX, cu.posY\n        conds.extend([x >= left, x <= right, y >= top, y <= bottom])\n    return conds if conds else [Always()]\n\n\ndef unit_field(cu, field):\n    if field == "hp":\n        return f_div(cu.hp, 256)[0]\n    if field == "shields":\n        return f_div(cu.shield, 256)[0]\n    if field == "energy":\n        return f_div(cu.energy, 256)[0]\n    if field == "kills":\n        return cu.killCount\n    if field == "x":\n        return cu.posX\n    if field == "y":\n        return cu.posY\n    if field == "order":\n        return cu.orderID\n    if field == "hasTarget":\n        v = EUDVariable()\n        v << 0\n        if EUDIf()(cu.orderTargetUnit >= 1):\n            v << 1\n        EUDEndIf()\n        return v\n    if field == "underAttack":\n        return cu.attackNotifyTimer\n    if field == "burrowed":\n        return flag_value(cu, 0x10)\n    if field == "inTransport":\n        return flag_value(cu, 0x40)\n    if field == "buildTime":\n        return cu.remainingBuildTime\n    if field == "resources":\n        return cu.resourceAmount\n    if field == "cooldown":\n        return cu.groundWeaponCooldown\n    if field == "speed":\n        return cu.currentSpeed1\n    if field == "hpPct":\n        return f_div(f_mul(cu.hp, 100), unit_max_hp(cu))[0]\n    if field == "shieldsPct":\n        return f_div(f_mul(cu.shield, 100), unit_max_shields(cu))[0]\n    if field == "energyPct":\n        return f_div(f_mul(cu.energy, 100), MAX_ENERGY * 256)[0]\n    if field == "unitType":\n        return cu.unitType\n    if field == "owner":\n        return cu.owner\n    if field in TIMERS:\n        return getattr(cu, TIMERS[field])\n    raise RuntimeError("magenta: unknown field %r" % field)\n\n\ndef unit_max_hp(cu):\n    """The type\'s max hit points \xD7 256, never 0 (a division needs it)."""\n    v = f_dwread(f_mul(cu.unitType, 4) + UNITS_MAX_HP)\n    if EUDIf()(v == 0):\n        v << 256\n    EUDEndIf()\n    return v\n\n\ndef unit_max_shields(cu):\n    """The type\'s max shields \xD7 256, never 0."""\n    v = f_mul(f_wread(f_mul(cu.unitType, 2) + UNITS_MAX_SHIELDS), 256)\n    if EUDIf()(v == 0):\n        v << 256\n    EUDEndIf()\n    return v\n\n\ndef flag_value(cu, mask):\n    """1 when the status flag is set, else 0."""\n    v = EUDVariable()\n    v << 0\n    if EUDIf()(cu.check_status_flag(mask)):\n        v << 1\n    EUDEndIf()\n    return v\n\n\ndef each_matching(h):\n    """Yield the CUnit of every matching unit, inside an EUDIf the caller must not close."""\n    bounds = loc_bounds(h["location"]) if h.get("location") else None\n    for ptr, epd in EUDLoopUnit2():\n        cu = CUnit(epd, ptr=ptr)\n        if EUDIf()(unit_matches(cu, h, bounds)):\n            yield cu\n        EUDEndIf()\n\n\n# \u2500\u2500 hooks \u2500\u2500\n\nESCAPE = re.compile(r"<([0-9A-Fa-f]{2})>")\n\n\ndef unescape(text):\n    """The editor writes a control byte as <HH>; the game wants the byte."""\n    return ESCAPE.sub(lambda m: chr(int(m.group(1), 16)), text)\n\n\ndef hook_text(h):\n    to = h.get("to", "all")\n    parts = []\n    for part in h["parts"]:\n        if "text" in part:\n            parts.append(unescape(str(part["text"])))\n        elif "player" in part:\n            parts.append(PName(int(part["player"])))\n        elif "color" in part:\n            parts.append(PColor(int(part["color"])))\n        else:\n            parts.append(f_dwread_epd(cell_epd(part["counter"])))\n    if to == "all":\n        for p in range(HUMANS):\n            f_setcurpl(p)\n            f_simpleprint(*parts, spaced=False)\n    else:\n        f_setcurpl(int(to))\n        f_simpleprint(*parts, spaced=False)\n\n\ndef hook_math(h):\n    a = f_dwread_epd(cell_epd(h["a"]))\n    b = h["b"]\n    bv = int(b) if isinstance(b, (int, float)) else f_dwread_epd(cell_epd(b))\n    op = h["op"]\n    if op == "mul":\n        r = f_mul(a, bv)\n    elif op == "div":\n        r, _ = f_div(a, bv)\n    elif op == "mod":\n        _, r = f_div(a, bv)\n    elif op == "rand":\n        _, r = f_div(f_rand(), bv)\n    else:\n        raise RuntimeError("magenta: unknown op %r" % op)\n    f_dwwrite_epd(cell_epd(h["to"]), r)\n\n\nORDERS = {"move": Move, "patrol": Patrol, "attack": Attack}\nTIMERS = {"stim": "stimTimer", "ensnare": "ensnareTimer", "plague": "plagueTimer", "lockdown": "lockdownTimer", "stasis": "stasisTimer", "maelstrom": "maelstromTimer", "irradiate": "irradiateTimer"}\n# Status flags (eud-book\'s CUnit table): cloak is "requires detection" + "cloaked" together.\nSTATUS = {"cloak": 0x300, "cooldownUpgrade": 0x20000000}\n\n\ndef hook_foreach(h):\n    for cu in each_matching(h):\n        foreach_do(cu, h["do"], h)\n\n\ndef foreach_do(cu, do, h):\n    """One verb on one unit."""\n    if "set" in do:\n        field, value = do["set"], int(do["value"])\n        if field == "hp":\n            cu.hp = value * 256\n        elif field == "shields":\n            cu.shield = value * 256\n        elif field == "energy":\n            cu.energy = value * 256\n        elif field == "kills":\n            cu.killCount = value\n        elif field == "resources":\n            cu.resourceAmount = value\n        elif field == "buildTime":\n            cu.remainingBuildTime = value\n        elif field == "rank":\n            cu.rankIncrease = value\n        elif field == "topSpeed":\n            # The unit\'s own copy of flingy.dat: a table write reaches only units made afterwards.\n            cu.topSpeed = value\n        elif field == "acceleration":\n            cu.acceleration = value\n        elif field == "movementType":\n            # 0 = flingy.dat control (speed from topSpeed / acceleration), 2 = iscript control (most ground units; speed comes from the animation).\n            cu.flingyMovementType = value\n    elif "order" in do:\n        # The game\'s own Order action, aimed at this one unit: a scratch location is\n        # centred on it first, so the order reaches nothing else (a unit standing on the\n        # same pixel would come along).\n        order = ORDERS[do["order"]]\n        scratch = int(do["scratch"])\n        box_on(cu, scratch)\n        unit = int(h["unit"]) if h.get("unit") is not None else cu.unitType\n        owner = int(h["owner"]) if h.get("owner") is not None else cu.owner\n        DoActions(Order(unit, owner, scratch, order, int(do["location"])))\n    elif "orderRaw" in do:\n        dest = loc_epd(do["location"])\n        left, top, right, bottom = [f_dwread_epd(dest + i) for i in range(4)]\n        cu.orderTargetX = f_div(left + right, 2)[0]\n        cu.orderTargetY = f_div(top + bottom, 2)[0]\n        cu.orderTargetUnit = 0\n        cu.orderID = int(do["orderRaw"])\n        cu.orderState = 0\n    elif "timer" in do:\n        name, value = do["timer"], int(do["value"])\n        if name == "matrix":\n            cu.defensiveMatrixHp = 250 * 256\n            cu.defensiveMatrixTimer = value\n        else:\n            setattr(cu, TIMERS[name], value)\n    elif "cooldown" in do:\n        value = int(do["cooldown"])\n        cu.groundWeaponCooldown = value\n        cu.airWeaponCooldown = value\n        cu.spellCooldown = value\n    elif "status" in do:\n        name, on = do["status"], bool(do["on"])\n        if name == "noclip":\n            cu.set_noclip() if on else cu.clear_noclip()\n        else:\n            mask = STATUS[name]\n            cu.set_status_flag(mask) if on else cu.clear_status_flag(mask)\n    elif "nudge" in do:\n        dx, dy = int(do["nudge"]["dx"]), int(do["nudge"]["dy"])\n        x = cu.posX + dx\n        y = cu.posY + dy\n        cu.posX = x\n        cu.posY = y\n        sprite = cu.sprite\n        if EUDIf()(sprite >= 1):\n            sp = CSprite.from_ptr(sprite)\n            sp.posX = x\n            sp.posY = y\n        EUDEndIf()\n    elif do.get("kill"):\n        cu.die()\n    elif do.get("remove"):\n        cu.remove()\n    elif "invincible" in do:\n        cu.set_invincible() if do["invincible"] else cu.clear_invincible()\n    elif "hallucination" in do:\n        cu.set_hallucination() if do["hallucination"] else cu.clear_hallucination()\n    elif "speed" in do:\n        cu.set_speed_upgrade() if do["speed"] else cu.clear_speed_upgrade()\n    elif "give" in do:\n        cu.cgive(int(do["give"]))\n    elif "locate" in do:\n        box_on(cu, int(do["locate"]))\n    elif "tint" in do:\n        tint(cu, do["tint"])\n    elif "adjust" in do:\n        adjust(cu, do["adjust"], int(do["delta"]))\n\n\ndef adjust(cu, field, delta):\n    """Damage or heal: the field moved by `delta` points, floored at 0 and capped at the type\'s maximum; hit points at 0 kill the unit."""\n    if field == "hp":\n        cur, top = cu.hp, unit_max_hp(cu)\n    elif field == "shields":\n        cur, top = cu.shield, unit_max_shields(cu)\n    else:\n        cur, top = cu.energy, MAX_ENERGY * 256\n    step = abs(delta) * 256\n    new = EUDVariable()\n    if delta < 0:\n        if EUDIf()(cur <= step):\n            new << 0\n        if EUDElse()():\n            new << cur - step\n        EUDEndIf()\n    else:\n        new << cur + step\n        if EUDIf()(new > top):\n            new << top\n        EUDEndIf()\n    if field == "hp":\n        if EUDIf()(new == 0):\n            cu.die()\n        if EUDElse()():\n            cu.hp = new\n        EUDEndIf()\n    elif field == "shields":\n        cu.shield = new\n    else:\n        cu.energy = new\n\n\n# Draw functions of an image (images.dat\'s column, CImage + 0x0A): what the renderer does with it.\nDRAWFUNCS = {"normal": 0, "cloaked": 6, "hallucination": 16, "flash": 17}\n# CImage: + 0x04 next image in the sprite\'s list, + 0x0A the draw function; CSprite + 0x1C the list\'s head.\nIMAGE_NEXT = 0x04\nIMAGE_DRAWFUNC = 0x0A\nSPRITE_IMAGE_HEAD = 0x1C\nMAX_IMAGES = 16\n\n\ndef tint(cu, mode):\n    """Rewrite the draw function of every image of the unit\'s sprite: a look without the state behind it."""\n    drawfunc = DRAWFUNCS[mode]\n    sprite = cu.sprite\n    if EUDIf()(sprite >= 1):\n        img = EUDVariable()\n        n = EUDVariable()\n        img << f_dwread(sprite + SPRITE_IMAGE_HEAD)\n        n << 0\n        if EUDWhile()([img >= 1, n < MAX_IMAGES]):\n            f_bwrite(img + IMAGE_DRAWFUNC, drawfunc)\n            img << f_dwread(img + IMAGE_NEXT)\n            n += 1\n        EUDEndWhile()\n    EUDEndIf()\n\n\ndef hook_terrain(h):\n    """Every tile under the location becomes `tile`, in the MTXM array the game draws from. The\n    walkability and height of the ground come from the tileset\'s own tables and do not follow."""\n    tile = int(h["tile"])\n    left, top, right, bottom = loc_bounds(h["location"])\n    width = f_wread(MAP_SIZE)\n    base = f_dwread(MTXM_PTR)\n    x0 = f_div(left, 32)[0]\n    y0 = f_div(top, 32)[0]\n    x1 = f_div(right + 31, 32)[0]\n    y1 = f_div(bottom + 31, 32)[0]\n    y = EUDVariable()\n    y << y0\n    if EUDWhile()(y < y1):\n        row = base + f_mul(y, width) * 2\n        x = EUDVariable()\n        x << x0\n        if EUDWhile()(x < x1):\n            f_wwrite(row + x * 2, tile)\n            x += 1\n        EUDEndWhile()\n        y += 1\n    EUDEndWhile()\n\n\ndef hook_count(h):\n    n = EUDVariable()\n    n << 0\n    for _cu in each_matching(h):\n        n += 1\n    f_dwwrite_epd(cell_epd(h["to"]), n)\n\n\ndef hook_read(h):\n    v = EUDVariable()\n    done = EUDVariable()\n    v << 0\n    done << 0\n    for cu in each_matching(h):\n        if EUDIf()(done == 0):\n            v << unit_field(cu, h["field"])\n            done << 1\n        EUDEndIf()\n    f_dwwrite_epd(cell_epd(h["to"]), v)\n\n\ndef hook_pick(h):\n    """The one matching unit with the least / greatest field, or the nearest to a location\'s centre; `locate`, `to` and `do` act on it."""\n    by = h["by"]\n    best = EUDVariable()\n    best_ptr = EUDVariable()\n    best_ptr << 0\n    if by == "random":\n        # Count the matches, draw one, take the drawn one on a second pass.\n        n = EUDVariable()\n        n << 0\n        for _cu in each_matching(h):\n            n += 1\n        drawn = EUDVariable()\n        i = EUDVariable()\n        drawn << 0\n        i << 0\n        if EUDIf()(n >= 1):\n            _, r = f_div(f_rand(), n)\n            drawn << r\n        EUDEndIf()\n        for cu in each_matching(h):\n            if EUDIf()([n >= 1, i == drawn]):\n                best_ptr << cu.ptr\n            EUDEndIf()\n            i += 1\n        best << 0\n    elif by == "nearest":\n        near_spec = h["near"]\n        if isinstance(near_spec, dict):\n            # A player\'s mouse: MSQC keeps it in location mouseBase + slot (the setting is 1-based).\n            near = loc_epd(int(spec["msqc"]["mouseBase"]) + int(near_spec["mouse"]))\n        else:\n            near = loc_epd(near_spec)\n        left, top, right, bottom = [f_dwread_epd(near + i) for i in range(4)]\n        cx = f_div(left + right, 2)[0]\n        cy = f_div(top + bottom, 2)[0]\n        best << 0xFFFFFFFF\n    elif by == "min":\n        best << 0xFFFFFFFF\n    else:\n        best << 0\n    for cu in ([] if by == "random" else each_matching(h)):\n        if by == "nearest":\n            # Manhattan distance is enough to pick the nearest, and it never overflows.\n            dx = EUDVariable()\n            dy = EUDVariable()\n            if EUDIf()(cu.posX >= cx):\n                dx << cu.posX - cx\n            if EUDElse()():\n                dx << cx - cu.posX\n            EUDEndIf()\n            if EUDIf()(cu.posY >= cy):\n                dy << cu.posY - cy\n            if EUDElse()():\n                dy << cy - cu.posY\n            EUDEndIf()\n            v = dx + dy\n            better = v < best\n        else:\n            v = unit_field(cu, h["field"])\n            better = v < best if by == "min" else v > best\n        if EUDIf()(better):\n            best << v\n            best_ptr << cu.ptr\n        EUDEndIf()\n    if by == "nearest" and h.get("radius") is not None:\n        # Nothing counts past the radius: the pick answers "no unit" instead of the far one.\n        if EUDIf()(best > int(h["radius"])):\n            best_ptr << 0\n        EUDEndIf()\n    if EUDIf()(best_ptr >= 1):\n        found = CUnit.from_ptr(best_ptr)\n        if h.get("locate"):\n            box_on(found, int(h["locate"]))\n        if h.get("to"):\n            f_dwwrite_epd(cell_epd(h["to"]), best)\n        if h.get("do"):\n            foreach_do(found, h["do"], h)\n    if EUDElse()():\n        if h.get("to"):\n            f_dwwrite_epd(cell_epd(h["to"]), 0)\n    EUDEndIf()\n\n\ndef scan(h):\n    hit = EUDVariable()\n    hit << 0\n    value = int(h["value"])\n    for cu in each_matching(h):\n        f = unit_field(cu, h["field"])\n        cmp = h["cmp"]\n        if cmp == "<":\n            cond = f < value\n        elif cmp == ">":\n            cond = f > value\n        else:\n            cond = f == value\n        if EUDIf()(cond):\n            hit << 1\n        EUDEndIf()\n    f_dwwrite_epd(cell_epd(h["cell"]), hit)\n\n\ndef hook_setloc(h):\n    base = loc_epd(h["location"])\n    if h.get("relative"):\n        dx, dy = int(h["x"]), int(h["y"])\n        for i in (0, 2):\n            f_dwwrite_epd(base + i, f_dwread_epd(base + i) + dx)\n        for i in (1, 3):\n            f_dwwrite_epd(base + i, f_dwread_epd(base + i) + dy)\n        return\n    x, y = int(h["x"]), int(h["y"])\n    if h.get("width") is None or h.get("height") is None:\n        width = f_dwread_epd(base + 2) - f_dwread_epd(base)\n        height = f_dwread_epd(base + 3) - f_dwread_epd(base + 1)\n    else:\n        width, height = int(h["width"]), int(h["height"])\n    f_dwwrite_epd(base, x)\n    f_dwwrite_epd(base + 1, y)\n    f_dwwrite_epd(base + 2, x + width)\n    f_dwwrite_epd(base + 3, y + height)\n\n\nHOOKS = {"text": hook_text, "math": hook_math, "foreach": hook_foreach, "count": hook_count, "read": hook_read, "setloc": hook_setloc, "pick": hook_pick, "terrain": hook_terrain}\n\n\ndef inside(px, py, number):\n    left, top, right, bottom = loc_bounds(number)\n    return [px >= left, px <= right, py >= top, py <= bottom]\n\n\ndef msqc_follow(m):\n    base = m.get("mouseBase")\n    for entry in m.get("mouseIn", []):\n        if base is None:\n            break\n        for p in range(HUMANS):\n            # MSQC keeps player p\'s mouse as a point in location number base + p \u2014 the `Mouse : base`\n            # setting counts from 1, like a trigger\'s location (probe 7 found the +1 that was here).\n            mloc = loc_epd(base + p)\n            mx = f_dwread_epd(mloc)\n            my = f_dwread_epd(mloc + 1)\n            cell = [p, entry["unit"]]\n            if EUDIf()(inside(mx, my, entry["location"])):\n                f_dwwrite_epd(cell_epd(cell), 1)\n            if EUDElse()():\n                f_dwwrite_epd(cell_epd(cell), 0)\n            EUDEndIf()\n    sel = m.get("select")\n    if sel:\n        for p in range(HUMANS):\n            ptr = f_dwread_epd(cell_epd([p, sel["ptr"]]))\n            if EUDIf()(ptr >= 1):\n                cu = CUnit.from_ptr(ptr)\n                f_dwwrite_epd(cell_epd([p, sel["type"]]), cu.unitType + 1)\n            if EUDElse()():\n                f_dwwrite_epd(cell_epd([p, sel["type"]]), 0)\n            EUDEndIf()\n\n\ndef chat_args(args):\n    """The first number in a matched chat pattern \u2014 the digits after the message\'s first space \u2014 into the number cell."""\n    pattern = cell_epd(args["pattern"])\n    if EUDIf()(MemoryEPD(pattern, AtLeast, 1)):\n        ptr = f_dwread_epd(cell_epd(args["ptr"]))\n        length = f_dwread_epd(cell_epd(args["len"]))\n        n = EUDVariable()\n        i = EUDVariable()\n        seen = EUDVariable()\n        n << 0\n        i << 0\n        seen << 0\n        if EUDWhile()(i < length):\n            ch = f_bread(ptr + i)\n            i += 1\n            if EUDIf()(seen == 0):\n                if EUDIf()(ch == 32):\n                    seen << 1\n                EUDEndIf()\n                EUDContinue()\n            EUDEndIf()\n            EUDBreakIf(ch < 48)\n            EUDBreakIf(ch > 57)\n            n << n * 10 + (ch - 48)\n        EUDEndWhile()\n        f_dwwrite_epd(cell_epd(args["number"]), n)\n    EUDEndIf()\n\n\nHOLD_CYCLES = 24\n\n\ndef held_keys(held):\n    """A KeyDown / KeyUp pair into a held state per player. Remastered\'s key byte pulses to 1 for\n    one frame on a press and reads 0 otherwise, so MSQC\'s KeyUp has nothing to fall out of and never\n    arrives; what a held key does produce is Windows\' auto-repeat, a press every few frames. So the\n    state is a countdown: a down sets it to HOLD_CYCLES (a second at fastest, longer than the repeat\n    delay), each cycle counts it down, and an up \u2014 should one come \u2014 ends it. A condition reads \u2265 1."""\n    for entry in held:\n        for p in range(HUMANS):\n            down = cell_epd([p, entry["down"]])\n            up = cell_epd([p, entry["up"]])\n            state = cell_epd([p, entry["state"]])\n            if EUDIf()(MemoryEPD(down, AtLeast, 1)):\n                DoActions(SetMemoryEPD(state, SetTo, HOLD_CYCLES))\n            if EUDElseIf()(MemoryEPD(up, AtLeast, 1)):\n                DoActions(SetMemoryEPD(state, SetTo, 0))\n            if EUDElseIf()(MemoryEPD(state, AtLeast, 1)):\n                DoActions(SetMemoryEPD(state, Subtract, 1))\n            EUDEndIf()\n\n\ndef beforeTriggerExec():\n    chat = spec.get("chat")\n    if chat and chat.get("args"):\n        chat_args(chat["args"])\n    m = spec.get("msqc")\n    if m and m.get("held"):\n        held_keys(m["held"])\n    for h in spec.get("scans", []):\n        scan(h)\n    if m:\n        msqc_follow(m)\n\n\ndef afterTriggerExec():\n    hooks = spec.get("hooks", [])\n    # Several hooks may watch one flag; it is cleared after the last of them has run.\n    last = {}\n    for i, h in enumerate(hooks):\n        last[tuple(h["flag"])] = i\n    for i, h in enumerate(hooks):\n        flag = cell_epd(h["flag"])\n        if EUDIf()(MemoryEPD(flag, Exactly, 1)):\n            HOOKS[h["kind"]](h)\n            if last[tuple(h["flag"])] == i:\n                DoActions(SetMemoryEPD(flag, SetTo, 0))\n        EUDEndIf()\n    chat = spec.get("chat")\n    if chat:\n        DoActions(SetMemoryEPD(cell_epd(chat["cell"]), SetTo, 0))\n        if chat.get("args"):\n            DoActions(SetMemoryEPD(cell_epd(chat["args"]["pattern"]), SetTo, 0))\n    m = spec.get("msqc")\n    if m:\n        for unit in m.get("clear", []):\n            for p in range(HUMANS):\n                DoActions(SetMemoryEPD(cell_epd([p, unit]), SetTo, 0))\n';
-
 // src/model/preflight.ts
-var PLAYER_INACTIVE = 0;
-var hex = (h) => (h >>> 0).toString(16).padStart(8, "0");
-function fnv(s, h = 2166136261) {
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619) >>> 0;
-  }
-  return h >>> 0;
-}
-function sourceRevision(list, sidecar, extra = []) {
-  const settings = { ...sidecar.settings };
-  delete settings.lastBuild;
-  let h = 2166136261;
-  for (const t2 of list) h = fnv(fingerprint(t2), h);
-  h = fnv(JSON.stringify({ builds: sidecar.builds, chat: sidecar.chat, msqc: sidecar.msqc, expansions: sidecar.expansions, settings }), h);
-  let g = 2166136261;
-  for (const s of extra) g = fnv(s, g);
-  return hex(h) + hex(g);
-}
-function buildFreshness(last, revision) {
-  if (!last) return "never";
-  return last.revision === revision ? "fresh" : "stale";
-}
 function preflight(input) {
   const out = [];
   const { list, sidecar, options } = input;
   const locExists = (n) => n === 64 || n >= 1 && n <= 63 && input.locations[n - 1] !== void 0 && !input.locations[n - 1].empty;
-  const free = (slot) => {
-    const l = input.locations[slot];
-    return !!l && l.empty && !l.named;
+  const triggerOf = (id) => {
+    const b = id === null ? void 0 : sidecar.builds.find((x) => x.id === id);
+    return b ? refs(list, b)[0] : void 0;
   };
-  const m = sidecar.msqc;
-  if (usesMsqc(m)) {
-    const p = m.qcPlayer;
-    if ((input.playerTypes[p] ?? PLAYER_INACTIVE) !== PLAYER_INACTIVE) out.push({ level: "error", text: t("Synced input needs {player} for itself, and the slot is set to {type}. Make it inactive in Scenario \u25B8 Players, or free another slot and remove the input rows to let Magenta pick again.", { player: input.playerName(p), type: input.playerTypeName(p) }) });
-    if (input.placedOwners.has(p)) out.push({ level: "error", text: t("Synced input needs {player} for itself, and units on the map belong to it.", { player: input.playerName(p) }) });
-    list.forEach((tr, i) => {
-      if (owners(tr).includes(p)) out.push({ level: "warn", text: t("Synced input owns {player}; this trigger runs for it too.", { player: input.playerName(p) }), trigger: i });
-    });
-    if (input.placedUnitIds.has(m.qcUnit)) out.push({ level: "error", text: t("Synced input uses the {unit} type for its own command units, and the map has some placed. Remove them, or pick another unit type in the map's settings.", { unit: input.unitName(m.qcUnit) }) });
-    list.forEach((tr, i) => {
-      if (liveActions(tr).some((a2) => (a2.type === ActionType.CreateUnit || a2.type === ActionType.CreateUnitWithProperties) && a2.unitId === m.qcUnit)) out.push({ level: "error", text: t("This trigger creates a {unit}, the type synced input keeps for itself.", { unit: input.unitName(m.qcUnit) }), trigger: i });
-    });
-    if (!free(m.qcLoc)) out.push({ level: "error", text: t("Synced input's own location slot ({n}) is no longer empty: a location was made there. Free it, or remove the input rows and add them again to pick another.", { n: m.qcLoc + 1 }) });
-    if (m.mouseBase !== null) {
-      const taken = [];
-      for (let k = 0; k < 8; k++) if (!free(m.mouseBase - 1 + k)) taken.push(m.mouseBase + k);
-      if (taken.length) out.push({ level: "error", text: t("{n, plural, one {The eight location slots the players' mice use ({from}\u2013{to}) must stay empty; slot {taken} is in use.} other {The eight location slots the players' mice use ({from}\u2013{to}) must stay empty; slots {taken} are in use.}}", { n: taken.length, from: m.mouseBase, to: m.mouseBase + 7, taken: taken.join(", ") }) });
-    }
-  }
   const seenChat = /* @__PURE__ */ new Map();
   for (const b of sidecar.builds) {
     const carriers = refs(list, b);
@@ -7017,14 +7304,13 @@ function preflight(input) {
       continue;
     }
     if (!carriers.length) {
-      out.push({ level: "info", text: b.kind === "scan" ? t("A unit check no trigger uses is still in the map's Magenta data; it is sent, and never fires.") : t("A build row no trigger uses is still in the map's Magenta data; it is sent, and never fires.") });
+      out.push({ level: "info", text: b.kind === "scan" ? t("A unit check no trigger uses is still in the map's Magenta data; it is built, and never fires.") : t("A build row no trigger uses is still in the map's Magenta data; it is built, and never runs.") });
       continue;
     }
     if ("location" in b && b.location !== null && !locExists(b.location)) out.push({ level: "error", text: t("A build row names location {n}, which the map no longer has.", { n: b.location }), trigger: at });
     if (b.kind === "foreach" || b.kind === "pick") {
       const d = b.do;
       if (d && "order" in d) {
-        if (!locExists(d.scratch)) out.push({ level: "error", text: t("The order row's scratch location ({n}) is gone; pick the order again to make one.", { n: d.scratch }), trigger: at });
         if (!locExists(d.location)) out.push({ level: "error", text: t("The order row's target location ({n}) is gone.", { n: d.location }), trigger: at });
       }
       if (d && "locate" in d && !locExists(d.locate)) out.push({ level: "error", text: t("The row centres location {n} on the unit, and the map no longer has it.", { n: d.locate }), trigger: at });
@@ -7034,54 +7320,39 @@ function preflight(input) {
       if (typeof b.near === "number" && !locExists(b.near)) out.push({ level: "error", text: t("The pick row measures from location {n}, which the map no longer has.", { n: b.near }), trigger: at });
     }
   }
+  for (const u of input.rendered.unsupported) {
+    const at = triggerOf(u.id);
+    out.push({ level: "error", text: t("Not built: {why}.", { why: u.why }), ...at !== void 0 ? { trigger: at } : {} });
+  }
+  for (const n of input.rendered.notes) {
+    const at = triggerOf(n.id);
+    out.push({ level: "warn", text: t("Built in part: {note}.", { note: n.note }), ...at !== void 0 ? { trigger: at } : {} });
+  }
   if (options.camera) {
     const l = input.locations[options.camera.location - 1];
     if (!l || l.empty) out.push({ level: "error", text: t("The camera follows location {n}, which the map no longer has.", { n: options.camera.location }) });
-    else if (!l.named) out.push({ level: "error", text: t("The camera finds its location by name, and location {n} has none of its own.", { n: options.camera.location }) });
   }
   if (options.bgm && !input.soundPresent(options.bgm.path)) out.push({ level: "error", text: t("The background music {file} is not in the map archive.", { file: options.bgm.path.split("\\").pop() ?? "" }) });
-  if (!input.runtime) out.push({ level: "error", text: t("The eudplib plugin is not running: it is the library that builds EUD maps. Install or turn it on under Plugins \u25B8 Manage Plugins\u2026") });
+  if (!input.trigscript) out.push({ level: "error", text: t("The TrigScript plugin is not running: it is what builds the rows into the map. Install or turn it on under Plugins \u25B8 Manage Plugins\u2026") });
   const rank = { error: 0, warn: 1, info: 2 };
   return out.sort((a2, b) => rank[a2.level] - rank[b.level]);
 }
-function lastBuildRecord(revision, file, runtime) {
-  return { revision, at: (/* @__PURE__ */ new Date()).toISOString(), file, spec: MAGENTA_SPEC_VERSION, ...runtime ? { eudplib: runtime.eudplib, euddraft: runtime.euddraft } : {} };
-}
-
-// vendor/eudplib.ts
-var EUDPLIB_SERVICE = "eudplib.build";
 
 // src/ui/build.ts
-var CAMMOVE_LOC = "cammoveLoc";
-var CAMMOVE_SWITCH = "cammove";
-var eudplib = (api) => api.services.get(EUDPLIB_SERVICE);
-var runtimeOf = (svc) => svc ? { eudplib: svc.versions.eudplib, euddraft: svc.versions.euddraft } : null;
-function buildStatus(host, store) {
-  const triggers = store.list.filter((t2) => needsBuild(store, t2)).length;
-  const revision = sourceRevision(store.list, store.sidecar, host.revisionExtra());
-  const last = store.sidecar.settings.lastBuild ?? null;
-  return { triggers, freshness: buildFreshness(last, revision), last, revision };
+function buildStatus(store) {
+  return { triggers: store.list.filter((t2) => needsBuild(store, t2)).length };
 }
-var timeOf = (iso) => {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
-};
 function openBuildDialog(api, host, store, everyFrame) {
   const t2 = api.i18n.t;
   const el = api.ui.el;
   const w = api.ui.widgets;
-  const builds = orderBuilds(store.sidecar.builds, store.list);
-  const chats = builds.filter((b) => b.kind === "chat").length;
-  const hooks = builds.length - chats;
   const options = { ...DEFAULT_OPTIONS, ...store.sidecar.settings.build };
   const saveOptions = () => store.updateSidecar(t2("Build options"), { settings: { ...store.sidecar.settings, build: options } });
-  const plugins = () => composePlugins(builds, store.sidecar.chat, everyFrame, store.sidecar.msqc, options, options.camera ? 0 : null);
-  const locations = host.locations().filter((l) => l.value !== 64 && l.named);
+  const locations = host.locations().filter((l) => l.value !== 64);
   const cameraOn = w.checkbox(t2("The camera follows a location, for everyone"), { value: !!options.camera });
   const cameraLoc = w.select(locations.map((l) => ({ value: l.value, label: l.label })), { value: options.camera?.location ?? locations[0]?.value ?? 0 });
   const inertia = w.number({ value: options.camera?.inertia ?? 5, min: 1, max: 60 });
   const maxspeed = w.number({ value: options.camera?.maxspeed ?? 48, min: 1, max: 999 });
-  const cameraStart = w.checkbox(t2("Start following at once (a trigger sets the cammove switch)"), { value: true });
   const readCamera = () => {
     const loc = locations.find((l) => l.value === Number(cameraLoc.value));
     options.camera = cameraOn.input.checked && loc ? { location: loc.value, name: loc.label, inertia: Number(inertia.value) || 5, maxspeed: Number(maxspeed.value) || 48 } : null;
@@ -7098,11 +7369,6 @@ function openBuildDialog(api, host, store, everyFrame) {
     const path = api.names.string(Number(bgmPath.value)) ?? "";
     options.bgm = { path, length: Number(bgmLen.value) || 60 };
   };
-  bgmPath.addEventListener("change", () => {
-    const path = api.names.string(Number(bgmPath.value)) ?? "";
-    const secs = host.wavSeconds(path);
-    if (secs) bgmLen.value = String(Math.round(secs * 2) / 2);
-  });
   const noAir = w.checkbox(t2("Air units pass through one another"), { value: options.noAirCollision });
   const unlimiter = w.checkbox(t2("Lift the sprite and image limits"), { value: options.unlimiter });
   const readAll = () => {
@@ -7111,183 +7377,98 @@ function openBuildDialog(api, host, store, everyFrame) {
     options.noAirCollision = noAir.input.checked;
     options.unlimiter = unlimiter.input.checked;
   };
-  const info = api.document.info();
-  const stem2 = (info?.fileName ?? "map").replace(/\.(scx|scm|chk)$/i, "");
   const status = w.statusLine();
-  const log = el("textarea", { className: "textarea", rows: 10, readOnly: true, spellcheck: false, style: "font-family: var(--font-mono); font-size: var(--fs-xs); display: none" });
-  const summary = el(
-    "ul",
-    {},
-    el("li", {}, chats ? t2("{n, plural, one {# chat command} other {# chat commands}}", { n: chats }) : t2("No chat commands")),
-    el("li", {}, hooks ? t2("{n, plural, one {# build row} other {# build rows}} (text, maths, unit passes, checks)", { n: hooks }) : t2("No build rows")),
-    el("li", {}, plugins().MSQC ? t2("Synced input (keys, clicks, mouse) through MSQC") : t2("No synced input")),
-    el("li", {}, everyFrame ? t2("Triggers run every frame (turbo)") : t2("Triggers run every two seconds"))
-  );
-  const nothing = !Object.keys(plugins()).length;
-  const fresh = el("div", { className: "mg-build-fresh" });
-  const runtimeLine = el("div", { className: "hint" });
+  const summaryEl = el("ul", {});
   const problemsEl = el("ul", { className: "mg-preflight" });
+  const builderLine = el("div", { className: "hint" });
   let handle = null;
-  const renderFresh = () => {
-    const st = buildStatus(host, store);
-    fresh.replaceChildren();
-    if (st.freshness === "never") fresh.append(el("span", {}, t2("This map has not been built yet.")));
-    else if (st.freshness === "fresh") fresh.append(el("span", {}, t2("Built from the map as it is now, {when}{file}.", { when: timeOf(st.last.at), file: st.last.file ? ` (${st.last.file})` : "" })));
-    else fresh.append(el("span", { style: "color: var(--warn)" }, t2("The map changed since its last build, {when}{file}: that output is stale.", { when: timeOf(st.last.at), file: st.last.file ? ` (${st.last.file})` : "" })));
+  const renderSummary = () => {
+    const r = renderForMap(host);
+    summaryEl.replaceChildren(
+      el("li", {}, r?.chats ? t2("{n, plural, one {# chat command} other {# chat commands}}", { n: r.chats }) : t2("No chat commands")),
+      el("li", {}, r?.rows ? t2("{n, plural, one {# build row} other {# build rows}} (text, maths, unit passes, checks)", { n: r.rows }) : t2("No build rows")),
+      el("li", {}, r?.inputs ? t2("Synced input (keys, clicks, mouse), carried by the build itself") : t2("No synced input")),
+      el("li", {}, everyFrame || r && r.rows + r.chats + r.inputs > 0 ? t2("Triggers run every frame") : t2("Triggers run every two seconds"))
+    );
   };
-  const problems = () => {
+  const renderProblems = async () => {
     readAll();
-    return preflight({
+    saveOptions();
+    const r = renderForMap(host);
+    const svc = trigscript(api);
+    const list = preflight({
       list: store.list,
       sidecar: store.sidecar,
       options,
-      plugins: plugins(),
-      runtime: runtimeOf(eudplib(api)),
-      playerTypes: host.playerTypes(),
-      playerTypeName: (s) => host.playerTypeName(s),
-      playerName: (s) => api.names.playerGroup(s),
-      unitName: (id) => api.triggers.names().unit(id),
-      placedUnitIds: host.placedUnitIds(),
-      placedOwners: host.placedOwners(),
       locations: host.locationSlots(),
-      soundPresent: (p) => host.soundPresent(p)
+      soundPresent: (p) => host.soundPresent(p),
+      rendered: r?.rendered ?? { unsupported: [], notes: [] },
+      trigscript: !!svc
     });
-  };
-  const renderProblems = () => {
-    const list = problems();
-    problemsEl.replaceChildren();
-    problemsEl.hidden = !list.length;
-    for (const p of list) {
-      const li = el("li", { className: p.level }, p.text);
-      if (p.trigger !== void 0) {
-        const i = p.trigger;
-        li.append(el("button", { type: "button", className: "mg-sim-link", onclick: () => {
-          store.select(i);
-          handle?.close();
-        } }, t2("Show")));
+    const show = (problems) => {
+      problemsEl.replaceChildren();
+      problemsEl.hidden = !problems.length;
+      for (const p of problems) {
+        const li = el("li", { className: p.level }, p.text);
+        if (p.trigger !== void 0) {
+          const i = p.trigger;
+          li.append(el("button", { type: "button", className: "mg-sim-link", onclick: () => {
+            store.select(i);
+            handle?.close();
+          } }, t2("Show")));
+        }
+        problemsEl.append(li);
       }
-      problemsEl.append(li);
+    };
+    show(list);
+    if (svc && r && !r.rendered.unsupported.length && r.rows + r.chats + r.inputs > 0) {
+      try {
+        const checked = await svc.check({ [ENTRY]: r.rendered.source }, [ENTRY]);
+        const more = checked.problems.map((p) => ({ level: "error", text: t2("The rendered rows do not build: {message} ({file}, line {line}). This is Magenta's to fix: say so.", { message: p.message, file: p.file, line: p.line }) }));
+        if (more.length) show([...more, ...list]);
+        else if (!list.some((p) => p.level === "error")) status.set(t2("Checked by TrigScript: the rows build. They go into the map on the next save."), "ok");
+      } catch (err) {
+        show([{ level: "warn", text: t2("TrigScript could not check the rows: {why}", { why: String(err.message ?? err) }) }, ...list]);
+      }
     }
     return list;
   };
-  const renderRuntime = () => {
-    const svc = eudplib(api);
-    if (!svc) {
-      runtimeLine.textContent = "";
-      return;
-    }
-    const state = svc.state();
-    const where = state === "ready" ? t2("ready in this editor") : state === "installing" ? t2("being downloaded") : t2("downloaded on the first build, {mb} MB", { mb: Math.round(svc.downloadBytes / 1e5) / 10 });
-    runtimeLine.textContent = t2("Builds run with eudplib {eudplib} and euddraft {euddraft}, {where}.", { eudplib: svc.versions.eudplib, euddraft: svc.versions.euddraft, where });
+  const renderBuilder = () => {
+    const svc = trigscript(api);
+    builderLine.textContent = svc ? t2("Built into the saved map by TrigScript {version} when the map is saved, tested or exported: nothing to press, nothing downloaded, and the map is built in under a second.", { version: svc.versions.plugin }) : t2("The TrigScript plugin builds the rows into the saved map; it is not running.");
   };
-  const watching = api.services.watch(EUDPLIB_SERVICE, () => {
-    renderRuntime();
-    renderProblems();
+  const watching = api.services.watch(TRIGSCRIPT_BUILD_SERVICE, () => {
+    renderBuilder();
+    void renderProblems();
   });
-  for (const box of [cameraOn, bgmOn]) box.input.addEventListener("change", () => renderProblems());
-  cameraLoc.addEventListener("change", () => renderProblems());
-  bgmPath.addEventListener("change", () => renderProblems());
+  for (const box of [cameraOn, bgmOn, noAir, unlimiter]) box.input.addEventListener("change", () => void renderProblems());
+  cameraLoc.addEventListener("change", () => void renderProblems());
+  bgmPath.addEventListener("change", () => void renderProblems());
   handle = api.ui.dialog({
-    title: t2("Build EUD map"),
+    title: t2("Build"),
     size: "md",
     mount(body) {
-      renderFresh();
-      renderRuntime();
-      renderProblems();
+      renderSummary();
+      renderBuilder();
+      void renderProblems();
       body.append(
-        w.hint(t2("euddraft adds the code for the rows below to the map as it stands, here in the editor, and the built map is saved as a file. Nothing leaves this machine. Only StarCraft: Remastered plays the result. Keep this map as the source: the built one is the compiled output, the way a program is.")),
-        summary,
-        fresh,
+        w.hint(t2("The rows below have no record in the game's own trigger set: TrigScript builds the code for them into the map as it is saved, as it builds the map's own script. Only StarCraft: Remastered plays a built map; keep the source map, and share the saved one.")),
+        summaryEl,
         problemsEl,
         w.group(
           t2("Map-wide"),
-          w.column(cameraOn, w.form([{ label: t2("Location"), field: cameraLoc }, { label: t2("Inertia"), field: inertia }, { label: t2("Max speed"), field: maxspeed }]), cameraStart),
+          w.column(cameraOn, w.form([{ label: t2("Location"), field: cameraLoc }, { label: t2("Inertia"), field: inertia }, { label: t2("Max speed"), field: maxspeed }])),
           w.column(bgmOn, w.form([{ label: t2("Sound"), field: bgmPath }, { label: t2("Seconds"), field: bgmLen }])),
           noAir,
           unlimiter,
-          w.hint(t2("The camera follows a location by its name, so only named locations are offered. It follows while a switch named cammove is set, so a trigger can turn it on and off; the switch and a helper location named cammoveLoc are made in this map at build time. A looped sound needs its length; a plain WAV's is read from the file."))
+          w.hint(t2("The camera and the music are built as a program of each human's own. The other two were code patches of euddraft's, which TrigScript's build does not have: a map that ticks one is not built until it is unticked."))
         ),
-        runtimeLine,
-        status,
-        log
+        builderLine,
+        status
       );
-      if (nothing && !locations.length) status.set(t2("Nothing in this map needs a build; a plain save is all it takes."), "warn");
       return () => watching.dispose();
     },
-    buttons: [
-      { label: t2("Build\u2026"), primary: true, closes: false, run: async () => {
-        readAll();
-        const errors = renderProblems().filter((p) => p.level === "error").length;
-        if (errors) {
-          status.set(t2("{n, plural, one {Fix the problem above first.} other {Fix the # problems above first.}}", { n: errors }), "error");
-          return;
-        }
-        saveOptions();
-        let cammove = null;
-        if (options.camera) {
-          cammove = host.ensureLocation(CAMMOVE_LOC);
-          if (cammove === null) {
-            status.set(t2("The camera needs one free location slot for its helper location."), "error");
-            return;
-          }
-          const sw = host.ensureSwitch(CAMMOVE_SWITCH);
-          if (sw === null) {
-            status.set(t2("The camera needs one free switch to turn it on and off."), "error");
-            return;
-          }
-          store.reload();
-          const sets = store.list.some((tr) => tr.actions.some((a2) => a2.type === 13 && a2.target === sw));
-          if (cameraStart.input.checked && !sets) {
-            store.commit(t2("Start the camera"), (intern) => {
-              const tr = api.triggers.newTrigger([17]);
-              tr.conditions = [api.triggers.newCondition(22)];
-              tr.actions = [{ ...api.triggers.newAction(47), text: intern("Camera: start following") }, { ...api.triggers.newAction(13), target: sw, modifier: 4 }];
-              return [...store.list, tr];
-            });
-          }
-        }
-        const plugins2 = composePlugins(builds, store.sidecar.chat, everyFrame, store.sidecar.msqc, options, cammove);
-        const revision = buildStatus(host, store).revision;
-        const file = await api.document.export();
-        if (!file) {
-          status.set(t2("No map is open."), "error");
-          return;
-        }
-        const svc = eudplib(api);
-        if (!svc) {
-          status.set(t2("The eudplib plugin is not running; install or turn it on under Plugins \u25B8 Manage Plugins\u2026"), "error");
-          return;
-        }
-        const ready = await svc.ensure({ reason: t2("Magenta needs it to build this map.") });
-        renderRuntime();
-        if (!ready) {
-          status.set(t2("Not built: the build runtime was not installed."), "warn");
-          return;
-        }
-        status.busy(t2("Building\u2026"));
-        log.style.display = "none";
-        log.value = "";
-        try {
-          const bytes = new Uint8Array(await file.arrayBuffer());
-          const result = await svc.build({ map: bytes, plugins: plugins2, sources: { magenta: MAGENTA_PY } }, { onLog: (line) => {
-            log.value += line + "\n";
-          } });
-          const out = result.map;
-          const saved = await api.ui.saveFile(out, `${stem2}-eud.scx`);
-          status.set(saved ? t2("Built: {name}, {kb} KB in {s} s.", { name: saved.fileName, kb: Math.round(out.length / 1024), s: Math.round(result.ms / 100) / 10 }) : t2("Built, but not saved."), saved ? "ok" : "warn");
-          if (result.log) {
-            log.value = result.log;
-            log.style.display = "";
-          }
-          store.updateSidecar(t2("Build"), { settings: { ...store.sidecar.settings, lastBuild: lastBuildRecord(revision, saved?.fileName ?? null, runtimeOf(svc)) } });
-          renderFresh();
-        } catch (err) {
-          status.set(t2("The build failed: {why}. The map is unchanged.", { why: String(err.message ?? err) }), "error");
-          if (log.value) log.style.display = "";
-        }
-      } },
-      { label: t2("Close") }
-    ]
+    buttons: [{ label: t2("Close") }]
   });
 }
 
@@ -7948,7 +8129,7 @@ function rowShell(ctx, kind, index, sentence3, disabled, problems, h) {
 function renderNative(ctx, kind, record, segments, into, h) {
   const { api, host, store } = ctx;
   const t2 = api.i18n.t;
-  const set = (field, value) => h.onChange({ ...record, [field]: value });
+  const set = (field2, value) => h.onChange({ ...record, [field2]: value });
   for (const seg of segments) {
     if (seg.kind === "text") {
       into.append(seg.text);
@@ -8029,13 +8210,13 @@ function renderNative(ctx, kind, record, segments, into, h) {
     into.append(" ", name);
   }
 }
-function nameCounter(ctx, player, unit) {
+function nameCounter(ctx, player2, unit) {
   const { api, store } = ctx;
-  const existing = store.sidecar.counters.find((c2) => c2.player === player && c2.unit === unit);
+  const existing = store.sidecar.counters.find((c2) => c2.player === player2 && c2.unit === unit);
   void api.ui.prompt(api.i18n.t("Name for this death counter"), { title: api.i18n.t("Counter name"), value: existing?.name ?? "" }).then((name) => {
     if (typeof name !== "string") return;
-    const counters = store.sidecar.counters.filter((c2) => !(c2.player === player && c2.unit === unit));
-    if (name.trim()) counters.push({ player, unit, name: name.trim() });
+    const counters = store.sidecar.counters.filter((c2) => !(c2.player === player2 && c2.unit === unit));
+    if (name.trim()) counters.push({ player: player2, unit, name: name.trim() });
     store.updateSidecar(api.i18n.t("Name counter"), { counters });
   });
 }
@@ -8056,8 +8237,8 @@ function pickCounter(ctx, chip3, record, kind, h) {
         p.close();
         const used = usage(store.list).cells;
         for (const c2 of store.sidecar.counters) used.add(cellKey(c2.player, c2.unit));
-        const cell = allocate(used, host.placedUnitIds());
-        if (!cell) {
+        const cell2 = allocate(used, host.placedUnitIds());
+        if (!cell2) {
           api.ui.toast({ kind: "error", title: t2("No free counter cell") });
           return;
         }
@@ -8065,9 +8246,9 @@ function pickCounter(ctx, chip3, record, kind, h) {
           if (typeof name !== "string" || !name.trim()) return;
           store.commit(t2("New counter"), () => store.list.map((tr, i) => i !== ctx.triggerIndex ? tr : {
             ...tr,
-            conditions: kind === "condition" ? tr.conditions.map((c2) => c2 === record ? { ...c2, player: cell[0], unitId: cell[1] } : c2) : tr.conditions,
-            actions: kind === "action" ? tr.actions.map((a2) => a2 === record ? { ...a2, player: cell[0], unitId: cell[1] } : a2) : tr.actions
-          }), { sidecar: { counters: [...store.sidecar.counters, { player: cell[0], unit: cell[1], name: name.trim() }] } });
+            conditions: kind === "condition" ? tr.conditions.map((c2) => c2 === record ? { ...c2, player: cell2[0], unitId: cell2[1] } : c2) : tr.conditions,
+            actions: kind === "action" ? tr.actions.map((a2) => a2 === record ? { ...a2, player: cell2[0], unitId: cell2[1] } : a2) : tr.actions
+          }), { sidecar: { counters: [...store.sidecar.counters, { player: cell2[0], unit: cell2[1], name: name.trim() }] } });
         });
       } },
       { label: t2("Rename\u2026"), run: (p) => {
@@ -8082,9 +8263,9 @@ function pickCounter(ctx, chip3, record, kind, h) {
   });
 }
 function eudTitle(entry2, row) {
-  const hex2 = entryAddress(entry2, row.args).toString(16).toUpperCase();
+  const hex = entryAddress(entry2, row.args).toString(16).toUpperCase();
   const rw = entry2.remastered.read && entry2.remastered.write ? t("read and write") : entry2.remastered.read ? t("read only") : t("write only");
-  const where = entry2.parts?.length ? t("{n} records from 0x{hex}", { n: entry2.parts.length, hex: hex2 }) : entry2.width === "bit" ? t("0x{hex}, one bit", { hex: hex2 }) : t("{n, plural, one {0x{hex}, # byte} other {0x{hex}, # bytes}}", { n: entry2.width, hex: hex2 });
+  const where = entry2.parts?.length ? t("{n} records from 0x{hex}", { n: entry2.parts.length, hex }) : entry2.width === "bit" ? t("0x{hex}, one bit", { hex }) : t("{n, plural, one {0x{hex}, # byte} other {0x{hex}, # bytes}}", { n: entry2.width, hex });
   return [t("{name} \u2014 {where}, Remastered: {access}.", { name: translate(entry2.name), where, access: rw }), entry2.note ? translate(entry2.note) : "", entry2.verified ? t("Seen working in Remastered.") : t("Not yet seen working in Remastered."), t("Source: {source}.", { source: entry2.source })].filter(Boolean).join("\n");
 }
 function renderEud(ctx, kind, row, into, onChange, onText) {
@@ -8226,15 +8407,15 @@ function touches(t2) {
     out.set(key, { kind, id, use: merge(old?.use, use) });
   };
   const own = owners(t2);
-  const counter = (player, unit, use) => {
-    if (isEud(player)) {
-      const k = player + unit * 12;
+  const counter = (player2, unit, use) => {
+    if (isEud(player2)) {
+      const k = player2 + unit * 12;
       if (k < 228 * 12) add("counter", k, use);
       else add("memory", 5808996 + k * 4 >>> 0, use);
       return;
     }
     if (unit >= 228) return;
-    for (const p of playerSlots(player, own)) add("counter", cellKey(p, unit), use);
+    for (const p of playerSlots(player2, own)) add("counter", cellKey(p, unit), use);
   };
   for (const c2 of liveConditions(t2)) {
     if (isConditionDisabled(c2)) continue;
@@ -8853,7 +9034,7 @@ function openSettings(api) {
 // src/model/simulate.ts
 var HUMAN_PLAYERS2 = 8;
 var SLOTS = 12;
-var flat = (player, unit) => player + unit * 12;
+var flat = (player2, unit) => player2 + unit * 12;
 var secondsPerCycle = (world) => world.everyFrame ? 1 / 24 : 2;
 var defaultWorld = () => ({
   locations: [],
@@ -8913,9 +9094,9 @@ function slotsOf2(group, current3, s, world) {
   }
 }
 var range = (n) => Array.from({ length: n }, (_, i) => i);
-function runsFor(t2, player, world) {
-  if (t2.players[player] || t2.players[PlayerGroup.AllPlayers]) return true;
-  const f = world.force[player];
+function runsFor(t2, player2, world) {
+  if (t2.players[player2] || t2.players[PlayerGroup.AllPlayers]) return true;
+  const f = world.force[player2];
   return f >= 0 && !!t2.players[PlayerGroup.Force1 + f];
 }
 function matchesUnit(world, unitId, wanted) {
@@ -8924,16 +9105,16 @@ function matchesUnit(world, unitId, wanted) {
   if (wanted === UnitClass.Men) return !world.isBuilding(unitId);
   return world.isBuilding(unitId);
 }
-function inLocation(world, u, location) {
-  if (location === 64) return true;
-  const r = world.locations[location];
+function inLocation(world, u, location2) {
+  if (location2 === 64) return true;
+  const r = world.locations[location2];
   return !!r && u.x >= r.left && u.x < r.right && u.y >= r.top && u.y < r.bottom;
 }
-function unitsOf(s, world, slots, unitId, location) {
-  return s.units.filter((u) => slots.includes(u.owner) && matchesUnit(world, u.unitId, unitId) && (location === null || inLocation(world, u, location)));
+function unitsOf(s, world, slots, unitId, location2) {
+  return s.units.filter((u) => slots.includes(u.owner) && matchesUnit(world, u.unitId, unitId) && (location2 === null || inLocation(world, u, location2)));
 }
-function putUnits(s, world, owner, unitId, count, location) {
-  const r = location === 64 ? { left: 0, top: 0, right: 64, bottom: 64 } : world.locations[location];
+function putUnits(s, world, owner, unitId, count, location2) {
+  const r = location2 === 64 ? { left: 0, top: 0, right: 64, bottom: 64 } : world.locations[location2];
   if (!r) return [];
   const cx = (r.left + r.right) / 2, cy = (r.top + r.bottom) / 2;
   const made = [];
@@ -8980,9 +9161,9 @@ function random(s) {
   s.rand = x;
   return x;
 }
-function cells(player, unit, current3, s, world) {
-  if (player >= 27) return [player + unit * 12];
-  return slotsOf2(player, current3, s, world).map((p) => flat(p, unit));
+function cells(player2, unit, current3, s, world) {
+  if (player2 >= 27) return [player2 + unit * 12];
+  return slotsOf2(player2, current3, s, world).map((p) => flat(p, unit));
 }
 var most = (world, current3, value, least) => {
   const mine = value(current3);
@@ -8990,8 +9171,8 @@ var most = (world, current3, value, least) => {
 };
 function evaluate(c2, current3, s, world, key) {
   const assume = () => ({ ok: s.assumptions.get(key) ?? false, known: false, key });
-  const count = (slots, location) => unitsOf(s, world, slots, c2.unitId, location).length;
-  const commanded = (p, location) => unitsOf(s, world, [p], c2.unitId, location).length;
+  const count = (slots, location2) => unitsOf(s, world, slots, c2.unitId, location2).length;
+  const commanded = (p, location2) => unitsOf(s, world, [p], c2.unitId, location2).length;
   switch (c2.type) {
     case ConditionType.Always:
     case ConditionType.Briefing:
@@ -9002,10 +9183,10 @@ function evaluate(c2, current3, s, world, key) {
       return { ok: c2.comparison === SwitchState.Set === s.switches.has(c2.resource), known: true };
     case ConditionType.Deaths: {
       const list = cells(c2.player, c2.unitId, current3, s, world);
-      if (list.some((cell) => world.unknownCells.has(cell))) return assume();
-      if (isEud(c2.player) && !list.every((cell) => s.deaths.has(cell))) return assume();
+      if (list.some((cell2) => world.unknownCells.has(cell2))) return assume();
+      if (isEud(c2.player) && !list.every((cell2) => s.deaths.has(cell2))) return assume();
       const mask = c2.mask === MASK_MARKER ? c2.location >>> 0 : 4294967295;
-      const sum = list.reduce((n, cell) => n + (((s.deaths.get(cell) ?? 0) & mask) >>> 0), 0) >>> 0;
+      const sum = list.reduce((n, cell2) => n + (((s.deaths.get(cell2) ?? 0) & mask) >>> 0), 0) >>> 0;
       return { ok: compare(c2.comparison, sum, c2.amount >>> 0), known: true, have: sum };
     }
     case ConditionType.CountdownTimer: {
@@ -9067,10 +9248,10 @@ function evaluate(c2, current3, s, world, key) {
   }
 }
 var assumptionKey = (trigger4, condition) => `${trigger4}:${condition}`;
-function verdicts(list, index, player, s, world) {
+function verdicts(list, index, player2, s, world) {
   const t2 = list[index];
   if (!t2) return [];
-  return liveConditions(t2).map((c2, i) => ({ condition: i, verdict: isConditionDisabled(c2) ? { ok: true, known: true } : evaluate(c2, player, s, world, assumptionKey(index, i)) }));
+  return liveConditions(t2).map((c2, i) => ({ condition: i, verdict: isConditionDisabled(c2) ? { ok: true, known: true } : evaluate(c2, player2, s, world, assumptionKey(index, i)) }));
 }
 function runAction(a2, i, current3, s, world) {
   const note = (text2) => s.log.push({ cycle: s.cycle, player: current3, trigger: i, kind: "note", text: text2 });
@@ -9120,15 +9301,15 @@ function runAction(a2, i, current3, s, world) {
       return {};
     case ActionType.SetDeaths: {
       const mask = a2.mask === MASK_MARKER ? a2.location >>> 0 : 4294967295;
-      for (const cell of cells(a2.player, a2.unitId, current3, s, world)) {
-        const old = s.deaths.get(cell) ?? 0;
-        const field = (old & mask) >>> 0;
+      for (const cell2 of cells(a2.player, a2.unitId, current3, s, world)) {
+        const old = s.deaths.get(cell2) ?? 0;
+        const field2 = (old & mask) >>> 0;
         let next;
         if (a2.modifier === SetModifier.SetTo) next = a2.target & mask;
-        else if (a2.modifier === SetModifier.Add) next = field + a2.target >>> 0 & mask;
-        else next = Math.max(0, field - a2.target) & mask;
-        s.deaths.set(cell, (old & ~mask | next) >>> 0);
-        if (world.hookCells.has(cell)) note(t("A build row runs here in the game; the dry run skips it."));
+        else if (a2.modifier === SetModifier.Add) next = field2 + a2.target >>> 0 & mask;
+        else next = Math.max(0, field2 - a2.target) & mask;
+        s.deaths.set(cell2, (old & ~mask | next) >>> 0);
+        if (world.hookCells.has(cell2)) note(t("A build row runs here in the game; the dry run skips it."));
       }
       return {};
     }
@@ -9216,59 +9397,59 @@ function runAction(a2, i, current3, s, world) {
   }
 }
 var isPreserved2 = (t2) => (t2.flags & TriggerFlag.Preserve) !== 0 || liveActions(t2).some((a2) => a2.type === ActionType.PreserveTrigger && !isActionDisabled(a2));
-function runActions(list, i, from, player, s, world) {
+function runActions(list, i, from, player2, s, world) {
   const t2 = list[i];
   const actions = liveActions(t2);
   for (let j = from; j < actions.length; j++) {
     const a2 = actions[j];
     if (isActionDisabled(a2)) continue;
-    const out = runAction(a2, i, player, s, world);
+    const out = runAction(a2, i, player2, s, world);
     if (out.wait !== void 0) {
-      s.players[player].wait = { until: s.seconds + out.wait, trigger: i, action: j + 1 };
-      s.log.push({ cycle: s.cycle, player, trigger: i, kind: "wait", seconds: out.wait });
+      s.players[player2].wait = { until: s.seconds + out.wait, trigger: i, action: j + 1 };
+      s.log.push({ cycle: s.cycle, player: player2, trigger: i, kind: "wait", seconds: out.wait });
       return true;
     }
-    if (s.players[player].result !== null) return true;
+    if (s.players[player2].result !== null) return true;
   }
   return false;
 }
-function runPlayer(list, player, s, world) {
+function runPlayer(list, player2, s, world) {
   const fired = [];
-  const p = s.players[player];
+  const p = s.players[player2];
   if (p.result !== null) return fired;
   let start = 0;
   if (p.wait) {
     if (s.seconds < p.wait.until - 1e-9) return fired;
     const { trigger: trigger4, action } = p.wait;
     p.wait = null;
-    if (runActions(list, trigger4, action, player, s, world)) return fired;
+    if (runActions(list, trigger4, action, player2, s, world)) return fired;
     start = trigger4 + 1;
   }
   for (let i = start; i < list.length; i++) {
     const t2 = list[i];
-    if (!runsFor(t2, player, world) || s.spent.has(i * 16 + player)) continue;
+    if (!runsFor(t2, player2, world) || s.spent.has(i * 16 + player2)) continue;
     let ok = true;
     liveConditions(t2).forEach((c2, k) => {
       if (!ok || isConditionDisabled(c2)) return;
       const key = assumptionKey(i, k);
-      const v = evaluate(c2, player, s, world, key);
-      if (!v.known) s.unknown.set(key, { key, trigger: i, condition: k, player });
+      const v = evaluate(c2, player2, s, world, key);
+      if (!v.known) s.unknown.set(key, { key, trigger: i, condition: k, player: player2 });
       if (!v.ok) ok = false;
     });
     if (!ok) continue;
     fired.push(i);
-    s.log.push({ cycle: s.cycle, player, trigger: i, kind: "fired" });
-    if (!isPreserved2(t2)) s.spent.add(i * 16 + player);
-    if (runActions(list, i, 0, player, s, world)) return fired;
+    s.log.push({ cycle: s.cycle, player: player2, trigger: i, kind: "fired" });
+    if (!isPreserved2(t2)) s.spent.add(i * 16 + player2);
+    if (runActions(list, i, 0, player2, s, world)) return fired;
   }
   return fired;
 }
 function cycle(list, s, world = DEFAULT_WORLD) {
   s.cycle++;
   const fired = [];
-  for (let player = 0; player < HUMAN_PLAYERS2; player++) {
-    if (!world.active[player]) continue;
-    fired.push(...runPlayer(list, player, s, world));
+  for (let player2 = 0; player2 < HUMAN_PLAYERS2; player2++) {
+    if (!world.active[player2]) continue;
+    fired.push(...runPlayer(list, player2, s, world));
   }
   const dt = secondsPerCycle(world);
   s.seconds += dt;
@@ -9478,8 +9659,8 @@ function worldFromMap(api, host, store, everyFrame) {
     }
   }
   const world = { locations, active, force, allied, isBuilding, string: (i) => host.string(i), unknownCells, hookCells, everyFrame };
-  const units = (scn?.units ?? []).filter((u) => u.owner < 12 && u.unitId !== 214).map((u) => ({ owner: u.owner, unitId: u.unitId, x: u.x, y: u.y }));
-  return { world, units };
+  const units2 = (scn?.units ?? []).filter((u) => u.owner < 12 && u.unitId !== 214).map((u) => ({ owner: u.owner, unitId: u.unitId, x: u.x, y: u.y }));
+  return { world, units: units2 };
 }
 function createSimulator(api, host, store, everyFrame) {
   let handle = null;
@@ -9627,8 +9808,8 @@ function createSimulator(api, host, store, everyFrame) {
         ct.append(chip3);
       }
       const addCell = el("button", { type: "button", className: "mg-chip", title: t2("Set a counter") }, "+");
-      addCell.addEventListener("click", () => pickCell(api, host, store, addCell, [0, 0], (cell) => pickNumber(api, addCell, state.deaths.get(flat(cell[0], cell[1])) ?? 0, (n) => {
-        state.deaths.set(flat(cell[0], cell[1]), n >>> 0);
+      addCell.addEventListener("click", () => pickCell(api, host, store, addCell, [0, 0], (cell2) => pickNumber(api, addCell, state.deaths.get(flat(cell2[0], cell2[1])) ?? 0, (n) => {
+        state.deaths.set(flat(cell2[0], cell2[1]), n >>> 0);
         render();
       }, { min: 0, integer: true })));
       ct.append(addCell);
@@ -9993,7 +10174,7 @@ function createPanel(api, hooks = {}) {
     const newButton = w.button(t2("New"), { primary: true, title: t2("A new trigger after the selected one (Ctrl+N)"), onClick: () => newTrigger() });
     const recipeButton = w.button(t2("Recipes\u2026"), { title: t2("Start from a whole trigger: a beacon shop, a countdown, a respawn\u2026"), onClick: () => recipes(recipeButton) });
     const menuButton = w.button("\u22EF", { ghost: true, title: t2("More"), onClick: () => menu(menuButton) });
-    const buildButton = w.button("", { ghost: true, title: t2("Where the map stands against its last build; click for Build EUD map\u2026"), onClick: () => openBuildDialog(api, h, s, everyFrame()) });
+    const buildButton = w.button("", { ghost: true, title: t2("How many triggers carry a row TrigScript builds code for on save; click for the list and the checks"), onClick: () => openBuildDialog(api, h, s, everyFrame()) });
     const listButton = w.button("\u2630", { ghost: true, title: t2("Show or hide the trigger list"), onClick: () => {
       setLayout(api, { listHidden: !layout(api).listHidden });
       applyLayout();
@@ -10039,12 +10220,10 @@ function createPanel(api, hooks = {}) {
       divider.addEventListener("pointerup", up);
     });
     const renderBuild = () => {
-      const st = buildStatus(h, s);
-      buildButton.hidden = st.triggers === 0 && st.freshness === "never";
+      const st = buildStatus(s);
+      buildButton.hidden = st.triggers === 0;
       if (buildButton.hidden) return;
-      const state = st.freshness === "fresh" ? t2("built") : st.freshness === "stale" ? t2("stale") : t2("not built");
-      buildButton.textContent = t2("Build \xB7 {n} \xB7 {state}", { n: st.triggers, state });
-      buildButton.classList.toggle("warn", st.freshness !== "fresh");
+      buildButton.textContent = t2("Build \xB7 {n}", { n: st.triggers });
     };
     const renderNotice = () => {
       const problem = h.sidecarProblem();
@@ -10316,7 +10495,7 @@ function createPanel(api, hooks = {}) {
         item(t2("Counters\u2026"), () => countersDialog()),
         sep(),
         item(t2("Dry run\u2026"), () => sim.open()),
-        item(t2("Build EUD map\u2026"), () => openBuildDialog(api, h, s, everyFrame())),
+        item(t2("Build\u2026"), () => openBuildDialog(api, h, s, everyFrame())),
         item(t2("Dock on the right"), () => {
           setLayout(api, { dock: layout(api).dock === "right" ? "float" : "right" });
           relayout();
@@ -10533,7 +10712,6 @@ var KO = {
   "24 cycles a second": "1\uCD08\uC5D0 24\uC8FC\uAE30",
   "32-bit (any count)": "32\uBE44\uD2B8 (\uC81C\uD55C \uC5C6\uC74C)",
   "A build row names location {n}, which the map no longer has.": "\uBE4C\uB4DC \uD589\uC774 \uB9F5\uC5D0\uC11C \uC5C6\uC5B4\uC9C4 \uB85C\uCF00\uC774\uC158 {n}\uC744(\uB97C) \uAC00\uB9AC\uD0B5\uB2C8\uB2E4.",
-  "A build row no trigger uses is still in the map's Magenta data; it is sent, and never fires.": "\uC5B4\uB290 \uD2B8\uB9AC\uAC70\uB3C4 \uC4F0\uC9C0 \uC54A\uB294 \uBE4C\uB4DC \uD589\uC774 \uB9F5\uC758 Magenta \uB370\uC774\uD130\uC5D0 \uB0A8\uC544 \uC788\uC2B5\uB2C8\uB2E4. \uBE4C\uB4DC\uC5D0 \uB4E4\uC5B4\uAC00\uC9C0\uB9CC \uC2E4\uD589\uB418\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
   "A build row runs here in the game; the dry run skips it.": "\uAC8C\uC784\uC5D0\uC11C\uB294 \uC5EC\uAE30\uC11C \uBE4C\uB4DC \uD589\uC774 \uC2E4\uD589\uB429\uB2C8\uB2E4. \uBAA8\uC758 \uC2E4\uD589\uC740 \uAC74\uB108\uB701\uB2C8\uB2E4.",
   "a computer": "\uCEF4\uD4E8\uD130",
   "a computer (lobby)": "\uCEF4\uD4E8\uD130 (\uB85C\uBE44)",
@@ -10564,7 +10742,6 @@ var KO = {
   "A sound plays here.": "\uC5EC\uAE30\uC11C \uC0AC\uC6B4\uB4DC\uAC00 \uC7AC\uC0DD\uB429\uB2C8\uB2E4.",
   "A ten-minute countdown, then victory for everyone still in. Change the seconds, or Victory to Defeat.": "10\uBD84 \uCE74\uC6B4\uD2B8\uB2E4\uC6B4\uC774 \uB05D\uB098\uBA74 \uB0A8\uC544 \uC788\uB294 \uBAA8\uB450\uAC00 \uC2B9\uB9AC\uD569\uB2C8\uB2E4. \uCD08\uB97C \uBC14\uAFB8\uAC70\uB098 Victory\uB97C Defeat\uB85C \uBC14\uAFB8\uC138\uC694.",
   "A trigger at the end of the list now sets the trigger timer to 0 every cycle, so the whole list runs every frame instead of every two seconds. Every Wait and every preserved trigger in the map now runs on that clock: a counter that added 1 per cycle adds 24 a second.": "\uC774\uC81C \uBAA9\uB85D \uB05D\uC758 \uD2B8\uB9AC\uAC70\uAC00 \uB9E4 \uC8FC\uAE30 \uD2B8\uB9AC\uAC70 \uD0C0\uC774\uBA38\uB97C 0\uC73C\uB85C \uC124\uC815\uD558\uBBC0\uB85C, \uBAA9\uB85D \uC804\uCCB4\uAC00 2\uCD08\uB9C8\uB2E4\uAC00 \uC544\uB2C8\uB77C \uB9E4 \uD504\uB808\uC784 \uC2E4\uD589\uB429\uB2C8\uB2E4. \uB9F5\uC758 \uBAA8\uB4E0 Wait\uACFC \uBCF4\uC874\uB41C \uD2B8\uB9AC\uAC70\uAC00 \uC774 \uC2DC\uACC4\uB85C \uC2E4\uD589\uB429\uB2C8\uB2E4. \uC8FC\uAE30\uB9C8\uB2E4 1\uC529 \uB354\uD558\uB358 \uCE74\uC6B4\uD130\uB294 1\uCD08\uC5D0 24\uC529 \uB354\uD569\uB2C8\uB2E4.",
-  "A unit check no trigger uses is still in the map's Magenta data; it is sent, and never fires.": "\uC5B4\uB290 \uD2B8\uB9AC\uAC70\uB3C4 \uC4F0\uC9C0 \uC54A\uB294 \uC720\uB2DB \uAC80\uC0AC\uAC00 \uB9F5\uC758 Magenta \uB370\uC774\uD130\uC5D0 \uB0A8\uC544 \uC788\uC2B5\uB2C8\uB2E4. \uBE4C\uB4DC\uC5D0 \uB4E4\uC5B4\uAC00\uC9C0\uB9CC \uC2E4\uD589\uB418\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
   "A Unit Properties slot, 1 to 64; 0 for none": "\uC720\uB2DB \uC18D\uC131 \uC2AC\uB86F, 1\u201364. 0\uC774\uBA74 \uC5C6\uC74C",
   "A units.dat flag, bit 14. Verified as a write and read (probe 9); what the game does with it for a type that never had it was not checked \u2014 the flag alone gives no button.": "units.dat \uD50C\uB798\uADF8, \uBE44\uD2B8 14. \uC4F0\uAE30\uC640 \uC77D\uAE30\uB97C \uD655\uC778\uD588\uC2B5\uB2C8\uB2E4 (probe 9). \uC6D0\uB798 \uC774 \uD50C\uB798\uADF8\uAC00 \uC5C6\uB358 \uC885\uB958\uC5D0 \uAC8C\uC784\uC774 \uBB34\uC5C7\uC744 \uD558\uB294\uC9C0\uB294 \uD655\uC778\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4. \uD50C\uB798\uADF8\uB9CC\uC73C\uB85C\uB294 \uBC84\uD2BC\uC774 \uC0DD\uAE30\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
   "A units.dat flag, bit 20. Verified as a write and read (probe 9); what the game does with it for a type that never had it was not checked \u2014 the flag alone gives no button.": "units.dat \uD50C\uB798\uADF8, \uBE44\uD2B8 20. \uC4F0\uAE30\uC640 \uC77D\uAE30\uB97C \uD655\uC778\uD588\uC2B5\uB2C8\uB2E4 (probe 9). \uC6D0\uB798 \uC774 \uD50C\uB798\uADF8\uAC00 \uC5C6\uB358 \uC885\uB958\uC5D0 \uAC8C\uC784\uC774 \uBB34\uC5C7\uC744 \uD558\uB294\uC9C0\uB294 \uD655\uC778\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4. \uD50C\uB798\uADF8\uB9CC\uC73C\uB85C\uB294 \uBC84\uD2BC\uC774 \uC0DD\uAE30\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
@@ -10639,24 +10816,14 @@ var KO = {
   "at random": "\uBB34\uC791\uC704",
   "At the start, set the Marine's max hit points to 80 and its armor to 2. EUD writes; add rows for other stats.": "\uC2DC\uC791\uD560 \uB54C \uB9C8\uB9B0\uC758 \uCD5C\uB300 \uCCB4\uB825\uC744 80, \uBC29\uC5B4\uB825\uC744 2\uB85C \uC124\uC815\uD569\uB2C8\uB2E4. EUD \uC4F0\uAE30\uC785\uB2C8\uB2E4. \uB2E4\uB978 \uB2A5\uB825\uCE58\uB294 \uD589\uC744 \uCD94\uAC00\uD558\uC138\uC694.",
   "attack": "\uACF5\uACA9",
-  "being downloaded": "\uB2E4\uC6B4\uB85C\uB4DC \uC911",
   "below": "\uBBF8\uB9CC",
   "blue": "\uD30C\uB791",
   "brown": "\uAC08\uC0C9",
   "Build": "\uBE4C\uB4DC",
-  "Build EUD map": "EUD \uB9F5 \uBE4C\uB4DC",
-  "Build EUD map\u2026": "EUD \uB9F5 \uBE4C\uB4DC\u2026",
   "Build options": "\uBE4C\uB4DC \uC635\uC158",
   "Build time of a unit type": "\uC720\uB2DB \uC885\uB958\uC758 \uC0DD\uC0B0 \uC2DC\uAC04",
-  "Build \xB7 {n} \xB7 {state}": "\uBE4C\uB4DC \xB7 {n} \xB7 {state}",
   "Buildings": "\uAC74\uBB3C",
-  "Building\u2026": "\uBE4C\uB4DC \uC911\u2026",
-  "Builds run with eudplib {eudplib} and euddraft {euddraft}, {where}.": "\uBE4C\uB4DC\uB294 eudplib {eudplib}\uACFC(\uC640) euddraft {euddraft}(\uC73C)\uB85C \uC2E4\uD589\uB429\uB2C8\uB2E4. {where}.",
   "Build\u2026": "\uBE4C\uB4DC\u2026",
-  "built": "\uBE4C\uB4DC\uB428",
-  "Built from the map as it is now, {when}{file}.": "\uC9C0\uAE08\uC758 \uB9F5\uC73C\uB85C \uBE4C\uB4DC\uD588\uC2B5\uB2C8\uB2E4. {when}{file}.",
-  "Built, but not saved.": "\uBE4C\uB4DC\uD588\uC9C0\uB9CC \uC800\uC7A5\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.",
-  "Built: {name}, {kb} KB in {s} s.": "\uBE4C\uB4DC \uC644\uB8CC: {name}, {kb} KB, {s}\uCD08.",
   "Burrow ability flag of a unit type": "\uC720\uB2DB \uC885\uB958\uC758 \uBC84\uB85C\uC6B0 \uB2A5\uB825 \uD50C\uB798\uADF8",
   "burrowed": "\uBC84\uB85C\uC6B0 \uC0C1\uD0DC",
   "Cancel": "\uCDE8\uC18C",
@@ -10751,7 +10918,6 @@ var KO = {
   "Done by a run of {n} generated triggers right after this one, in the same cycle: this trigger's own rows run first, the triggers after the run see the result. The run is hidden here and locked in the other editors.": "\uAC19\uC740 \uC8FC\uAE30\uC5D0 \uC774 \uD2B8\uB9AC\uAC70 \uBC14\uB85C \uB4A4\uC5D0\uC11C \uB9CC\uB4E4\uC5B4\uC9C4 \uD2B8\uB9AC\uAC70 {n}\uAC1C\uAC00 \uCC98\uB9AC\uD569\uB2C8\uB2E4. \uC774 \uD2B8\uB9AC\uAC70\uC758 \uD589\uC774 \uBA3C\uC800 \uC2E4\uD589\uB418\uACE0, \uADF8 \uB4A4\uC758 \uD2B8\uB9AC\uAC70\uB4E4\uC774 \uACB0\uACFC\uB97C \uBD05\uB2C8\uB2E4. \uB9CC\uB4E4\uC5B4\uC9C4 \uD2B8\uB9AC\uAC70\uB294 \uC5EC\uAE30\uC11C \uC228\uACA8\uC9C0\uACE0 \uB2E4\uB978 \uD3B8\uC9D1\uAE30\uC5D0\uC11C\uB294 \uC7A0\uAE41\uB2C8\uB2E4.",
   "Double-click to rename; drop a trigger here to put it in the folder": "\uB354\uBE14\uD074\uB9AD\uD574\uC11C \uC774\uB984 \uBC14\uAFB8\uAE30. \uD2B8\uB9AC\uAC70\uB97C \uC5EC\uAE30\uC5D0 \uB193\uC73C\uBA74 \uD3F4\uB354\uC5D0 \uB123\uC2B5\uB2C8\uB2E4",
   "down by": "\uBE7C\uAE30:",
-  "downloaded on the first build, {mb} MB": "\uCCAB \uBE4C\uB4DC \uB54C \uB2E4\uC6B4\uB85C\uB4DC, {mb} MB",
   "Drag to resize the list; double-click to hide it": "\uB04C\uC5B4\uC11C \uBAA9\uB85D \uD06C\uAE30 \uC870\uC808, \uB354\uBE14\uD074\uB9AD\uD558\uBA74 \uC228\uAE30\uAE30",
   "draw": "\uBB34\uC2B9\uBD80",
   "draws": "\uBB34\uC2B9\uBD80",
@@ -10787,7 +10953,6 @@ var KO = {
   "ensnare": "\uC778\uC2A4\uB124\uC5B4",
   "equal to": "\uB3D9\uC77C",
   "EUD player": "EUD \uD50C\uB808\uC774\uC5B4",
-  "euddraft adds the code for the rows below to the map as it stands, here in the editor, and the built map is saved as a file. Nothing leaves this machine. Only StarCraft: Remastered plays the result. Keep this map as the source: the built one is the compiled output, the way a program is.": "euddraft\uAC00 \uC544\uB798 \uD589\uB4E4\uC758 \uCF54\uB4DC\uB97C \uC9C0\uAE08\uC758 \uB9F5\uC5D0 \uB354\uD558\uACE0, \uBE4C\uB4DC\uD55C \uB9F5\uC744 \uD30C\uC77C\uB85C \uC800\uC7A5\uD569\uB2C8\uB2E4. \uBAA8\uB450 \uC774 \uD3B8\uC9D1\uAE30 \uC548\uC5D0\uC11C \uC77C\uC5B4\uB098\uBA70 \uC774 \uCEF4\uD4E8\uD130 \uBC16\uC73C\uB85C \uB098\uAC00\uB294 \uAC83\uC740 \uC5C6\uC2B5\uB2C8\uB2E4. \uACB0\uACFC\uBB3C\uC740 StarCraft: Remastered\uC5D0\uC11C\uB9CC \uC2E4\uD589\uB429\uB2C8\uB2E4. \uC774 \uB9F5\uC744 \uC6D0\uBCF8\uC73C\uB85C \uBCF4\uAD00\uD558\uC138\uC694. \uBE4C\uB4DC\uD55C \uB9F5\uC740 \uD504\uB85C\uADF8\uB7A8\uCC98\uB7FC \uCEF4\uD30C\uC77C\uB41C \uACB0\uACFC\uBB3C\uC785\uB2C8\uB2E4.",
   "Every build row's sentence, every folder and every counter name in it is lost; the triggers themselves stay as they are in the map. Continue?": "\uB370\uC774\uD130\uC5D0 \uC788\uB294 \uBE4C\uB4DC \uD589\uC758 \uBB38\uC7A5, \uD3F4\uB354, \uCE74\uC6B4\uD130 \uC774\uB984\uC774 \uBAA8\uB450 \uC0AC\uB77C\uC9D1\uB2C8\uB2E4. \uD2B8\uB9AC\uAC70 \uC790\uCCB4\uB294 \uB9F5\uC5D0 \uADF8\uB300\uB85C \uB0A8\uC2B5\uB2C8\uB2E4. \uACC4\uC18D\uD560\uAE4C\uC694?",
   "Every enemy unit that dies pays the players 50 minerals. Change the enemy player and the unit, or the amount.": "\uC801 \uC720\uB2DB\uC774 \uC8FD\uC744 \uB54C\uB9C8\uB2E4 \uD50C\uB808\uC774\uC5B4\uAC00 \uBBF8\uB124\uB784 50\uC744 \uBC1B\uC2B5\uB2C8\uB2E4. \uC801 \uD50C\uB808\uC774\uC5B4\uC640 \uC720\uB2DB, \uB610\uB294 \uC591\uC744 \uBC14\uAFB8\uC138\uC694.",
   "every frame": "\uB9E4 \uD504\uB808\uC784",
@@ -10914,7 +11079,6 @@ var KO = {
   "lost": "\uD328\uBC30",
   "maelstrom": "\uB9C8\uC5D8\uC2A4\uD2B8\uB86C",
   "Magenta cannot change this map yet": "Magenta\uAC00 \uC544\uC9C1 \uC774 \uB9F5\uC744 \uBC14\uAFC0 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4",
-  "Magenta needs it to build this map.": "Magenta\uAC00 \uC774 \uB9F5\uC744 \uBE4C\uB4DC\uD558\uB294 \uB370 \uD544\uC694\uD569\uB2C8\uB2E4.",
   "Magenta Settings": "Magenta \uC124\uC815",
   "Magenta's counter add": "Magenta\uC758 \uCE74\uC6B4\uD130 \uB354\uD558\uAE30",
   "Magenta's counter comparison": "Magenta\uC758 \uCE74\uC6B4\uD130 \uBE44\uAD50",
@@ -11041,8 +11205,6 @@ var KO = {
   "Normal": "\uBCF4\uD1B5",
   "not a detector": "\uD0D0\uC9C0\uAE30 \uC544\uB2D8",
   "not a hero": "\uC601\uC6C5 \uC544\uB2D8",
-  "not built": "\uBE4C\uB4DC \uC548 \uB428",
-  "Not built: the build runtime was not installed.": "\uBE4C\uB4DC\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4. \uBE4C\uB4DC \uB7F0\uD0C0\uC784\uC774 \uC124\uCE58\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.",
   "not invincible": "\uBB34\uC801 \uC544\uB2D8",
   "not mechanical": "\uAE30\uACC4 \uC544\uB2D8",
   "not organic": "\uC0DD\uCCB4 \uC544\uB2D8",
@@ -11053,7 +11215,6 @@ var KO = {
   "not set": "\uC124\uC815 \uC548 \uB428",
   "Not yet seen working in Remastered.": "\uC544\uC9C1 Remastered\uC5D0\uC11C \uB3D9\uC791\uC744 \uD655\uC778\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.",
   "Nothing has happened yet. Step runs one cycle.": "\uC544\uC9C1 \uC544\uBB34 \uC77C\uB3C4 \uC5C6\uC2B5\uB2C8\uB2E4. \uD55C \uB2E8\uACC4\uB294 \uC8FC\uAE30 \uD558\uB098\uB97C \uC2E4\uD589\uD569\uB2C8\uB2E4.",
-  "Nothing in this map needs a build; a plain save is all it takes.": "\uC774 \uB9F5\uC5D0\uB294 \uBE4C\uB4DC\uAC00 \uD544\uC694\uD55C \uAC83\uC774 \uC5C6\uC2B5\uB2C8\uB2E4. \uADF8\uB0E5 \uC800\uC7A5\uD558\uBA74 \uB429\uB2C8\uB2E4.",
   "Nothing matches.": "\uB9DE\uB294 \uAC83\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.",
   "objectives:": "\uC784\uBB34 \uBAA9\uD45C:",
   "off": "\uB054",
@@ -11132,7 +11293,6 @@ var KO = {
   "read by": "\uC77D\uB294 \uD2B8\uB9AC\uAC70:",
   "read only": "\uC77D\uAE30 \uC804\uC6A9",
   "Reads memory at 0x{hex}, which the catalogue does not know.": "\uCE74\uD0C8\uB85C\uADF8\uC5D0 \uC5C6\uB294 \uBA54\uBAA8\uB9AC 0x{hex}\uC744(\uB97C) \uC77D\uC2B5\uB2C8\uB2E4.",
-  "ready in this editor": "\uC774 \uD3B8\uC9D1\uAE30\uC5D0 \uC900\uBE44\uB428",
   "Recipes\u2026": "\uB808\uC2DC\uD53C\u2026",
   "Recipe\u2026": "\uB808\uC2DC\uD53C\u2026",
   "red": "\uBE68\uAC15",
@@ -11316,13 +11476,10 @@ var KO = {
   "sound {n}": "\uC0AC\uC6B4\uB4DC {n}",
   "Source: {source}.": "\uCD9C\uCC98: {source}.",
   "Speed of a unit type": "\uC720\uB2DB \uC885\uB958\uC758 \uC18D\uB3C4",
-  "stale": "\uC624\uB798\uB428",
   "Stands for the player": "\uD50C\uB808\uC774\uC5B4\uB97C \uB73B\uD558\uB294 \uADF8\uB8F9",
-  "Start following at once (a trigger sets the cammove switch)": "\uBC14\uB85C \uB530\uB77C\uAC00\uAE30 \uC2DC\uC791 (\uD2B8\uB9AC\uAC70\uAC00 cammove \uC2A4\uC704\uCE58\uB97C \uCF2C)",
   "Start from a whole trigger: a beacon shop, a countdown, a respawn\u2026": "\uC644\uC131\uB41C \uD2B8\uB9AC\uAC70\uB85C \uC2DC\uC791\uD569\uB2C8\uB2E4: \uBE44\uCEE8 \uC0C1\uC810, \uCE74\uC6B4\uD2B8\uB2E4\uC6B4, \uBD80\uD65C\u2026",
   "Start from\u2026": "\uC2DC\uC791\uD560 \uD2B8\uB9AC\uAC70\u2026",
   "Start over from the map as it is now": "\uC9C0\uAE08\uC758 \uB9F5\uC5D0\uC11C \uB2E4\uC2DC \uC2DC\uC791",
-  "Start the camera": "\uCE74\uBA54\uB77C \uC2DC\uC791",
   "stasis": "\uC2A4\uD14C\uC774\uC2DC\uC2A4",
   "State": "\uC0C1\uD0DC",
   "Status": "\uAD00\uACC4",
@@ -11344,12 +11501,6 @@ var KO = {
   "Supply used by a unit type": "\uC720\uB2DB \uC885\uB958\uAC00 \uC4F0\uB294 \uBCF4\uAE09",
   "Switch": "\uC2A4\uC704\uCE58",
   "Switches set": "\uCF1C\uC9C4 \uC2A4\uC704\uCE58",
-  "Synced input (keys, clicks, mouse) through MSQC": "MSQC\uB97C \uD1B5\uD55C \uB3D9\uAE30\uD654 \uC785\uB825 (\uD0A4, \uD074\uB9AD, \uB9C8\uC6B0\uC2A4)",
-  "Synced input needs {player} for itself, and the slot is set to {type}. Make it inactive in Scenario \u25B8 Players, or free another slot and remove the input rows to let Magenta pick again.": "\uB3D9\uAE30\uD654 \uC785\uB825\uC740 {player}\uC744(\uB97C) \uC804\uC6A9\uC73C\uB85C \uC368\uC57C \uD558\uB294\uB370 \uC774 \uC2AC\uB86F\uC774 {type}(\uC73C)\uB85C \uC124\uC815\uB418\uC5B4 \uC788\uC2B5\uB2C8\uB2E4. \uC2DC\uB098\uB9AC\uC624 \u25B8 \uD50C\uB808\uC774\uC5B4\uC5D0\uC11C \uBE44\uD65C\uC131\uC73C\uB85C \uBC14\uAFB8\uAC70\uB098, \uB2E4\uB978 \uC2AC\uB86F\uC744 \uBE44\uC6B0\uACE0 \uC785\uB825 \uD589\uC744 \uC9C0\uC6CC Magenta\uAC00 \uB2E4\uC2DC \uACE0\uB974\uAC8C \uD558\uC138\uC694.",
-  "Synced input needs {player} for itself, and units on the map belong to it.": "\uB3D9\uAE30\uD654 \uC785\uB825\uC740 {player}\uC744(\uB97C) \uC804\uC6A9\uC73C\uB85C \uC368\uC57C \uD558\uB294\uB370 \uB9F5\uC5D0 \uADF8 \uD50C\uB808\uC774\uC5B4\uC758 \uC720\uB2DB\uC774 \uC788\uC2B5\uB2C8\uB2E4.",
-  "Synced input owns {player}; this trigger runs for it too.": "{player}\uC740(\uB294) \uB3D9\uAE30\uD654 \uC785\uB825 \uC804\uC6A9\uC778\uB370 \uC774 \uD2B8\uB9AC\uAC70\uAC00 \uADF8 \uD50C\uB808\uC774\uC5B4\uB85C\uB3C4 \uC2E4\uD589\uB429\uB2C8\uB2E4.",
-  "Synced input uses the {unit} type for its own command units, and the map has some placed. Remove them, or pick another unit type in the map's settings.": "\uB3D9\uAE30\uD654 \uC785\uB825\uC740 {unit} \uC885\uB958\uB97C \uC790\uCCB4 \uBA85\uB839 \uC720\uB2DB\uC73C\uB85C \uC4F0\uB294\uB370 \uB9F5\uC5D0 \uC774 \uC720\uB2DB\uC774 \uBC30\uCE58\uB418\uC5B4 \uC788\uC2B5\uB2C8\uB2E4. \uBC30\uCE58\uB41C \uC720\uB2DB\uC744 \uC9C0\uC6B0\uAC70\uB098 \uB9F5 \uC124\uC815\uC5D0\uC11C \uB2E4\uB978 \uC720\uB2DB \uC885\uB958\uB97C \uACE0\uB974\uC138\uC694.",
-  "Synced input's own location slot ({n}) is no longer empty: a location was made there. Free it, or remove the input rows and add them again to pick another.": "\uB3D9\uAE30\uD654 \uC785\uB825 \uC804\uC6A9 \uB85C\uCF00\uC774\uC158 \uC2AC\uB86F({n})\uC774 \uB354 \uC774\uC0C1 \uBE44\uC5B4 \uC788\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4. \uADF8 \uC790\uB9AC\uC5D0 \uB85C\uCF00\uC774\uC158\uC774 \uC0DD\uACBC\uC2B5\uB2C8\uB2E4. \uBE44\uC6B0\uAC70\uB098, \uC785\uB825 \uD589\uC744 \uC9C0\uC6B0\uACE0 \uB2E4\uC2DC \uCD94\uAC00\uD574 \uB2E4\uB978 \uC2AC\uB86F\uC744 \uACE0\uB974\uAC8C \uD558\uC138\uC694.",
   "take": "\uAC10\uC18C",
   "take the speed upgrade": "\uC18D\uB3C4 \uC5C5\uADF8\uB808\uC774\uB4DC \uBE7C\uAE30",
   "Take the {units} {by} {measure}: {action}, center {location} on it, value into {counter}": "{units} \uC911 {measure|\uC774} {by} \uC720\uB2DB: {action}, {location|\uC744} \uADF8 \uC720\uB2DB \uC911\uC2EC\uC5D0, \uAC12\uC740 {counter}\uC5D0",
@@ -11369,14 +11520,9 @@ var KO = {
   "The armor of {unit} is {cmp} {value}": "{unit}\uC758 \uBC29\uC5B4\uB825\uC774 {value} {cmp}",
   "The background music {file} is not in the map archive.": "\uBC30\uACBD \uC74C\uC545 {file}\uC774(\uAC00) \uB9F5 \uC544\uCE74\uC774\uBE0C\uC5D0 \uC5C6\uC2B5\uB2C8\uB2E4.",
   "The browser did not allow reading the clipboard": "\uBE0C\uB77C\uC6B0\uC800\uAC00 \uD074\uB9BD\uBCF4\uB4DC \uC77D\uAE30\uB97C \uD5C8\uC6A9\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4",
-  "The build failed: {why}. The map is unchanged.": "\uBE4C\uB4DC\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4: {why}. \uB9F5\uC740 \uBC14\uB00C\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.",
   "The build time of {unit} is {cmp} {value}": "{unit}\uC758 \uC0DD\uC0B0 \uC2DC\uAC04\uC774 {value} {cmp}",
-  "The camera finds its location by name, and location {n} has none of its own.": "\uCE74\uBA54\uB77C\uB294 \uB85C\uCF00\uC774\uC158\uC744 \uC774\uB984\uC73C\uB85C \uCC3E\uB294\uB370 \uB85C\uCF00\uC774\uC158 {n}\uC5D0\uB294 \uC774\uB984\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.",
-  "The camera follows a location by its name, so only named locations are offered. It follows while a switch named cammove is set, so a trigger can turn it on and off; the switch and a helper location named cammoveLoc are made in this map at build time. A looped sound needs its length; a plain WAV's is read from the file.": "\uCE74\uBA54\uB77C\uB294 \uB85C\uCF00\uC774\uC158\uC744 \uC774\uB984\uC73C\uB85C \uCC3E\uC73C\uBBC0\uB85C \uC774\uB984 \uC788\uB294 \uB85C\uCF00\uC774\uC158\uB9CC \uACE0\uB97C \uC218 \uC788\uC2B5\uB2C8\uB2E4. cammove\uB77C\uB294 \uC2A4\uC704\uCE58\uAC00 \uCF1C\uC838 \uC788\uB294 \uB3D9\uC548 \uB530\uB77C\uAC00\uBBC0\uB85C \uD2B8\uB9AC\uAC70\uB85C \uCF1C\uACE0 \uB04C \uC218 \uC788\uC2B5\uB2C8\uB2E4. \uC774 \uC2A4\uC704\uCE58\uC640 cammoveLoc\uC774\uB77C\uB294 \uBCF4\uC870 \uB85C\uCF00\uC774\uC158\uC740 \uBE4C\uB4DC\uD560 \uB54C \uC774 \uB9F5\uC5D0 \uB9CC\uB4E4\uC5B4\uC9D1\uB2C8\uB2E4. \uBC18\uBCF5 \uC7AC\uC0DD\uD560 \uC0AC\uC6B4\uB4DC\uB294 \uAE38\uC774\uAC00 \uD544\uC694\uD558\uBA70, \uC77C\uBC18 WAV\uB294 \uD30C\uC77C\uC5D0\uC11C \uAE38\uC774\uB97C \uC77D\uC2B5\uB2C8\uB2E4.",
   "The camera follows a location, for everyone": "\uBAA8\uB450\uC758 \uCE74\uBA54\uB77C\uAC00 \uB85C\uCF00\uC774\uC158\uC744 \uB530\uB77C\uAC10",
   "The camera follows location {n}, which the map no longer has.": "\uCE74\uBA54\uB77C\uAC00 \uB9F5\uC5D0\uC11C \uC5C6\uC5B4\uC9C4 \uB85C\uCF00\uC774\uC158 {n}\uC744(\uB97C) \uB530\uB77C\uAC11\uB2C8\uB2E4.",
-  "The camera needs one free location slot for its helper location.": "\uCE74\uBA54\uB77C\uC758 \uBCF4\uC870 \uB85C\uCF00\uC774\uC158\uC5D0 \uC4F8 \uBE48 \uB85C\uCF00\uC774\uC158 \uC2AC\uB86F\uC774 \uD558\uB098 \uD544\uC694\uD569\uB2C8\uB2E4.",
-  "The camera needs one free switch to turn it on and off.": "\uCE74\uBA54\uB77C\uB97C \uCF1C\uACE0 \uB04C \uBE48 \uC2A4\uC704\uCE58\uAC00 \uD558\uB098 \uD544\uC694\uD569\uB2C8\uB2E4.",
   'The chat command "{message}": {problem}': '\uCC44\uD305 \uBA85\uB839 "{message}": {problem}',
   "The chat said a command": "\uCC44\uD305\uC73C\uB85C \uBA85\uB839 \uC785\uB825",
   "The chat said {message} {mode}": "\uCC44\uD305 \uC785\uB825: {message} {mode}",
@@ -11391,8 +11537,6 @@ var KO = {
   "The destination. The order goes to one unit at a time through the location named Magenta scratch, which is Magenta's to move.": "\uBAA9\uC801\uC9C0\uC785\uB2C8\uB2E4. \uBA85\uB839\uC740 Magenta scratch\uB77C\uB294 \uB85C\uCF00\uC774\uC158\uC744 \uAC70\uCCD0 \uD55C \uC720\uB2DB\uC529 \uB0B4\uB824\uC9C0\uBA70, \uC774 \uB85C\uCF00\uC774\uC158\uC740 Magenta\uAC00 \uC62E\uAE41\uB2C8\uB2E4.",
   "The energy cost of {tech} is {cmp} {value}": "{tech}\uC758 \uC5D0\uB108\uC9C0 \uBE44\uC6A9\uC774 {value} {cmp}",
   "The energy of placed unit {index} is {cmp} {value}": "\uBC30\uCE58\uB41C \uC720\uB2DB {index}\uC758 \uC5D0\uB108\uC9C0\uAC00 {value} {cmp}",
-  "The eudplib plugin is not running: it is the library that builds EUD maps. Install or turn it on under Plugins \u25B8 Manage Plugins\u2026": "eudplib \uD50C\uB7EC\uADF8\uC778\uC774 \uC2E4\uD589\uB418\uACE0 \uC788\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4. EUD \uB9F5\uC744 \uBE4C\uB4DC\uD558\uB294 \uB77C\uC774\uBE0C\uB7EC\uB9AC\uC785\uB2C8\uB2E4. \uD50C\uB7EC\uADF8\uC778 \u25B8 \uD50C\uB7EC\uADF8\uC778 \uAD00\uB9AC\u2026\uC5D0\uC11C \uC124\uCE58\uD558\uAC70\uB098 \uCF1C\uC138\uC694.",
-  "The eudplib plugin is not running; install or turn it on under Plugins \u25B8 Manage Plugins\u2026": "eudplib \uD50C\uB7EC\uADF8\uC778\uC774 \uC2E4\uD589\uB418\uACE0 \uC788\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4. \uD50C\uB7EC\uADF8\uC778 \u25B8 \uD50C\uB7EC\uADF8\uC778 \uAD00\uB9AC\u2026\uC5D0\uC11C \uC124\uCE58\uD558\uAC70\uB098 \uCF1C\uC138\uC694.",
   "The field's value \u2014 or the distance, for the nearest \u2014 goes into this counter; 0 when nothing matched.": "\uADF8 \uD56D\uBAA9\uC758 \uAC12(\uAC00\uC7A5 \uAC00\uAE4C\uC6B4 \uC720\uB2DB\uC774\uBA74 \uAC70\uB9AC)\uC774 \uC774 \uCE74\uC6B4\uD130\uC5D0 \uB4E4\uC5B4\uAC11\uB2C8\uB2E4. \uB9DE\uB294 \uC720\uB2DB\uC774 \uC5C6\uC73C\uBA74 0\uC785\uB2C8\uB2E4.",
   "The first level's cost; each further level adds the upgrade's own factor to it.": "\uCCAB \uB2E8\uACC4\uC758 \uBE44\uC6A9\uC785\uB2C8\uB2E4. \uB2E4\uC74C \uB2E8\uACC4\uB9C8\uB2E4 \uC5C5\uADF8\uB808\uC774\uB4DC \uACE0\uC720\uC758 \uC99D\uAC00\uB7C9\uC774 \uB354\uD574\uC9D1\uB2C8\uB2E4.",
   "The first level's time, stored in frames at Normal speed: 15 per game second. Each further level adds the upgrade's own factor.": "\uCCAB \uB2E8\uACC4\uC758 \uC2DC\uAC04\uC73C\uB85C, \uBCF4\uD1B5 \uC18D\uB3C4 \uAE30\uC900 \uD504\uB808\uC784\uC73C\uB85C \uC800\uC7A5\uB429\uB2C8\uB2E4 (\uAC8C\uC784 1\uCD08\uC5D0 15). \uB2E4\uC74C \uB2E8\uACC4\uB9C8\uB2E4 \uC5C5\uADF8\uB808\uC774\uB4DC \uACE0\uC720\uC758 \uC99D\uAC00\uB7C9\uC774 \uB354\uD574\uC9D1\uB2C8\uB2E4.",
@@ -11409,7 +11553,6 @@ var KO = {
   "The hit points of placed unit {index} is {cmp} {value}": "\uBC30\uCE58\uB41C \uC720\uB2DB {index}\uC758 \uCCB4\uB825\uC774 {value} {cmp}",
   "The left-hand number of the top bar. The game recounts it when a unit is made or dies. Each race has its own table; a player's is the one for the race they play. Verified as a read (probe 9).": "\uC704\uCABD \uB9C9\uB300\uC758 \uC67C\uCABD \uC22B\uC790\uC785\uB2C8\uB2E4. \uC720\uB2DB\uC774 \uC0DD\uAE30\uAC70\uB098 \uC8FD\uC744 \uB54C \uAC8C\uC784\uC774 \uB2E4\uC2DC \uC149\uB2C8\uB2E4. \uC885\uC871\uB9C8\uB2E4 \uD45C\uAC00 \uB530\uB85C \uC788\uC73C\uBA70, \uD50C\uB808\uC774\uC5B4\uC5D0\uAC8C\uB294 \uC790\uAE30 \uC885\uC871\uC758 \uD45C\uAC00 \uC4F0\uC785\uB2C8\uB2E4. \uC77D\uAE30\uB85C \uD655\uC778\uB428 (probe 9).",
   "The level of {upgrade} for {player} is {cmp} {value}": "{player}\uC758 {upgrade} \uB2E8\uACC4\uAC00 {value} {cmp}",
-  "The map changed since its last build, {when}{file}: that output is stale.": "\uB9C8\uC9C0\uB9C9 \uBE4C\uB4DC({when}{file}) \uC774\uD6C4 \uB9F5\uC774 \uBC14\uB00C\uC5C8\uC2B5\uB2C8\uB2E4. \uADF8 \uACB0\uACFC\uBB3C\uC740 \uC624\uB798\uB41C \uAC83\uC785\uB2C8\uB2E4.",
   "The max hit points of {unit} is {cmp} {value}": "{unit}\uC758 \uCD5C\uB300 \uCCB4\uB825\uC774 {value} {cmp}",
   "The max shields of {unit} is {cmp} {value}": "{unit}\uC758 \uCD5C\uB300 \uBCF4\uD638\uB9C9\uC774 {value} {cmp}",
   "The maximum level of {upgrade} is {cmp} {value}": "{upgrade}\uC758 \uCD5C\uB300 \uB2E8\uACC4\uAC00 {value} {cmp}",
@@ -11422,7 +11565,6 @@ var KO = {
   "The mouse's Y on screen is {cmp} {value}": "\uD654\uBA74 \uC704 \uB9C8\uC6B0\uC2A4 Y\uAC00 {value} {cmp}",
   "The name comes from one of the map's strings, shown wherever the unit's name appears; the one type only. Remastered only.": "\uC774\uB984\uC740 \uB9F5\uC758 \uBB38\uC790\uC5F4 \uAC00\uC6B4\uB370 \uD558\uB098\uC5D0\uC11C \uAC00\uC838\uC624\uBA70, \uC720\uB2DB \uC774\uB984\uC774 \uB098\uC624\uB294 \uACF3\uB9C8\uB2E4 \uBCF4\uC785\uB2C8\uB2E4. \uC774 \uC885\uB958\uC5D0\uB9CC \uC801\uC6A9\uB429\uB2C8\uB2E4. Remastered \uC804\uC6A9.",
   'The next scenario is set to "{name}".': '\uB2E4\uC74C \uC2DC\uB098\uB9AC\uC624\uAC00 "{name}"(\uC73C)\uB85C \uC124\uC815\uB429\uB2C8\uB2E4.',
-  "The order row's scratch location ({n}) is gone; pick the order again to make one.": "\uBA85\uB839 \uD589\uC758 \uC791\uC5C5\uC6A9 \uB85C\uCF00\uC774\uC158({n})\uC774 \uC5C6\uC5B4\uC84C\uC2B5\uB2C8\uB2E4. \uBA85\uB839\uC744 \uB2E4\uC2DC \uACE8\uB77C \uC0C8\uB85C \uB9CC\uB4DC\uC138\uC694.",
   "The order row's target location ({n}) is gone.": "\uBA85\uB839 \uD589\uC758 \uBAA9\uD45C \uB85C\uCF00\uC774\uC158({n})\uC774 \uC5C6\uC5B4\uC84C\uC2B5\uB2C8\uB2E4.",
   "The owner of placed unit {index} is {value}": "\uBC30\uCE58\uB41C \uC720\uB2DB {index}\uC758 \uC18C\uC720\uC790: {value}",
   "The pick row centres location {n} on the unit, and the map no longer has it.": "\uACE0\uB974\uAE30 \uD589\uC740 \uB85C\uCF00\uC774\uC158 {n}\uC744(\uB97C) \uC720\uB2DB \uC911\uC2EC\uC5D0 \uB450\uB294\uB370, \uB9F5\uC5D0 \uADF8 \uB85C\uCF00\uC774\uC158\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.",
@@ -11462,10 +11604,8 @@ var KO = {
   "Then: {actions}.": "\uADF8\uB7EC\uBA74: {actions}.",
   "This death counter is used by another plugin's generated triggers.": "\uC774 \uB370\uC2A4 \uCE74\uC6B4\uD130\uB294 \uB2E4\uB978 \uD50C\uB7EC\uADF8\uC778\uC774 \uB9CC\uB4E0 \uD2B8\uB9AC\uAC70\uAC00 \uC4F0\uACE0 \uC788\uC2B5\uB2C8\uB2E4.",
   "This map has no triggers yet. Add one with New.": "\uC774 \uB9F5\uC5D0\uB294 \uC544\uC9C1 \uD2B8\uB9AC\uAC70\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4. \uC0C8\uB85C \uB9CC\uB4E4\uAE30\uB85C \uCD94\uAC00\uD558\uC138\uC694.",
-  "This map has not been built yet.": "\uC774 \uB9F5\uC740 \uC544\uC9C1 \uBE4C\uB4DC\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.",
   "This map's Magenta data could not be read ({detail}). Its folders, counter names and build rows are hidden, and the triggers cannot be changed here until the data is dropped.": "\uC774 \uB9F5\uC758 Magenta \uB370\uC774\uD130\uB97C \uC77D\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4({detail}). \uD3F4\uB354, \uCE74\uC6B4\uD130 \uC774\uB984, \uBE4C\uB4DC \uD589\uC774 \uC228\uACA8\uC9C0\uBA70, \uB370\uC774\uD130\uB97C \uBC84\uB9AC\uAE30 \uC804\uAE4C\uC9C0\uB294 \uC5EC\uAE30\uC11C \uD2B8\uB9AC\uAC70\uB97C \uBC14\uAFC0 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.",
   "This map's Magenta data was written by a newer Magenta (version {v}). Its folders, counter names and build rows are hidden, and the triggers cannot be changed here until Magenta is updated or the data is dropped.": "\uC774 \uB9F5\uC758 Magenta \uB370\uC774\uD130\uB294 \uB354 \uC0C8\uB85C\uC6B4 Magenta(\uBC84\uC804 {v})\uAC00 \uC37C\uC2B5\uB2C8\uB2E4. \uD3F4\uB354, \uCE74\uC6B4\uD130 \uC774\uB984, \uBE4C\uB4DC \uD589\uC774 \uC228\uACA8\uC9C0\uBA70, Magenta\uB97C \uC5C5\uB370\uC774\uD2B8\uD558\uAC70\uB098 \uB370\uC774\uD130\uB97C \uBC84\uB9AC\uAE30 \uC804\uAE4C\uC9C0\uB294 \uC5EC\uAE30\uC11C \uD2B8\uB9AC\uAC70\uB97C \uBC14\uAFC0 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.",
-  "This trigger creates a {unit}, the type synced input keeps for itself.": "\uC774 \uD2B8\uB9AC\uAC70\uB294 \uB3D9\uAE30\uD654 \uC785\uB825 \uC804\uC6A9 \uC885\uB958\uC778 {unit}\uC744(\uB97C) \uB9CC\uB4ED\uB2C8\uB2E4.",
   "This trigger has no actions.": "\uC774 \uD2B8\uB9AC\uAC70\uC5D0\uB294 \uC561\uC158\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.",
   "tick to pretend it holds": "\uCCB4\uD06C\uD558\uBA74 \uB9DE\uB294 \uAC83\uC73C\uB85C \uCE69\uB2C8\uB2E4",
   "tiles": "\uD0C0\uC77C",
@@ -11486,7 +11626,6 @@ var KO = {
   "Trigger {n}": "\uD2B8\uB9AC\uAC70 {n}",
   "Triggers Magenta generates for this one": "Magenta\uAC00 \uC774 \uD2B8\uB9AC\uAC70\uB97C \uC704\uD574 \uB9CC\uB4DC\uB294 \uD2B8\uB9AC\uAC70",
   "Triggers run every frame": "\uD2B8\uB9AC\uAC70\uAC00 \uB9E4 \uD504\uB808\uC784 \uC2E4\uD589\uB429\uB2C8\uB2E4",
-  "Triggers run every frame (turbo)": "\uD2B8\uB9AC\uAC70\uAC00 \uB9E4 \uD504\uB808\uC784 \uC2E4\uD589\uB428 (\uD130\uBCF4)",
   "Triggers run every two seconds": "\uD2B8\uB9AC\uAC70\uAC00 2\uCD08\uB9C8\uB2E4 \uC2E4\uD589\uB428",
   "Triggers run {clock}": "\uD2B8\uB9AC\uAC70\uAC00 {clock} \uC2E4\uD589\uB429\uB2C8\uB2E4",
   "Turn on Run triggers every frame in the \u22EF menu for this one.": "\uC774 \uB808\uC2DC\uD53C\uB294 \u22EF \uBA54\uB274\uC5D0\uC11C \uD2B8\uB9AC\uAC70 \uB9E4 \uD504\uB808\uC784 \uC2E4\uD589\uC744 \uCF1C\uC57C \uD569\uB2C8\uB2E4.",
@@ -11556,7 +11695,6 @@ var KO = {
   "When the player's unit dies, wait five seconds and create it again at the location. Change the unit and the location.": "\uD50C\uB808\uC774\uC5B4\uC758 \uC720\uB2DB\uC774 \uC8FD\uC73C\uBA74 5\uCD08 \uAE30\uB2E4\uB9B0 \uB4A4 \uB85C\uCF00\uC774\uC158\uC5D0 \uB2E4\uC2DC \uB9CC\uB4ED\uB2C8\uB2E4. \uC720\uB2DB\uACFC \uB85C\uCF00\uC774\uC158\uC744 \uBC14\uAFB8\uC138\uC694.",
   "When this {unit} dies": "\uC774 {unit}\uC774(\uAC00) \uC8FD\uC73C\uBA74",
   "When this {unit} is at {location}": "\uC774 {unit}\uC774(\uAC00) {location}\uC5D0 \uC788\uC73C\uBA74",
-  "Where the map stands against its last build; click for Build EUD map\u2026": "\uB9C8\uC9C0\uB9C9 \uBE4C\uB4DC\uC640 \uBE44\uAD50\uD55C \uB9F5\uC758 \uC0C1\uD0DC\uC785\uB2C8\uB2E4. \uD074\uB9AD\uD558\uBA74 EUD \uB9F5 \uBE4C\uB4DC\u2026",
   "Whether a player has left": "\uD50C\uB808\uC774\uC5B4\uAC00 \uB098\uAC14\uB294\uC9C0",
   "white": "\uD558\uC591",
   "Whoever brings a unit to {location} gets the {unit}": "{location}\uC5D0 \uC720\uB2DB\uC744 \uAC00\uC838\uC628 \uD50C\uB808\uC774\uC5B4\uAC00 {unit}\uC744(\uB97C) \uBC1B\uC74C",
@@ -11593,12 +11731,10 @@ var KO = {
   "{n, plural, one {# chat command} other {# chat commands}}": "{n, plural, other {\uCC44\uD305 \uBA85\uB839 #\uAC1C}}",
   "{n, plural, one {# row is} other {# rows are}} shared with the original: editing it in one changes the other.": "{n, plural, other {\uD589 #\uAC1C\uB97C}} \uC6D0\uBCF8\uACFC \uD568\uAED8 \uC501\uB2C8\uB2E4. \uD55C\uCABD\uC5D0\uC11C \uD3B8\uC9D1\uD558\uBA74 \uB2E4\uB978 \uCABD\uB3C4 \uBC14\uB01D\uB2C8\uB2E4.",
   "{n, plural, one {0x{hex}, # byte} other {0x{hex}, # bytes}}": "{n, plural, other {0x{hex}, #\uBC14\uC774\uD2B8}}",
-  "{n, plural, one {Fix the problem above first.} other {Fix the # problems above first.}}": "{n, plural, other {\uC704\uC758 \uBB38\uC81C #\uAC1C\uB97C \uBA3C\uC800 \uACE0\uCE58\uC138\uC694.}}",
   "{n, plural, one {It fires when {when}.} =2 {It fires when {when} both hold.} other {It fires when {when} all hold.}}": "{n, plural, =1 {\uB2E4\uC74C \uC870\uAC74\uC77C \uB54C \uC2E4\uD589\uB429\uB2C8\uB2E4: {when}.} =2 {\uB2E4\uC74C \uB450 \uC870\uAC74\uC774 \uBAA8\uB450 \uB9DE\uC744 \uB54C \uC2E4\uD589\uB429\uB2C8\uB2E4: {when}.} other {\uB2E4\uC74C \uC870\uAC74\uC774 \uBAA8\uB450 \uB9DE\uC744 \uB54C \uC2E4\uD589\uB429\uB2C8\uB2E4: {when}.}}",
   "{n, plural, one {Its Waits hold the owner's other triggers for # second in all, every time it fires.} other {Its Waits hold the owner's other triggers for # seconds in all, every time it fires.}}": "{n, plural, other {\uC2E4\uD589\uB420 \uB54C\uB9C8\uB2E4 Wait\uC774 \uC18C\uC720\uC790\uC758 \uB2E4\uB978 \uD2B8\uB9AC\uAC70\uB97C \uBAA8\uB450 \uD569\uD574 #\uCD08 \uB3D9\uC548 \uBA48\uCDA5\uB2C8\uB2E4.}}",
   "{n, plural, one {Its Waits hold the owner's other triggers for # second in all.} other {Its Waits hold the owner's other triggers for # seconds in all.}}": "{n, plural, other {Wait\uC774 \uC18C\uC720\uC790\uC758 \uB2E4\uB978 \uD2B8\uB9AC\uAC70\uB97C \uBAA8\uB450 \uD569\uD574 #\uCD08 \uB3D9\uC548 \uBA48\uCDA5\uB2C8\uB2E4.}}",
   "{n, plural, one {One disabled condition is ignored.} other {# disabled conditions are ignored.}}": "{n, plural, other {\uBE44\uD65C\uC131\uD654\uB41C \uC870\uAC74 #\uAC1C\uB294 \uBB34\uC2DC\uB429\uB2C8\uB2E4.}}",
-  "{n, plural, one {The eight location slots the players' mice use ({from}\u2013{to}) must stay empty; slot {taken} is in use.} other {The eight location slots the players' mice use ({from}\u2013{to}) must stay empty; slots {taken} are in use.}}": "{n, plural, other {\uD50C\uB808\uC774\uC5B4 \uB9C8\uC6B0\uC2A4\uC6A9 \uB85C\uCF00\uC774\uC158 \uC2AC\uB86F 8\uAC1C({from}\u2013{to})\uB294 \uBE44\uC5B4 \uC788\uC5B4\uC57C \uD558\uB294\uB370 \uC2AC\uB86F {taken}\uC744(\uB97C) \uC4F0\uACE0 \uC788\uC2B5\uB2C8\uB2E4.}}",
   "{name} \u2014 {where}, Remastered: {access}.": "{name} \u2014 {where}, Remastered: {access}.",
   "{n} groups": "\uADF8\uB8F9 {n}\uAC1C",
   "{n} records from 0x{hex}": "0x{hex}\uBD80\uD130 \uB808\uCF54\uB4DC {n}\uAC1C",
@@ -11638,7 +11774,37 @@ var KO = {
   "{what} names location {n}, which the map no longer has.": "{what}\uC774(\uAC00) \uB9F5\uC5D0\uC11C \uC5C6\uC5B4\uC9C4 \uB85C\uCF00\uC774\uC158 {n}\uC744(\uB97C) \uAC00\uB9AC\uD0B5\uB2C8\uB2E4.",
   "{what} names no location.": "{what}\uC5D0 \uB85C\uCF00\uC774\uC158\uC774 \uC9C0\uC815\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.",
   "{what} names string {n}, which the map does not have.": "{what}\uC774(\uAC00) \uB9F5\uC5D0 \uC5C6\uB294 \uBB38\uC790\uC5F4 {n}\uC744(\uB97C) \uAC00\uB9AC\uD0B5\uB2C8\uB2E4.",
-  "{what}: generated from the trigger it belongs to. Edit that trigger in Magenta; the run is rebuilt with it.": "{what}: \uC774 \uD2B8\uB9AC\uAC70\uAC00 \uC18D\uD55C \uD2B8\uB9AC\uAC70\uC5D0\uC11C \uB9CC\uB4E4\uC5B4\uC84C\uC2B5\uB2C8\uB2E4. \uADF8 \uD2B8\uB9AC\uAC70\uB97C Magenta\uC5D0\uC11C \uD3B8\uC9D1\uD558\uBA74 \uD568\uAED8 \uB2E4\uC2DC \uB9CC\uB4E4\uC5B4\uC9D1\uB2C8\uB2E4."
+  "{what}: generated from the trigger it belongs to. Edit that trigger in Magenta; the run is rebuilt with it.": "{what}: \uC774 \uD2B8\uB9AC\uAC70\uAC00 \uC18D\uD55C \uD2B8\uB9AC\uAC70\uC5D0\uC11C \uB9CC\uB4E4\uC5B4\uC84C\uC2B5\uB2C8\uB2E4. \uADF8 \uD2B8\uB9AC\uAC70\uB97C Magenta\uC5D0\uC11C \uD3B8\uC9D1\uD558\uBA74 \uD568\uAED8 \uB2E4\uC2DC \uB9CC\uB4E4\uC5B4\uC9D1\uB2C8\uB2E4.",
+  "A unit check no trigger uses is still in the map's Magenta data; it is built, and never fires.": "\uC5B4\uB5A4 \uD2B8\uB9AC\uAC70\uB3C4 \uC4F0\uC9C0 \uC54A\uB294 \uC720\uB2DB \uAC80\uC0AC\uAC00 \uB9F5\uC758 Magenta \uB370\uC774\uD130\uC5D0 \uB0A8\uC544 \uC788\uC2B5\uB2C8\uB2E4. \uBE4C\uB4DC\uB418\uC9C0\uB9CC \uACB0\uCF54 \uBC1C\uB3D9\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
+  "A build row no trigger uses is still in the map's Magenta data; it is built, and never runs.": "\uC5B4\uB5A4 \uD2B8\uB9AC\uAC70\uB3C4 \uC4F0\uC9C0 \uC54A\uB294 \uBE4C\uB4DC \uD589\uC774 \uB9F5\uC758 Magenta \uB370\uC774\uD130\uC5D0 \uB0A8\uC544 \uC788\uC2B5\uB2C8\uB2E4. \uBE4C\uB4DC\uB418\uC9C0\uB9CC \uACB0\uCF54 \uC2E4\uD589\uB418\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
+  "Not built: {why}.": "\uBE4C\uB4DC\uB418\uC9C0 \uC54A\uC74C: {why}.",
+  "Built in part: {note}.": "\uC77C\uBD80\uB9CC \uBE4C\uB4DC\uB428: {note}.",
+  "The TrigScript plugin is not running: it is what builds the rows into the map. Install or turn it on under Plugins \u25B8 Manage Plugins\u2026": "TrigScript \uD50C\uB7EC\uADF8\uC778\uC774 \uC2E4\uD589 \uC911\uC774 \uC544\uB2D9\uB2C8\uB2E4. \uD589\uC744 \uB9F5\uC5D0 \uBE4C\uB4DC\uD558\uB294 \uAC83\uC774 \uADF8 \uD50C\uB7EC\uADF8\uC778\uC785\uB2C8\uB2E4. \uD50C\uB7EC\uADF8\uC778 \u25B8 \uD50C\uB7EC\uADF8\uC778 \uAD00\uB9AC\u2026\uC5D0\uC11C \uC124\uCE58\uD558\uAC70\uB098 \uCF1C\uC138\uC694",
+  "this pass's verb is not in the language yet": "\uC774 \uD328\uC2A4\uC758 \uB3D9\uC791\uC740 \uC544\uC9C1 \uC5B8\uC5B4\uC5D0 \uC5C6\uC2B5\uB2C8\uB2E4",
+  "the pick measures from location {n}, which the map no longer has": "\uACE0\uB974\uAE30\uAC00 \uB9F5\uC5D0\uC11C \uC5C6\uC5B4\uC9C4 \uB85C\uCF00\uC774\uC158 {n}\uC5D0\uC11C \uAC70\uB9AC\uB97C \uC7BD\uB2C8\uB2E4",
+  "the pick measures from nothing": "\uACE0\uB974\uAE30\uAC00 \uAC70\uB9AC\uB97C \uC7B4 \uAE30\uC900\uC774 \uC5C6\uC2B5\uB2C8\uB2E4",
+  "this pick's verb is not in the language yet": "\uC774 \uACE0\uB974\uAE30\uC758 \uB3D9\uC791\uC740 \uC544\uC9C1 \uC5B8\uC5B4\uC5D0 \uC5C6\uC2B5\uB2C8\uB2E4",
+  "the row moves location {n}, which the map no longer has": "\uD589\uC774 \uB9F5\uC5D0\uC11C \uC5C6\uC5B4\uC9C4 \uB85C\uCF00\uC774\uC158 {n}\uC744(\uB97C) \uC62E\uAE41\uB2C8\uB2E4",
+  "the camera follows location {n}, which the map no longer has": "\uCE74\uBA54\uB77C\uAC00 \uB9F5\uC5D0\uC11C \uC5C6\uC5B4\uC9C4 \uB85C\uCF00\uC774\uC158 {n}\uC744(\uB97C) \uB530\uB77C\uAC11\uB2C8\uB2E4",
+  "The camera and the music are built as a program of each human's own. The other two were code patches of euddraft's, which TrigScript's build does not have: a map that ticks one is not built until it is unticked.": "\uCE74\uBA54\uB77C\uC640 \uC74C\uC545\uC740 \uC0AC\uB78C \uD50C\uB808\uC774\uC5B4\uB9C8\uB2E4 \uD558\uB098\uC529\uC758 \uD504\uB85C\uADF8\uB7A8\uC73C\uB85C \uBE4C\uB4DC\uB429\uB2C8\uB2E4. \uB098\uBA38\uC9C0 \uB458\uC740 euddraft\uC758 \uCF54\uB4DC \uD328\uCE58\uC600\uACE0 TrigScript\uC758 \uBE4C\uB4DC\uC5D0\uB294 \uC5C6\uC2B5\uB2C8\uB2E4. \uD558\uB098\uB77C\uB3C4 \uCF1C \uB454 \uB9F5\uC740 \uB04C \uB54C\uAE4C\uC9C0 \uBE4C\uB4DC\uB418\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
+  "the chat command's number has no cell to land in; add the command again": "\uCC44\uD305 \uBA85\uB839\uC758 \uC22B\uC790\uAC00 \uB4E4\uC5B4\uAC08 \uC140\uC774 \uC5C6\uC2B5\uB2C8\uB2E4. \uBA85\uB839\uC744 \uB2E4\uC2DC \uCD94\uAC00\uD558\uC138\uC694",
+  "a chat pattern of your own (^\u2026$) is not in the language yet; write the message, or the message followed by a number": "\uC9C1\uC811 \uC4F4 \uCC44\uD305 \uD328\uD134(^\u2026$)\uC740 \uC544\uC9C1 \uC5B8\uC5B4\uC5D0 \uC5C6\uC2B5\uB2C8\uB2E4. \uBA54\uC2DC\uC9C0\uB9CC, \uB610\uB294 \uBA54\uC2DC\uC9C0 \uB4A4\uC5D0 \uC22B\uC790\uAC00 \uC624\uB294 \uD615\uD0DC\uB85C \uC4F0\uC138\uC694",
+  "the key with code {code} is one StarCraft: Remastered reports no press of, or none the language names": "\uCF54\uB4DC {code}\uC758 \uD0A4\uB294 StarCraft: Remastered\uAC00 \uB20C\uB9BC\uC744 \uC54C\uB9AC\uC9C0 \uC54A\uB294 \uD0A4\uC774\uAC70\uB098 \uC5B8\uC5B4\uC5D0 \uC774\uB984\uC774 \uC5C6\uB294 \uD0A4\uC785\uB2C8\uB2E4",
+  "the mouse is read over location {n}, which the map no longer has": "\uB9F5\uC5D0\uC11C \uC5C6\uC5B4\uC9C4 \uB85C\uCF00\uC774\uC158 {n} \uC704\uC758 \uB9C8\uC6B0\uC2A4\uB97C \uC77D\uC2B5\uB2C8\uB2E4",
+  "the selected unit is not carried yet": "\uC120\uD0DD\uD55C \uC720\uB2DB\uC740 \uC544\uC9C1 \uC804\uB2EC\uB418\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4",
+  "air units passing through one another was a code patch of euddraft's, which TrigScript's build does not have": "\uACF5\uC911 \uC720\uB2DB\uC774 \uC11C\uB85C \uD1B5\uACFC\uD558\uAE30\uB294 euddraft \uD50C\uB7EC\uADF8\uC778\uC758 \uCF54\uB4DC \uD328\uCE58\uC600\uACE0, TrigScript\uC758 \uBE4C\uB4DC\uC5D0\uB294 \uC5C6\uC2B5\uB2C8\uB2E4",
+  "lifting the sprite and image limits was a code patch of euddraft's, which TrigScript's build does not have": "\uC2A4\uD504\uB77C\uC774\uD2B8\uC640 \uC774\uBBF8\uC9C0 \uD55C\uB3C4 \uD574\uC81C\uB294 euddraft \uD50C\uB7EC\uADF8\uC778\uC758 \uCF54\uB4DC \uD328\uCE58\uC600\uACE0, TrigScript\uC758 \uBE4C\uB4DC\uC5D0\uB294 \uC5C6\uC2B5\uB2C8\uB2E4",
+  "Synced input (keys, clicks, mouse), carried by the build itself": "\uB3D9\uAE30\uD654\uB41C \uC785\uB825(\uD0A4, \uD074\uB9AD, \uB9C8\uC6B0\uC2A4), \uBE4C\uB4DC\uAC00 \uC9C1\uC811 \uC804\uB2EC",
+  "The rendered rows do not build: {message} ({file}, line {line}). This is Magenta's to fix: say so.": "\uB80C\uB354\uB9C1\uB41C \uD589\uC774 \uBE4C\uB4DC\uB418\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4: {message} ({file}, {line}\uBC88\uC9F8 \uC904). Magenta\uAC00 \uACE0\uCE60 \uBB38\uC81C\uC785\uB2C8\uB2E4. \uC54C\uB824 \uC8FC\uC138\uC694.",
+  "Checked by TrigScript: the rows build. They go into the map on the next save.": "TrigScript\uAC00 \uAC80\uC0AC\uD568: \uD589\uC774 \uBE4C\uB4DC\uB429\uB2C8\uB2E4. \uB2E4\uC74C \uC800\uC7A5 \uB54C \uB9F5\uC5D0 \uB4E4\uC5B4\uAC11\uB2C8\uB2E4.",
+  "TrigScript could not check the rows: {why}": "TrigScript\uAC00 \uD589\uC744 \uAC80\uC0AC\uD560 \uC218 \uC5C6\uC5C8\uC2B5\uB2C8\uB2E4: {why}",
+  "Built into the saved map by TrigScript {version} when the map is saved, tested or exported: nothing to press, nothing downloaded, and the map is built in under a second.": "\uB9F5\uC744 \uC800\uC7A5, \uD14C\uC2A4\uD2B8, \uB0B4\uBCF4\uB0BC \uB54C TrigScript {version}\uC774(\uAC00) \uC800\uC7A5\uB418\uB294 \uB9F5\uC5D0 \uBE4C\uB4DC\uD569\uB2C8\uB2E4. \uB204\uB97C \uAC83\uB3C4, \uB0B4\uB824\uBC1B\uC744 \uAC83\uB3C4 \uC5C6\uACE0, 1\uCD08 \uC548\uC5D0 \uBE4C\uB4DC\uB429\uB2C8\uB2E4.",
+  "The TrigScript plugin builds the rows into the saved map; it is not running.": "TrigScript \uD50C\uB7EC\uADF8\uC778\uC774 \uD589\uC744 \uC800\uC7A5\uB418\uB294 \uB9F5\uC5D0 \uBE4C\uB4DC\uD558\uB294\uB370, \uC2E4\uD589 \uC911\uC774 \uC544\uB2D9\uB2C8\uB2E4.",
+  "The rows below have no record in the game's own trigger set: TrigScript builds the code for them into the map as it is saved, as it builds the map's own script. Only StarCraft: Remastered plays a built map; keep the source map, and share the saved one.": "\uC544\uB798 \uD589\uB4E4\uC740 \uAC8C\uC784\uC758 \uD2B8\uB9AC\uAC70\uC5D0 \uD574\uB2F9\uD558\uB294 \uB808\uCF54\uB4DC\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4. TrigScript\uAC00 \uB9F5\uC758 \uC2A4\uD06C\uB9BD\uD2B8\uB97C \uBE4C\uB4DC\uD558\uB4EF \uC800\uC7A5 \uB54C \uADF8 \uCF54\uB4DC\uB97C \uB9F5\uC5D0 \uBE4C\uB4DC\uD569\uB2C8\uB2E4. \uBE4C\uB4DC\uB41C \uB9F5\uC740 StarCraft: Remastered\uC5D0\uC11C\uB9CC \uD50C\uB808\uC774\uB429\uB2C8\uB2E4. \uC6D0\uBCF8 \uB9F5\uC740 \uBCF4\uAD00\uD558\uACE0, \uC800\uC7A5\uB41C \uB9F5\uC744 \uACF5\uC720\uD558\uC138\uC694.",
+  "{why}. The map's Build dialog (\u22EF \u25B8 Build\u2026) lists it.": "{why}. \uB9F5\uC758 \uBE4C\uB4DC \uB300\uD654\uC0C1\uC790(\u22EF \u25B8 \uBE4C\uB4DC\u2026)\uC5D0 \uB098\uC635\uB2C8\uB2E4.",
+  "{why}, and {n, plural, one {# more row} other {# more rows}} the same. The map's Build dialog (\u22EF \u25B8 Build\u2026) lists them.": "{why}, \uADF8\uB9AC\uACE0 \uAC19\uC740 \uD589 {n}\uAC1C \uB354. \uB9F5\uC758 \uBE4C\uB4DC \uB300\uD654\uC0C1\uC790(\u22EF \u25B8 \uBE4C\uB4DC\u2026)\uC5D0 \uB098\uC635\uB2C8\uB2E4.",
+  "How many triggers carry a row TrigScript builds code for on save; click for the list and the checks": "\uC800\uC7A5 \uB54C TrigScript\uAC00 \uCF54\uB4DC\uB97C \uBE4C\uB4DC\uD558\uB294 \uD589\uC744 \uAC00\uC9C4 \uD2B8\uB9AC\uAC70 \uC218. \uD074\uB9AD\uD558\uBA74 \uBAA9\uB85D\uACFC \uAC80\uC0AC\uAC00 \uB098\uC635\uB2C8\uB2E4",
+  "Build \xB7 {n}": "\uBE4C\uB4DC \xB7 {n}"
 };
 
 // plugin.ts
@@ -11649,8 +11815,8 @@ function activate(api) {
   const panel = createPanel(api, { afterCommit: () => claims?.refresh() });
   const t2 = api.i18n.t;
   const lookup2 = () => void api.data.load().then(() => {
-    const units = api.data.units();
-    setGameLookup(units ? lookupOver(units.flingy) : null);
+    const units2 = api.data.units();
+    setGameLookup(units2 ? lookupOver(units2.flingy) : null);
   }, () => setGameLookup(null));
   lookup2();
   const onData = api.events.on("gameData", lookup2);
@@ -11674,6 +11840,7 @@ function activate(api) {
   api.menu.add("Triggers", { label: msg("Magenta\u2026"), shortcut: "Ctrl+Shift+M", icon: "plugin", after: "Text Trigger Editor\u2026", enabled: () => api.document.isOpen(), command: "open" });
   api.hotkeys.add("Ctrl+Shift+M", { command: "open" });
   claims = installClaims(api, (index) => panel.open({ index }));
+  const contribution = installContribution(api, new Host(api));
   const under = (ctx) => {
     const point = ctx.point ?? (ctx.tile ? { px: ctx.tile.x * 32 + 16, py: ctx.tile.y * 32 + 16 } : null);
     if (!point) return {};
@@ -11693,7 +11860,7 @@ function activate(api) {
         unit = { unitId: u.unitId, owner: u.owner, slot: u.slot, name: names.unit(u.unitId), ownerName: api.names.playerGroup(u.owner) };
       }
     }
-    let location = null;
+    let location2 = null;
     let area = Infinity;
     scn?.locations.forEach((l, i) => {
       if (i === 63) return;
@@ -11702,10 +11869,10 @@ function activate(api) {
       const a2 = (x1 - x0) * (y1 - y0);
       if (a2 < area) {
         area = a2;
-        location = { number: i + 1, name: names.location(i + 1) };
+        location2 = { number: i + 1, name: names.location(i + 1) };
       }
     });
-    return { unit, location };
+    return { unit, location: location2 };
   };
   const unitItem = api.contextMenu.add("viewport", {
     label: (ctx) => t2("New trigger about this {unit}\u2026", { unit: under(ctx).unit?.name ?? "" }),
@@ -11724,6 +11891,7 @@ function activate(api) {
     }
   });
   return () => {
+    contribution.dispose();
     claims?.dispose();
     panel.close();
     onData.dispose();
