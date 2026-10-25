@@ -258,9 +258,9 @@ Conditions:
   unit of a kind, every cycle; also shields, energy, kills, x or y, the order id, resources
   and weapon cooldown, below, above or exactly; **hit points %**, **shields %** and
   **energy %** against the type's maximum ("below 30%"), the unit type id and owner; and
-  **Any Marine owned by Player 1 is under attack** or *is burrowed*, or is not. (*Is
-  targeting something*, *is in a transport*, *is moving* and the remaining build time are
-  not in the language yet.)
+  **Any Marine owned by Player 1 is under attack**, *is burrowed*, *is targeting
+  something*, *is in a transport* or *is moving*, or is not; and the remaining build time
+  of a building going up.
 
 Actions:
 
@@ -276,14 +276,15 @@ Actions:
   anywhere are the wide settings. **Order to move / patrol / attack-move to** a location,
   **apply a spell effect** — stim, ensnare, plague, lockdown, stasis, maelstrom or irradiate —
   for so many seconds (the effect without the spell's overlay graphic), **hold fire** (the
-  ground weapon's cooldown rewritten each cycle, so put it in a trigger that runs every
+  weapon and spell cooldowns rewritten each cycle, so put it in a trigger that runs every
   frame), **set the resources** of mineral fields and geysers, **take 20 hit points** or
   **give 20 hit points** (also shields and energy) — damage and healing that stop at 0 and
   at the type's maximum, and a unit whose hit points reach 0 dies; a damage zone or a
-  healing aura is one such row in a trigger that fires every cycle. (Hallucinate, the speed
-  upgrade, a defensive matrix, the remaining build time, the rank and walking through
-  anything are not in the language yet: such a row is not built, and the Build dialog says
-  so.)
+  healing aura is one such row in a trigger that fires every cycle. **Hallucinate** it (or
+  make it real again), give it **the speed upgrade** without the research, a **defensive
+  matrix** for so many seconds, set **the remaining build time** of a building going up or
+  **the rank** shown on its panel. (Walking through anything, a code patch of euddraft's,
+  is not in the language: such a row is not built, and the Build dialog says so.)
 - **Take the Marine owned by Player 1 with the least hit points: kill it, center Pick on it,
   value into Weakest**: the one unit with the least or greatest of a stat, the **nearest
   to** a location, **at random** (a different one each time the trigger fires) or the
@@ -296,17 +297,22 @@ Actions:
   into a counter; also shields, energy, kills, x, y, the order id, resources, weapon
   cooldown, and the yes-or-no fields as 1 or 0.
 - **Move Beacon to 640, 320 keeping its size**: a location placed by numbers, in map
-  pixels (32 per tile), with a new width and height if you give one. (**Move Beacon by 64,
-  0**, shifted from where it is, is not in the language yet.)
+  pixels (32 per tile), with a new width and height if you give one; **Move Beacon by 64,
+  0** shifts it from where it is. The size kept, the mouse-over condition and the nearest
+  pick all read the location where it is at that moment, so a location another row moved
+  is followed.
 
 Text with counters in it also takes `{Player 1}` for a player's name and `{Player 1's
 colour}` to switch to that player's colour, and the colour and effect buttons in the text
 box insert the game's own codes.
 
-The Build dialog's map-wide things — the camera following a location, a sound looped as
-background music, air units passing through one another, lifting the sprite and image
-limits — came with euddraft's plugins and are not in TrigScript's build yet; a map that
-ticks one is not built until it is unticked, and the dialog says so.
+The Build dialog's map-wide things: **the camera following a location** glides after it
+for every human, a step of the way each frame (the distance divided by the inertia, capped
+at the max speed, as euddraft's cammove did), and **a sound looped as background music**
+plays the sound again each time its length has passed — each a small program of its own
+beside the rows'. Air units passing through one another and lifting the sprite and image
+limits were code patches of euddraft's with no counterpart in TrigScript's build; a map
+that ticks one is not built until it is unticked, and the dialog says so.
 
 In the map these are one private counter cell each: the trigger sets it (an action) or reads
 it (a condition), so it stays an ordinary trigger everywhere. **Save** builds the code behind

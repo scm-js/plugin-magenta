@@ -120,7 +120,7 @@ export function openBuildDialog(api: PluginApi, host: Host, store: Store, everyF
           w.column(cameraOn, w.form([{ label: t("Location"), field: cameraLoc }, { label: t("Inertia"), field: inertia }, { label: t("Max speed"), field: maxspeed }])),
           w.column(bgmOn, w.form([{ label: t("Sound"), field: bgmPath }, { label: t("Seconds"), field: bgmLen }])),
           noAir, unlimiter,
-          w.hint(t("These four came with euddraft's plugins and are not in TrigScript's build yet: a map that ticks one is not built until it is unticked.")),
+          w.hint(t("The camera and the music are built as a program of each human's own. The other two were code patches of euddraft's, which TrigScript's build does not have: a map that ticks one is not built until it is unticked.")),
         ),
         builderLine, status,
       );

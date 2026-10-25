@@ -51,15 +51,15 @@ describe("the rows as TrigScript", () => {
     expect(s).toContain("if (v < best) { best = v; found = u; }");
     expect(s).toContain("found.locate((5 as Location));");
     expect(s).toContain("found.kill();");
-    // Nearest to location 1's centre, within 200 pixels; a miss leaves 0 in the counter.
-    expect(s).toContain("const cx = 128, cy = 128;");
+    // Nearest to location 1's centre, where it is now, within 200 pixels; a miss leaves 0 in the counter.
+    expect(s).toContain("const b = bounds((1 as Location));\n      const cx = (b.left + b.right) / 2, cy = (b.top + b.bottom) / 2;");
     expect(s).toContain("const v = Math.abs(u.x - cx) + Math.abs(u.y - cy);");
     expect(s).toContain("if (best > 200) found = null;");
     expect(s).toContain('else {\n        setDeaths(P9, (184 as UnitType), "set", 0);');
     expect(s).toContain("const found = randomUnit(allUnits());");
     expect(s).toContain("found.give(P2);");
-    // The location keeps its size (128 × 64 from the map), its top left at (640, 320).
-    expect(s).toContain("centerLocation((1 as Location), 704, 352, 128, 64);");
+    // The location keeps its size, read where it is now, its top left at (640, 320).
+    expect(s).toContain("const b = bounds((1 as Location));\n      const w = b.right - b.left;\n      const h = b.bottom - b.top;\n      b.left = 640; b.top = 320;\n      b.right = 640 + w; b.bottom = 320 + h;");
     expect(s).toContain("sleep(frames(1));");
   });
 
@@ -86,13 +86,14 @@ describe("the rows as TrigScript", () => {
     expect(s).toContain('if (keyPressed(P1, "A")) setDeaths(P1, (184 as UnitType), "set", 1);');
     expect(s).toContain('if (keyPressed(P3, "Space")) setDeaths(P3, (185 as UnitType), "set", 1);');
     expect(s).toContain('if (clicked(P1, "left")) setDeaths(P1, (187 as UnitType), "set", 1);');
-    expect(s).toContain("const mp2 = mouse(P3);");
-    expect(s).toContain('if (mp2.x >= 0 && mp2.x <= 640 && mp2.y >= 0 && mp2.y <= 320) setDeaths(P3, (188 as UnitType), "set", 1);');
+    expect(s).toContain("const mb2 = bounds((2 as Location));");
+    expect(s).toContain("const mp2_2 = mouse(P3);");
+    expect(s).toContain('if (mp2_2.x >= mb2.left && mp2_2.x <= mb2.right && mp2_2.y >= mb2.top && mp2_2.y <= mb2.bottom) setDeaths(P3, (188 as UnitType), "set", 1);');
     expect(s).toContain('else setDeaths(P3, (188 as UnitType), "set", 0);');
     expect(s).not.toContain("F2");
   });
 
-  it("writes the unit checks at the end of the turn, and says what it cannot check, pass or pick yet", () => {
+  it("writes the unit checks at the end of the turn, renders the fields and verbs the language took in part C, and says what it still cannot", () => {
     const builds: BuildRecord[] = [
       { id: "s1", kind: "scan", cell: [0, 183], unit: 0, owner: 0, location: 1, field: "hp", cmp: "<", value: 20 },
       { id: "s2", kind: "scan", cell: [1, 183], unit: null, owner: null, location: null, field: "underAttack", cmp: "=", value: 1 },
@@ -102,23 +103,47 @@ describe("the rows as TrigScript", () => {
       { id: "l1", kind: "setloc", flag: [5, 181], location: 1, x: 64, y: 0, width: null, height: null, relative: true },
       { id: "r1", kind: "read", flag: [6, 181], unit: 0, owner: 0, location: null, field: "speed", to: [8, 182] },
     ];
-    const r = renderScript(input({ builds, options: { camera: { location: 1, name: "Hero", inertia: 5, maxspeed: 48 }, bgm: null, noAirCollision: true, unlimiter: false } }));
-    expect(r.source).toContain("if (u.hp < 20) hit = 1;");
-    expect(r.source).toContain("if ((u.underAttack ? 1 : 0) == 1) hit = 1;");
-    expect(r.source).toContain('setDeaths(P1, (183 as UnitType), "set", hit);');
-    expect(r.source).toContain("u.cooldown = 250;");
-    expect(r.notes).toEqual([{ id: "f2", note: "the ground weapon's cooldown is held; the air weapon's and the spells' are not yet" }]);
-    expect(r.unsupported.map((u) => u.id)).toEqual(["f1", "l1", "r1", "s3", null, null]);
+    builds.push(
+      { id: "f3", kind: "foreach", flag: [7, 181], unit: 37, owner: null, location: null, do: { speed: true } },
+      { id: "f4", kind: "foreach", flag: [7, 181], unit: null, owner: 1, location: null, do: { timer: "matrix", value: 240 } },
+      { id: "f5", kind: "foreach", flag: [7, 181], unit: null, owner: 1, location: null, do: { set: "buildTime", value: 24 } },
+      { id: "f6", kind: "foreach", flag: [7, 181], unit: null, owner: 1, location: null, do: { status: "noclip", on: true } },
+      { id: "l2", kind: "setloc", flag: [8, 181], location: 2, x: -32, y: 0, width: 64, height: null, relative: true },
+      { id: "l3", kind: "setloc", flag: [8, 181], location: 9, x: 0, y: 0, width: null, height: null },
+    );
+    const r = renderScript(input({ builds, options: { camera: { location: 1, name: "Hero", inertia: 5, maxspeed: 48 }, bgm: { path: "staredit\\wav\\loop.wav", length: 12.5 }, noAirCollision: true, unlimiter: false } }));
+    const s = r.source;
+    expect(s).toContain("if (u.hp < 20) hit = 1;");
+    expect(s).toContain("if ((u.underAttack ? 1 : 0) == 1) hit = 1;");
+    expect(s).toContain("if ((u.inTransport ? 1 : 0) == 1) hit = 1;");
+    expect(s).toContain('setDeaths(P1, (183 as UnitType), "set", hit);');
+    expect(s).toContain("u.hallucinated = true;");
+    expect(s).toContain("u.cooldown = 250;");
+    expect(s).toContain("u.speedUpgrade = true;");
+    expect(s).toContain("u.matrix = 240;");
+    expect(s).toContain("u.buildTime = 24;");
+    expect(s).toContain("if (seen == 0) { v = u.speed; seen = 1; }");
+    // Moved from where it is: each edge by the offset, a given size from the moved edge.
+    expect(s).toContain("const b = bounds((1 as Location));\n      b.left += 64;\n      b.right += 64;");
+    expect(s).toContain("const b = bounds((2 as Location));\n      b.left -= 32;\n      b.right = b.left + 64;\n      b.bottom -= 0;".replace("\n      b.bottom -= 0;", ""));
+    expect(s).not.toContain("b.top += 0");
+    expect(r.notes).toEqual([]);
+    expect(r.unsupported.map((u) => u.id)).toEqual(["f6", "l3", null]);
     expect(r.unsupported.map((u) => u.why)).toEqual([
       "this pass's verb is not in the language yet",
-      "moving a location by an offset from where it is is not in the language yet",
-      "reading a unit's moving is not in the language yet",
-      "checking a unit's in a transport is not in the language yet",
-      "the camera following a location is not in the language yet",
+      "the row moves location 9, which the map no longer has",
       "air units passing through one another was a code patch of euddraft's, which TrigScript's build does not have",
     ]);
     // A row left out is said in the file too, where it would have been.
-    expect(r.source).toContain("// Row f1 left out: this pass's verb is not in the language yet");
+    expect(s).toContain("// Row f6 left out: this pass's verb is not in the language yet");
+    // The camera and the music: a program of each human's own, after the rows'.
+    expect(s).toContain('const VIEW = reserveLocation("Magenta: where the camera looks");');
+    expect(s).toContain("cx += clamp((tx - cx) / 5, -48, 48);");
+    expect(s).toContain("centerLocation(VIEW, cx, cy, 32, 32);\n    centerView(VIEW);");
+    expect(s).toContain('}, { owner: [P1, P2], name: "Magenta camera" });');
+    expect(s).toContain('playWav("staredit\\\\wav\\\\loop.wav", 12500);\n    sleep(frames(300));');
+    expect(s).toContain('}, { owner: [P1, P2], name: "Magenta music" });');
+    expect(s.indexOf("Magenta camera")).toBeGreaterThan(s.indexOf('name: "Magenta" });'));
   });
 
   it("names the keys as TrigScript does", () => {
@@ -141,10 +166,10 @@ describe("the rows as TrigScript", () => {
 });
 
 // The compiler itself, when its repository is checked out beside this one: the rendered file compiles, and the own build takes it.
-const TRIGSCRIPT = resolve(import.meta.dirname, "..", "..", "plugin-trigscript");
+const TRIGSCRIPT = process.env.TRIGSCRIPT_DIR ?? resolve(import.meta.dirname, "..", "..", "plugin-trigscript");
 const have = existsSync(resolve(TRIGSCRIPT, "compiler", "compiler.ts")) && existsSync(resolve(TRIGSCRIPT, "node_modules", "typescript"));
 describe.skipIf(!have)("the rendered rows, through TrigScript's compiler", () => {
-  it("compile, hold one program, and are taken by TrigScript's own build", async () => {
+  it("compile, hold the rows' program and the options' two, and are taken by TrigScript's own build", async () => {
     const ts = (await import(resolve(TRIGSCRIPT, "node_modules", "typescript", "lib", "typescript.js"))).default;
     const { compileScript } = await import(resolve(TRIGSCRIPT, "compiler", "compiler.ts"));
     const { defaultScriptNames } = await import(resolve(TRIGSCRIPT, "compiler", "names.ts"));
@@ -164,16 +189,25 @@ describe.skipIf(!have)("the rendered rows, through TrigScript's compiler", () =>
       { id: "p2", kind: "pick", flag: [8, 181], unit: null, owner: null, location: null, by: "nearest", field: "hp", near: { mouse: 0 }, radius: 200, locate: null, to: [8, 184], do: null },
       { id: "p3", kind: "pick", flag: [9, 181], unit: null, owner: null, location: null, by: "random", field: "hp", near: null, locate: 6, to: null, do: { give: 1 } },
       { id: "l1", kind: "setloc", flag: [10, 181], location: 1, x: 640, y: 320, width: 64, height: 64 },
+      { id: "l2", kind: "setloc", flag: [10, 181], location: 2, x: 64, y: -32, width: null, height: null, relative: true },
+      { id: "l3", kind: "setloc", flag: [10, 181], location: 2, x: 100, y: 100, width: null, height: 40 },
+      { id: "f4", kind: "foreach", flag: [11, 181], unit: null, owner: 1, location: null, do: { hallucination: true } },
+      { id: "f5", kind: "foreach", flag: [11, 181], unit: null, owner: 1, location: null, do: { timer: "matrix", value: 240 } },
+      { id: "f6", kind: "foreach", flag: [11, 181], unit: null, owner: 1, location: null, do: { set: "rank", value: 3 } },
+      { id: "r2", kind: "read", flag: [11, 181], unit: 0, owner: 0, location: null, field: "speed", to: [8, 185] },
       { id: "s1", kind: "scan", cell: [0, 183], unit: 0, owner: 0, location: 1, field: "hp", cmp: "<", value: 20 },
+      { id: "s2", kind: "scan", cell: [1, 183], unit: null, owner: null, location: null, field: "hasTarget", cmp: "=", value: 1 },
     ];
     const msqc: Msqc = { qcUnit: 58, qcLoc: 62, qcPlayer: 10, keys: { "65": 184 }, clicks: { R: 187 }, mouseBase: null, mouseIn: { "2": 188 }, select: null };
-    const r = renderScript(input({ builds, chat: { cell: [11, 181], args }, msqc }));
+    const options = { camera: { location: 1, name: "Hero", inertia: 5, maxspeed: 48 }, bgm: { path: "staredit\\wav\\loop.wav", length: 12.5 }, noAirCollision: false, unlimiter: false };
+    const r = renderScript(input({ builds, chat: { cell: [11, 181], args }, msqc, options }));
     expect(r.unsupported).toEqual([]);
     const own = { players: { slots: [0, 1], forces: [0, 1, 0, 0, 0, 0, 0, 0] }, humans: [0, 1], width: 4096, height: 4096 };
     // (As the map's own script, here: TrigScript's build runs it as an entry after the script's, which changes nothing of this.)
     const compiled = compileScript(ts, { "main.ts": r.source }, defaultScriptNames(), { lib: defaultLib(), own });
     expect(compiled.diagnostics.map((d: { file: string; line: number; message: string }) => `${d.file}:${d.line} ${d.message}`)).toEqual([]);
-    expect(compiled.ir).toHaveLength(1);
+    // The rows' program, the camera's and the music's.
+    expect(compiled.ir).toHaveLength(3);
     expect(compiled.ownRefusal).toBeUndefined();
   }, 60_000);
 });

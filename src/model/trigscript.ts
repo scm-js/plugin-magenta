@@ -67,26 +67,19 @@ function units(f: UnitFilter): string {
   return parts.length ? `allUnits({ ${parts.join(", ")} })` : "allUnits()";
 }
 
-/** A unit's field as the language reads it, or null for one it does not read yet. */
-function field(u: string, f: UnitField): string | null {
+/** A unit's field as the language reads it (a yes-or-no field as 1 or 0). */
+function field(u: string, f: UnitField): string {
   switch (f) {
-    case "hp": case "shields": case "energy": case "kills": case "x": case "y": case "resources": case "cooldown": return `${u}.${f}`;
+    case "hp": case "shields": case "energy": case "kills": case "x": case "y": case "resources": case "cooldown": case "buildTime": case "speed": return `${u}.${f}`;
     case "order": return `${u}.orderId`;
-    case "underAttack": case "burrowed": return `(${u}.${f} ? 1 : 0)`;
+    case "underAttack": case "burrowed": case "hasTarget": case "inTransport": return `(${u}.${f} ? 1 : 0)`;
     case "hpPct": return `${u}.hp * 100 / ${u}.maxHp`;
     case "shieldsPct": return `${u}.shields * 100 / ${u}.maxShields`;
     case "energyPct": return `${u}.energy * 100 / 250`;
     case "unitType": return `${u}.type`;
     case "owner": return `${u}.owner`;
-    case "hasTarget": case "inTransport": case "buildTime": case "speed": return null;
   }
 }
-
-const FIELD_WORDS: Record<UnitField, string> = {
-  hp: "hit points", shields: "shields", energy: "energy", kills: "kills", x: "x", y: "y", order: "order id", hasTarget: "targeting something", underAttack: "under attack",
-  burrowed: "burrowed", inTransport: "in a transport", buildTime: "remaining build time", resources: "resources", cooldown: "weapon cooldown", speed: "moving",
-  hpPct: "hit points %", shieldsPct: "shields %", energyPct: "energy %", unitType: "unit type id", owner: "owner",
-};
 
 /** A text's part inside a template literal: the editor's `<HH>` is a byte of the game's, a backtick or a `${` its own. */
 function literal(text: string): string {
@@ -99,22 +92,20 @@ function textOf(parts: readonly TextPart[]): string {
 
 /** A pass verb on one unit (`u`), as statements; null for one the language cannot do yet. */
 function verb(u: string, d: ForEachDo): { lines: string[]; note?: string } | null {
-  if ("set" in d) {
-    if (d.set === "buildTime" || d.set === "rank") return null;
-    return { lines: [`${u}.${d.set} = ${d.value};`] };
-  }
+  if ("set" in d) return { lines: [`${u}.${d.set} = ${d.value};`] };
   if ("kill" in d) return { lines: [`${u}.kill();`] };
   if ("remove" in d) return { lines: [`${u}.remove();`] };
   if ("invincible" in d) return { lines: [`${u}.invincible = ${d.invincible};`] };
-  if ("hallucination" in d || "speed" in d || "status" in d) return null;
+  if ("hallucination" in d) return { lines: [`${u}.hallucinated = ${d.hallucination};`] };
+  if ("speed" in d) return { lines: [`${u}.speedUpgrade = ${d.speed};`] };
+  // (A cloak write showed nothing in the game; walking through anything and the cooldown upgrade have no word in the language.)
+  if ("status" in d) return null;
   if ("give" in d) return { lines: [`${u}.give(${player(d.give)});`] };
   if ("locate" in d) return { lines: [`${u}.locate(${location(d.locate)});`] };
   if ("order" in d) return { lines: [`${u}.order("${d.order}", ${location(d.location)});`] };
-  if ("timer" in d) {
-    if (d.timer === "matrix") return null;
-    return { lines: [`${u}.${d.timer} = ${d.value};`] };
-  }
-  if ("cooldown" in d) return { lines: [`${u}.cooldown = ${d.cooldown};`], note: t("the ground weapon's cooldown is held; the air weapon's and the spells' are not yet") };
+  if ("timer" in d) return { lines: [`${u}.${d.timer} = ${d.value};`] };
+  // (The language's cooldown is the three at once: the ground weapon's, the air weapon's and the spells'.)
+  if ("cooldown" in d) return { lines: [`${u}.cooldown = ${d.cooldown};`] };
   if ("adjust" in d) {
     const n = Math.abs(d.delta);
     if (d.adjust === "hp") return { lines: [d.delta < 0 ? `${u}.damage(${n});` : `${u}.heal(${n});`] };
@@ -198,7 +189,6 @@ export function renderScript(input: RenderInput): Rendered {
         break;
       case "read": {
         const f = field("u", h.field);
-        if (!f) { no(h.id, t("reading a unit's {field} is not in the language yet", { field: FIELD_WORDS[h.field] })); ok = false; break; }
         put("let v = 0;");
         put("let seen = 0;");
         put(`for (const u of ${units(h)}) {`);
@@ -209,17 +199,16 @@ export function renderScript(input: RenderInput): Rendered {
       }
       case "pick": {
         const measure = h.by === "nearest" ? "distance" : h.by === "random" ? null : field("u", h.field);
-        if (h.by !== "random" && !measure) { no(h.id, t("picking by a unit's {field} is not in the language yet", { field: FIELD_WORDS[h.field] })); ok = false; break; }
         if (h.by === "random") {
           put(`const found = randomUnit(${units(h)});`);
           put("const best = 0;");
         } else {
           if (h.by === "nearest") {
             if (typeof h.near === "number") {
-              const b = input.bounds(h.near);
-              if (!b) { no(h.id, t("the pick measures from location {n}, which the map no longer has", { n: h.near })); ok = false; break; }
-              // (The location's centre as the map has it now: a location a row moves in play is not followed yet.)
-              put(`const cx = ${Math.trunc((b.left + b.right) / 2)}, cy = ${Math.trunc((b.top + b.bottom) / 2)};`);
+              if (!input.bounds(h.near)) { no(h.id, t("the pick measures from location {n}, which the map no longer has", { n: h.near })); ok = false; break; }
+              // (The location's centre where it is now: a row that moves it is followed.)
+              put(`const b = bounds(${location(h.near)});`);
+              put("const cx = (b.left + b.right) / 2, cy = (b.top + b.bottom) / 2;");
             } else if (h.near && typeof h.near === "object") {
               put(`const cx = mouse(${player(h.near.mouse)}).x, cy = mouse(${player(h.near.mouse)}).y;`);
             } else { no(h.id, t("the pick measures from nothing")); ok = false; break; }
@@ -244,16 +233,20 @@ export function renderScript(input: RenderInput): Rendered {
         break;
       }
       case "setloc": {
-        if (h.relative) { no(h.id, t("moving a location by an offset from where it is is not in the language yet")); ok = false; break; }
-        let w = h.width, hgt = h.height;
-        if (w === null || hgt === null) {
-          const b = input.bounds(h.location);
-          if (!b) { no(h.id, t("the row moves location {n}, which the map no longer has", { n: h.location })); ok = false; break; }
-          // (Its size as the map has it now: a size another row changes in play is not followed yet.)
-          w = w ?? Math.abs(b.right - b.left);
-          hgt = hgt ?? Math.abs(b.bottom - b.top);
+        if (!input.bounds(h.location)) { no(h.id, t("the row moves location {n}, which the map no longer has", { n: h.location })); ok = false; break; }
+        // The location's edges where they are now, written one at a time: its size is read in play when the row keeps it.
+        put(`const b = bounds(${location(h.location)});`);
+        if (h.relative) {
+          const by = (edge: string, d: number) => { if (d > 0) put(`b.${edge} += ${d};`); else if (d < 0) put(`b.${edge} -= ${-d};`); };
+          by("left", h.x); by("top", h.y);
+          if (h.width === null) by("right", h.x); else put(`b.right = b.left + ${h.width};`);
+          if (h.height === null) by("bottom", h.y); else put(`b.bottom = b.top + ${h.height};`);
+        } else {
+          if (h.width === null) put("const w = b.right - b.left;");
+          if (h.height === null) put("const h = b.bottom - b.top;");
+          put(`b.left = ${h.x}; b.top = ${h.y};`);
+          put(`b.right = ${h.width === null ? `${h.x} + w` : h.x + h.width}; b.bottom = ${h.height === null ? `${h.y} + h` : h.y + h.height};`);
         }
-        put(`centerLocation(${location(h.location)}, ${h.x + Math.trunc(w / 2)}, ${h.y + Math.trunc(hgt / 2)}, ${w}, ${hgt});`);
         break;
       }
     }
@@ -293,12 +286,13 @@ export function renderScript(input: RenderInput): Rendered {
     for (const p of input.humans) input_.push(`if (clicked(${player(p)}, "${BUTTONS[button] ?? "left"}")) ${setCell([p, unit], "1")}`);
   }
   for (const m of mouseIn) {
-    const b = input.bounds(m.location);
-    if (!b) { no(null, t("the mouse is read over location {n}, which the map no longer has", { n: m.location })); continue; }
-    // (The location's edges as the map has them now: a location a row moves in play is not followed yet.)
+    if (!input.bounds(m.location)) { no(null, t("the mouse is read over location {n}, which the map no longer has", { n: m.location })); continue; }
+    // (The location's edges where they are now: a row that moves it is followed.)
+    const b = `mb${m.location}`;
+    input_.push(`const ${b} = bounds(${location(m.location)});`);
     for (const p of input.humans) {
-      input_.push(`const mp${p} = mouse(${player(p)});`);
-      input_.push(`if (mp${p}.x >= ${Math.min(b.left, b.right)} && mp${p}.x <= ${Math.max(b.left, b.right)} && mp${p}.y >= ${Math.min(b.top, b.bottom)} && mp${p}.y <= ${Math.max(b.top, b.bottom)}) ${setCell([p, m.unit], "1")}`);
+      input_.push(`const mp${p}_${m.location} = mouse(${player(p)});`);
+      input_.push(`if (mp${p}_${m.location}.x >= ${b}.left && mp${p}_${m.location}.x <= ${b}.right && mp${p}_${m.location}.y >= ${b}.top && mp${p}_${m.location}.y <= ${b}.bottom) ${setCell([p, m.unit], "1")}`);
       input_.push(`else ${setCell([p, m.unit], "0")}`);
     }
   }
@@ -312,7 +306,6 @@ export function renderScript(input: RenderInput): Rendered {
   if (scans.length) line(2, "// The unit checks: 1 while some matching unit's field compares so, else 0.");
   for (const s of scans) {
     const f = field("u", s.field);
-    if (!f) { no(s.id, t("checking a unit's {field} is not in the language yet", { field: FIELD_WORDS[s.field] })); continue; }
     const cmp = s.cmp === "=" ? "==" : s.cmp;
     line(2, "{");
     line(3, "let hit = 0;");
@@ -323,9 +316,44 @@ export function renderScript(input: RenderInput): Rendered {
     line(2, "}");
   }
 
-  /* ── the map-wide options ── */
-  if (input.options.camera) no(null, t("the camera following a location is not in the language yet"));
-  if (input.options.bgm) no(null, t("a sound looped as background music is not in the language yet"));
+  /* ── the map-wide options: a program of each human's own for the camera and for the music ── */
+  const extra: string[] = [];
+  const everyone = input.humans.map(player).join(", ");
+  if (input.options.camera && input.humans.length) {
+    const c = input.options.camera;
+    if (!input.bounds(c.location)) no(null, t("the camera follows location {n}, which the map no longer has", { n: c.location }));
+    else extra.push(...[
+      "// The camera glides after the location, for each human: every frame a step of the way there, the distance divided by the",
+      "// inertia and capped at the top speed, as euddraft's cammove did.",
+      `const VIEW = reserveLocation("Magenta: where the camera looks");`,
+      "program(() => {",
+      `  const b0 = bounds(${location(c.location)});`,
+      "  let cx = (b0.left + b0.right) / 2;",
+      "  let cy = (b0.top + b0.bottom) / 2;",
+      "  while (true) {",
+      `    const b = bounds(${location(c.location)});`,
+      "    const tx = (b.left + b.right) / 2, ty = (b.top + b.bottom) / 2;",
+      `    cx += clamp((tx - cx) / ${Math.max(1, c.inertia)}, -${c.maxspeed}, ${c.maxspeed});`,
+      `    cy += clamp((ty - cy) / ${Math.max(1, c.inertia)}, -${c.maxspeed}, ${c.maxspeed});`,
+      "    centerLocation(VIEW, cx, cy, 32, 32);",
+      "    centerView(VIEW);",
+      "    sleep(frames(1));",
+      "  }",
+      `}, { owner: [${everyone}], name: "Magenta camera" });`,
+    ]);
+  }
+  if (input.options.bgm && input.humans.length) {
+    const m = input.options.bgm;
+    extra.push(...[
+      "// The background music: the sound played again each time its length has passed, for each human.",
+      "program(() => {",
+      "  while (true) {",
+      `    playWav(${JSON.stringify(m.path)}, ${Math.round(m.length * 1000)});`,
+      `    sleep(frames(${Math.max(1, Math.round(m.length * 24))}));`,
+      "  }",
+      `}, { owner: [${everyone}], name: "Magenta music" });`,
+    ]);
+  }
   if (input.options.noAirCollision) no(null, t("air units passing through one another was a code patch of euddraft's, which TrigScript's build does not have"));
   if (input.options.unlimiter) no(null, t("lifting the sprite and image limits was a code patch of euddraft's, which TrigScript's build does not have"));
 
@@ -339,6 +367,7 @@ export function renderScript(input: RenderInput): Rendered {
     "    sleep(frames(1));",
     "  }",
     `}, { owner: ${player(input.owner)}, name: "Magenta" });`,
+    ...(extra.length ? ["", ...extra] : []),
     "",
   ].join("\n");
   return { source, unsupported, notes };
