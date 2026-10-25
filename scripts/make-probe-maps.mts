@@ -29,10 +29,12 @@
  *      unit under a player's mouse, a location moved by an offset, the type and owner reads,
  *      and the middle mouse button.
  *
- * Maps 6, 7, 10 and 11 need a build (`--build ../plugin-eudplib`, a checkout of the eudplib
- * plugin, whose `scripts/build-map.mts` runs the same worker the editor does under Node,
- * with this repository's `python/magenta.py`); their built copies end in `-eud.scx`, and
- * those are the ones to play. Maps 5, 8 and 9 play as written.
+ * Maps 6, 7, 10 and 11 need a build. Until Magenta 0.12 that was `--build ../plugin-eudplib` (a
+ * checkout of the eudplib plugin, whose `scripts/build-map.mts` ran the same worker the editor
+ * did under Node, with this repository's `python/magenta.py`, since deleted): their built copies
+ * ended in `-eud.scx`, and those were the ones played. The rows go into TrigScript's build now
+ * (`src/model/trigscript.ts`); this script's `--build` is to be redone on it, from the records
+ * rather than the hand-written specs below. Maps 5, 8 and 9 play as written.
  *
  *   npx tsx scripts/make-probe-maps.mts [--build ../plugin-eudplib] [../scm-js]
  */

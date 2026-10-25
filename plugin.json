@@ -10,6 +10,6 @@
   "icon": "icon.svg",
   "api": 1,
   "requires": [
-    "github:scm-js/plugin-eudplib"
+    "github:scm-js/plugin-trigscript"
   ]
 }

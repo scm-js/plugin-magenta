@@ -90,7 +90,7 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
     const newButton = w.button(t("New"), { primary: true, title: t("A new trigger after the selected one (Ctrl+N)"), onClick: () => newTrigger() });
     const recipeButton = w.button(t("Recipes…"), { title: t("Start from a whole trigger: a beacon shop, a countdown, a respawn…"), onClick: () => recipes(recipeButton) });
     const menuButton = w.button("⋯", { ghost: true, title: t("More"), onClick: () => menu(menuButton) });
-    const buildButton = w.button("", { ghost: true, title: t("Where the map stands against its last build; click for Build EUD map…"), onClick: () => openBuildDialog(api, h, s, everyFrame()) });
+    const buildButton = w.button("", { ghost: true, title: t("How many triggers carry a row TrigScript builds code for on save; click for the list and the checks"), onClick: () => openBuildDialog(api, h, s, everyFrame()) });
     const listButton = w.button("☰", { ghost: true, title: t("Show or hide the trigger list"), onClick: () => { setLayout(api, { listHidden: !layout(api).listHidden }); applyLayout(); } });
     const listEl = el("div", { className: "mg-list", tabIndex: 0 });
     const divider = el("div", { className: "mg-divider", title: t("Drag to resize the list; double-click to hide it") });
@@ -132,12 +132,10 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
       divider.addEventListener("pointerup", up);
     });
     const renderBuild = () => {
-      const st = buildStatus(h, s);
-      buildButton.hidden = st.triggers === 0 && st.freshness === "never";
+      const st = buildStatus(s);
+      buildButton.hidden = st.triggers === 0;
       if (buildButton.hidden) return;
-      const state = st.freshness === "fresh" ? t("built") : st.freshness === "stale" ? t("stale") : t("not built");
-      buildButton.textContent = t("Build · {n} · {state}", { n: st.triggers, state });
-      buildButton.classList.toggle("warn", st.freshness !== "fresh");
+      buildButton.textContent = t("Build · {n}", { n: st.triggers });
     };
 
     /** The member could not be read: say so, and offer to write over it — nothing is written until then. */
@@ -378,7 +376,7 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
         item(t("Counters…"), () => countersDialog()),
         sep(),
         item(t("Dry run…"), () => sim.open()),
-        item(t("Build EUD map…"), () => openBuildDialog(api, h, s, everyFrame())),
+        item(t("Build…"), () => openBuildDialog(api, h, s, everyFrame())),
         item(t("Dock on the right"), () => { setLayout(api, { dock: layout(api).dock === "right" ? "float" : "right" }); relayout(); }, { checked: layout(api).dock === "right" }),
         item(t("Settings…"), () => openSettings(api)),
         sep(),

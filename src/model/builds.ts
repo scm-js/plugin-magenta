@@ -122,10 +122,10 @@ export function chatKey(c: ChatRecord): string {
 }
 
 /**
- * Synced input through MSQC: one counter *unit* per event, and the pressing player's slot as
- * the cell's player, so a condition reads `deaths(player, unit) ≥ 1`. MSQC needs a unit type
- * of its own, a location of its own, a player slot nobody uses, and one location per human
- * player when the mouse is used; Magenta's hook clears the event cells after each cycle.
+ * Synced input: one counter *unit* per event, and the pressing player's slot as the cell's
+ * player, so a condition reads `deaths(player, unit) ≥ 1`. TrigScript's build carries the
+ * players' keys, clicks and mice itself (`trigscript.ts`); the `qc*` and `mouseBase` fields
+ * are from the days of MSQC, kept so that an older map's data still reads.
  */
 export interface Msqc {
   /** The unit type MSQC uses for its command units; must not appear in the map otherwise. Valkyrie by default. */
@@ -163,24 +163,6 @@ export const DEFAULT_OPTIONS: BuildOptions = { camera: null, bgm: null, noAirCol
 export const DEFAULT_MSQC: Msqc = { qcUnit: 58, qcLoc: 62, qcPlayer: 10, keys: {}, clicks: {}, mouseBase: null, mouseIn: {}, select: null };
 
 /** The euddraft plugin sections a build is made from, name → settings. */
-export interface BuildPlugins {
-  [plugin: string]: Record<string, string | number>;
-}
-
-export const MAGENTA_SPEC_VERSION = 5;
-
-export interface MagentaSpec {
-  version: number;
-  everyFrame: boolean;
-  chat: { cell: Cell; args?: ChatArgs | null } | null;
-  hooks: Extract<BuildRecord, { flag: Cell }>[];
-  scans: Extract<BuildRecord, { kind: "scan" }>[];
-  /** MSQC follow-up: the event units to clear each cycle, the mouse-over locations, the selection. */
-  msqc: { clear: number[]; mouseBase: number | null; mouseIn: { location: number; unit: number }[]; select: { ptr: number; type: number } | null } | null;
-}
-
-const cellAddress = (cell: Cell) => 0x58a364 + cell[0] * 4 + cell[1] * 48;
-
 /** Windows key names MSQC knows, from a virtual-key code. */
 export function msqcKeyName(code: number): string {
   if (code >= 0x41 && code <= 0x5a) return String.fromCharCode(code);
@@ -188,48 +170,6 @@ export function msqcKeyName(code: number): string {
   if (code >= 0x70 && code <= 0x7b) return `F${code - 0x6f}`;
   const named: Record<number, string> = { 0x20: "SPACE", 0x0d: "ENTER", 0x1b: "ESC", 0x09: "TAB", 0x10: "SHIFT", 0x11: "LCTRL", 0x12: "LALT", 0x25: "LEFT", 0x26: "UP", 0x27: "RIGHT", 0x28: "DOWN", 0x08: "BACK", 0x2e: "DELETE", 0x2d: "INSERT", 0x24: "HOME", 0x23: "END", 0x21: "PGUP", 0x22: "PGDN" };
   return named[code] ?? `0x${code.toString(16).toUpperCase()}`;
-}
-
-/** Whether the map uses MSQC at all. */
-export const usesMsqc = (m: Msqc | null): m is Msqc => !!m && (Object.keys(m.keys).length > 0 || Object.keys(m.clicks).length > 0 || Object.keys(m.mouseIn).length > 0 || m.select !== null);
-
-/** The plugin sections for a build: the chat plugin's, MSQC's, Magenta's own, and turbo when the map runs every frame. */
-export function composePlugins(builds: BuildRecord[], chat: ChatCell | null, everyFrame: boolean, msqc: Msqc | null = null, options: BuildOptions = DEFAULT_OPTIONS, cammoveLoc: number | null = null): BuildPlugins {
-  const plugins: BuildPlugins = {};
-  if (options.camera && cammoveLoc !== null) plugins.cammove = { targetloc: options.camera.name, inertia: options.camera.inertia, maxspeed: options.camera.maxspeed };
-  if (options.bgm) plugins.bgmplayer = { path: options.bgm.path, length: options.bgm.length };
-  if (options.noAirCollision) plugins.noAirCollision = {};
-  if (options.unlimiter) plugins.unlimiter = {};
-  const chats = builds.filter((b): b is ChatRecord => b.kind === "chat");
-  if (chats.length && chat) {
-    const section: Record<string, string | number> = { __addr__: `0x${cellAddress(chat.cell).toString(16).toUpperCase()}` };
-    if (chat.args && chats.some(isChatPattern)) {
-      section.__patternAddr__ = `0x${cellAddress(chat.args.pattern).toString(16).toUpperCase()}`;
-      section.__ptrAddr__ = `0x${cellAddress(chat.args.ptr).toString(16).toUpperCase()}`;
-      section.__lenAddr__ = `0x${cellAddress(chat.args.len).toString(16).toUpperCase()}`;
-    }
-    for (const c of chats) section[chatKey(c)] = c.value;
-    plugins.chatEvent = section;
-  }
-  let msqcSpec: MagentaSpec["msqc"] = null;
-  if (usesMsqc(msqc)) {
-    const section: Record<string, string | number> = { QCUnit: msqc.qcUnit, QCLoc: msqc.qcLoc, QCPlayer: msqc.qcPlayer + 1, QCDebug: "false" };
-    const clear: number[] = [];
-    for (const [code, unit] of Object.entries(msqc.keys)) { section[`KeyPress(${msqcKeyName(Number(code))}); NotTyping`] = `${unit}, 1`; clear.push(unit); }
-    for (const [button, unit] of Object.entries(msqc.clicks)) { section[`MouseDown(${button})`] = `${unit}, 1`; clear.push(unit); }
-    const mouseIn = Object.entries(msqc.mouseIn).map(([location, unit]) => ({ location: Number(location), unit }));
-    if ((mouseIn.length || Object.keys(msqc.clicks).length) && msqc.mouseBase !== null) section["Mouse"] = msqc.mouseBase;
-    // The selected unit's pointer, sent when a left click ends — the moment a selection can have changed.
-    if (msqc.select) section["MouseUp(L); val, 0x597208"] = String(msqc.select.ptr);
-    plugins.MSQC = section;
-    msqcSpec = { clear, mouseBase: msqc.mouseBase, mouseIn, select: msqc.select };
-  }
-  const hooks = builds.filter((b): b is Extract<BuildRecord, { flag: Cell }> => "flag" in b);
-  const scans = builds.filter((b): b is Extract<BuildRecord, { kind: "scan" }> => b.kind === "scan");
-  const spec: MagentaSpec = { version: MAGENTA_SPEC_VERSION, everyFrame, chat: chats.length && chat ? { cell: chat.cell, args: chats.some(isChatPattern) ? chat.args ?? null : null } : null, hooks, scans, msqc: msqcSpec };
-  if (hooks.length || scans.length || spec.chat || msqcSpec) plugins.magenta = { spec: JSON.stringify(spec) };
-  if (everyFrame) plugins.eudTurbo = {};
-  return plugins;
 }
 
 /** The next free chat value: the plugin refuses 0 and 1. */

@@ -232,31 +232,35 @@ like the catalogue.
 
 ### Rows that need a Build
 
-Some rows have no record in the game's own trigger set and only work in a map built by
-[euddraft](https://github.com/armoha/euddraft), which the [eudplib plugin](https://github.com/scm-js/plugin-eudplib)
-runs inside the editor for you (Magenta needs that plugin; the editor installs it with Magenta).
-They read like any other row, with a **BUILD** tag, and the trigger that carries one shows
-a BUILD badge in the list.
+Some rows have no record in the game's own trigger set and only work in a map with code
+built into it. Since Magenta 0.12 that code is TrigScript's: the rows are written as a
+TrigScript program when the map is saved and built into the saved file by the
+[TrigScript plugin](https://github.com/scm-js/plugin-trigscript), which Magenta needs (the
+editor installs it with Magenta), the same way TrigScript builds a map's own script. They
+read like any other row, with a **BUILD** tag, and the trigger that carries one shows a
+BUILD badge in the list.
 
 Conditions:
 
-- **The chat said `-heal` exactly**: fires in the cycle a player sends that message, for
-  every player at once. **The chat said `-set` followed by a number** matches `-set 250`
+- **The chat said `-heal` exactly**: fires in the cycle after a player sends that message,
+  for every player at once. **The chat said `-set` followed by a number** matches `-set 250`
   and puts the 250 in a counter named *Chat number*, for the trigger's other rows to use.
-  `^…$` writes a pattern of your own, as in `^-give .*$`; the chat plugin wants two `.*` in
-  one, and Magenta adds the second.
-- **Player 1 pressed A**, **Player 1 clicked the left button** (or the right, or since 0.4 the
-  middle), **Player 1's mouse is over Beacon**: input that works in multiplayer. Each player's keys, clicks and mouse go out
-  as game commands (the MSQC plugin), so every client agrees on them in the same cycle;
-  the plain EUD reads in the catalogue are local to one computer and cannot do that. With
-  *Current Player* as the player, one trigger serves everyone. Typing in chat does not
-  count as key presses.
+  (A pattern of your own, `^…$`, is not in the language yet: such a row is not built, and
+  the Build dialog says so.)
+- **Player 1 pressed A**, **Player 1 clicked the left button** (or the right, or the middle),
+  **Player 1's mouse is over Beacon**: input that works in multiplayer. Each player's keys,
+  clicks and mouse are carried between the computers by the build itself, so every client
+  agrees on them in the same cycle; the plain EUD reads in the catalogue are local to one
+  computer and cannot do that. With *Current Player* as the player, one trigger serves
+  everyone. Typing in chat does not count as key presses. F2 to F6 are keys the game keeps
+  to itself and reports no press of.
 - **Any Marine owned by Player 1 at Beacon has hit points below 20**: a check over every
-  unit of a kind, every cycle; also shields, energy, kills, x or y, the order id, remaining
-  build time, resources and weapon cooldown, below, above or exactly; since 0.4 **hit points %**,
-  **shields %** and **energy %** against the type's maximum ("below 30%"), and the unit type id
-  and owner; and **Any Marine owned by Player 1 is under attack**, *is targeting something*,
-  *is burrowed*, *is in a transport*, *is moving* — or is not.
+  unit of a kind, every cycle; also shields, energy, kills, x or y, the order id, resources
+  and weapon cooldown, below, above or exactly; **hit points %**, **shields %** and
+  **energy %** against the type's maximum ("below 30%"), the unit type id and owner; and
+  **Any Marine owned by Player 1 is under attack**, *is burrowed*, *is targeting
+  something*, *is in a transport* or *is moving*, or is not; and the remaining build time
+  of a building going up.
 
 Actions:
 
@@ -266,82 +270,80 @@ Actions:
   maths the game cannot do, in one row.
 - **For each Marine owned by Player 1 at Beacon: set hit points to 100**: a pass over every
   unit of a kind; also set shields, energy or kills, kill, remove, make invincible or
-  vulnerable, hallucinate, give or take the speed upgrade, **give to a player** with the
-  colour, selection and control groups following (which the owner byte in the catalogue
-  does not), and **center a location on it**, so the trigger's other actions can act on
-  that unit through the location. Any unit, anyone and anywhere are the wide settings.
-  Since 0.2: **order to move / patrol / attack-move to** a location (the game's own order,
-  one unit at a time through a location named *Magenta scratch* that Magenta makes and
-  moves), **apply a spell effect** — stim, ensnare, plague, lockdown, stasis, maelstrom,
-  irradiate or a defensive matrix — for so many seconds (the effect without the spell's
-  overlay graphic), **hold fire** (its cooldowns rewritten each cycle, so put it in a
-  trigger that runs every frame), **set the resources** of mineral fields and geysers, the
-  remaining build time, the rank, and **walk through anything** or collide again. Since 0.4:
-  **take 20 hit points** or **give 20 hit points** (also shields and energy) — damage and
-  healing that stop at 0 and at the type's maximum, and a unit whose hit points reach 0 dies;
-  a damage zone or a healing aura is one such row in a trigger that fires every cycle.
+  vulnerable, **give to a player** with the colour, selection and control groups following
+  (which the owner byte in the catalogue does not), and **center a location on it**, so the
+  trigger's other actions can act on that unit through the location. Any unit, anyone and
+  anywhere are the wide settings. **Order to move / patrol / attack-move to** a location,
+  **apply a spell effect** — stim, ensnare, plague, lockdown, stasis, maelstrom or irradiate —
+  for so many seconds (the effect without the spell's overlay graphic), **hold fire** (the
+  weapon and spell cooldowns rewritten each cycle, so put it in a trigger that runs every
+  frame), **set the resources** of mineral fields and geysers, **take 20 hit points** or
+  **give 20 hit points** (also shields and energy) — damage and healing that stop at 0 and
+  at the type's maximum, and a unit whose hit points reach 0 dies; a damage zone or a
+  healing aura is one such row in a trigger that fires every cycle. **Hallucinate** it (or
+  make it real again), give it **the speed upgrade** without the research, a **defensive
+  matrix** for so many seconds, set **the remaining build time** of a building going up or
+  **the rank** shown on its panel. (Walking through anything, a code patch of euddraft's,
+  is not in the language: such a row is not built, and the Build dialog says so.)
 - **Take the Marine owned by Player 1 with the least hit points: kill it, center Pick on it,
   value into Weakest**: the one unit with the least or greatest of a stat, the **nearest
-  to** a location, or since 0.4 **at random** (a different one each time the trigger fires)
-  or the nearest to **a player's mouse** within so many pixels — the unit under the cursor,
-  which with a synced click makes click-to-act gameplay. It does the pass verb you choose to
-  that unit, centres a location on it for the trigger's other actions, and puts the value
-  (the distance, for the nearest) in a counter — each of those optional.
+  to** a location, **at random** (a different one each time the trigger fires) or the
+  nearest to **a player's mouse** within so many pixels — the unit under the cursor, which
+  with a synced click makes click-to-act gameplay. It does the pass verb you choose to that
+  unit, centres a location on it for the trigger's other actions, and puts the value (the
+  distance, for the nearest) in a counter — each of those optional.
 - **Set A to the number of Marines owned by Player 1 at Beacon**: a count into a counter.
 - **Set A to the hit points of the first Marine owned by Player 1 at Beacon**: a read
-  into a counter; also shields, energy, kills, x, y, the order id, remaining build time,
-  resources, weapon cooldown, and the yes-or-no fields as 1 or 0.
+  into a counter; also shields, energy, kills, x, y, the order id, resources, weapon
+  cooldown, and the yes-or-no fields as 1 or 0.
 - **Move Beacon to 640, 320 keeping its size**: a location placed by numbers, in map
-  pixels (32 per tile), with a new width and height if you give one; or since 0.4 **Move
-  Beacon by 64, 0** — shifted from where it is, for a moving platform or a scrolling lane.
+  pixels (32 per tile), with a new width and height if you give one; **Move Beacon by 64,
+  0** shifts it from where it is. The size kept, the mouse-over condition and the nearest
+  pick all read the location where it is at that moment, so a location another row moved
+  is followed.
 
 Text with counters in it also takes `{Player 1}` for a player's name and `{Player 1's
 colour}` to switch to that player's colour, and the colour and effect buttons in the text
 box insert the game's own codes.
 
-The Build dialog has a few map-wide things too, chosen once per map: **the camera follows
-a location** for everyone, gliding with an inertia and a top speed (the cammove plugin).
-It follows while a switch named `cammove` is set, so triggers turn it on and off with Set
-Switch; Magenta names a free switch, makes the helper location `cammoveLoc` the plugin needs,
-and adds a trigger that sets the switch at the start unless you untick that;
-**a sound looped as background music** (the bgmplayer plugin; a plain WAV's length is read
-from the file, otherwise type the seconds); **air units pass through one another**
-(noAirCollision); and **lifting the sprite and image limits** (unlimiter).
+The Build dialog's map-wide things: **the camera following a location** glides after it
+for every human, a step of the way each frame (the distance divided by the inertia, capped
+at the max speed, as euddraft's cammove did), and **a sound looped as background music**
+plays the sound again each time its length has passed — each a small program of its own
+beside the rows'. Air units passing through one another and lifting the sprite and image
+limits were code patches of euddraft's with no counterpart in TrigScript's build; a map
+that ticks one is not built until it is unticked, and the dialog says so.
 
 In the map these are one private counter cell each: the trigger sets it (an action) or reads
-it (a condition), so it stays an ordinary trigger everywhere. **⋯ ▸ Build EUD map…** takes
-the map as it stands, adds the code behind the rows, and saves the built map beside the
-source, `name-eud.scx`. The build runs in the editor, through the eudplib plugin: the first
-one downloads that plugin's runtime (about 15 MB, from jsDelivr) after asking you, and later
-builds are a few seconds each. Nothing about the map leaves your machine. A **Build** button in the panel's head
-says where the map stands — how many triggers need a build, and whether the last built map
-is *built* from the map as it is, *stale* because the map changed since, or *not built*;
-the record of the last build (its time, file and the map's revision) is kept with the map.
-The dialog checks the map before sending it and lists what would go wrong, each with a
-**Show** link to the trigger: the player slot, unit type and location slots synced input
-keeps for itself must still be free, a row's locations must still exist, a chat message
-must be one the chat plugin takes, the camera's location must have a name, the music must
-be in the archive, and the eudplib plugin must be installed and on. Only StarCraft:
-Remastered plays a built map. Keep the source map: the built one is what players get, the
-way a compiled program is, and while the editor opens it, the rows behind its triggers are
-gone into eudplib's code.
+it (a condition), so it stays an ordinary trigger everywhere. **Save** builds the code behind
+the rows into the saved file, with the map's own TrigScript script if it has one, in under a
+second and with nothing downloaded; Test Map and an export build the same way. A **Build**
+button in the panel's head says how many triggers carry such a row; it and **⋯ ▸ Build…**
+open a dialog that lists what would go wrong, each with a **Show** link to the trigger: a
+row's locations must still exist, a chat message must be one the language takes, a row must
+be one the language has, and the TrigScript plugin must be installed and on — and, when it
+is, TrigScript compiles the rows against the map there and then, so a save holds no
+surprise. A save whose build fails still writes the map, without the code; the notice says
+why. Only StarCraft: Remastered plays a built map. Keep the source map: the built one is
+what players get, the way a compiled program is, and while the editor opens it, the rows
+behind its triggers are gone into the code.
 
 An action row does its work once every trigger has had its turn, in the cycle its trigger
 fired — so a row below it in the same trigger still sees the map as it was, and a trigger in
 the next cycle sees the result. A row that moves a location (Move a location, a pick's box,
 a pass's *center a location on it*) followed by a native row on that location gets a warning
 saying so. Two such rows in one trigger, or in two triggers, run in the order the list shows
-them. A chat command or an input fires once per message, press or click, before the triggers
-of that cycle, and a check is fresh every cycle. A key press or a click read the local way — the
-catalogue's *Keyboard key state*, the mouse, the local player — is each computer's own; a
-trigger that reads one and changes the game for everyone gets a warning, since the computers
-can disagree and the game drops out of sync. The synced rows are the ones to use. Synced input needs a few things of its own in the map, which Magenta takes:
-one location slot for MSQC, eight in a row for the players' mice, a player slot nobody
-uses (Player 11) and a unit type that must not appear in the map (the Valkyrie by default).
-A key press arrives once per press, the way Remastered reports it; there is no "while the
-key is held", so a map that moves a unit while a key is down works from repeated presses. The code behind them is Magenta's own
-euddraft plugin, `python/magenta.py` in this repository, which the build hands to eudplib
-along with the map; it turns the rows into eudplib code, and nothing you write in a row is code.
+them. A chat command, an input and a check are written at the end of a cycle for the next
+cycle's triggers: a message, a press or a click fires once, in the cycle after it happened,
+and a check reads the units as they stood at the end of the cycle before. A key press or a
+click read the local way — the catalogue's *Keyboard key state*, the mouse, the local
+player — is each computer's own; a trigger that reads one and changes the game for everyone
+gets a warning, since the computers can disagree and the game drops out of sync. The synced
+rows are the ones to use; they take nothing from the map. A key press arrives once per
+press, the way Remastered reports it. A map with a build row in it runs its triggers every
+frame, whether or not *Run triggers every frame* is ticked. The code behind the rows is
+written by Magenta itself (`src/model/trigscript.ts` in this repository) in the TrigScript
+language, and nothing you write in a row is code.
 
 ### What Magenta keeps with the map
 
@@ -370,9 +372,10 @@ EUD maps. Each says on screen what to look for. All four were played on 2026-09-
 
 Five more, the **probe maps**, test the candidates in `docs/candidates.md` — one key per
 candidate, and each map says on screen what to press and what to look for. `npx tsx
-scripts/make-probe-maps.mts --build ../plugin-eudplib` writes them; 6, 7, 10 and 11 need a build
-(the eudplib plugin's own command-line builder, run from a checkout of that repository), and
-their `-eud.scx` copies are the ones to play.
+scripts/make-probe-maps.mts` writes them; 6, 7, 10 and 11 need a build. They were built through
+the eudplib plugin's command-line builder (`--build ../plugin-eudplib`, with the Python this
+repository carried until 0.12), and their `-eud.scx` copies were the ones played; the script's
+build path is to be redone on TrigScript's build, which is where the rows go now.
 
 | Map | What it probes |
 | --- | --- |

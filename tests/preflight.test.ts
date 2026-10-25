@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { ActionType, emptyAction, emptyTrigger, type TriggerRecord } from "../vendor/triggers";
-import { DEFAULT_MSQC, DEFAULT_OPTIONS, type BuildRecord } from "../src/model/builds";
+import { emptyAction, emptyTrigger, type TriggerRecord } from "../vendor/triggers";
+import { DEFAULT_OPTIONS, type BuildRecord } from "../src/model/builds";
 import { flagAction } from "../src/model/expansions";
-import { buildFreshness, lastBuildRecord, preflight, sourceRevision, type PreflightInput } from "../src/model/preflight";
+import { preflight, type PreflightInput } from "../src/model/preflight";
 import { setOwners } from "../src/model/records";
 import { emptySidecar, type Sidecar } from "../src/model/sidecar";
 
@@ -15,69 +15,40 @@ function input(patch: Partial<PreflightInput> = {}, sidecar: Partial<Sidecar> = 
   const locations = slots();
   locations[1] = { empty: false, named: true };
   return {
-    list: [trig([0], [flagAction({ cell: heal.flag })])], sidecar: sc, options: DEFAULT_OPTIONS, plugins: { magenta: { spec: "{}" } },
-    playerTypes: Array.from({ length: 12 }, (_, i) => (i < 2 ? 6 : 0)), playerTypeName: (s) => `type ${s}`, playerName: (s) => `Player ${s + 1}`, unitName: (id) => `unit ${id}`,
-    placedUnitIds: new Set([0]), placedOwners: new Set([0, 1]), locations, soundPresent: () => true, runtime: { eudplib: "0.81.0", euddraft: "a00aef1" },
+    list: [trig([0], [flagAction({ cell: heal.flag })])], sidecar: sc, options: DEFAULT_OPTIONS,
+    locations, soundPresent: () => true, rendered: { unsupported: [], notes: [] }, trigscript: true,
     ...patch,
   };
 }
-
-describe("source revision", () => {
-  it("moves with the triggers, the build rows and the map extras, not with the last-build record", () => {
-    const sc = { ...emptySidecar(), builds: [heal] };
-    const list = [trig([0], [flagAction({ cell: heal.flag })])];
-    const a = sourceRevision(list, sc, ["locs"]);
-    expect(sourceRevision(list, sc, ["locs"])).toBe(a);
-    expect(sourceRevision(list, { ...sc, settings: { lastBuild: lastBuildRecord(a, "x-eud.scx", null) } }, ["locs"])).toBe(a);
-    expect(sourceRevision(list, sc, ["locs2"])).not.toBe(a);
-    expect(sourceRevision([trig([1], list[0].actions)], sc, ["locs"])).not.toBe(a);
-    expect(sourceRevision(list, { ...sc, builds: [{ ...heal, do: { adjust: "hp", delta: 30 } }] }, ["locs"])).not.toBe(a);
-    expect(sourceRevision(list, { ...sc, settings: { build: { unlimiter: true } } }, ["locs"])).not.toBe(a);
-    expect(buildFreshness(null, a)).toBe("never");
-    expect(buildFreshness(lastBuildRecord(a, null, null), a)).toBe("fresh");
-    expect(buildFreshness(lastBuildRecord("other", null, null), a)).toBe("stale");
-    expect(lastBuildRecord(a, null, { eudplib: "0.81", euddraft: "a00aef1" }).eudplib).toBe("0.81");
-  });
-});
 
 describe("preflight", () => {
   it("passes a clean map", () => {
     expect(preflight(input())).toEqual([]);
   });
-  it("checks what synced input reserves: the player, the unit type, its location slots", () => {
-    const msqc = { ...DEFAULT_MSQC, keys: { "65": 184 }, mouseBase: 50, mouseIn: { "2": 185 } };
-    const clean = preflight(input({}, { msqc }));
-    expect(clean).toEqual([]);
-    const types = Array.from({ length: 12 }, (_, i) => (i < 2 || i === 10 ? 6 : 0));
-    expect(preflight(input({ playerTypes: types }, { msqc })).map((p) => p.level)).toEqual(["error"]);
-    expect(preflight(input({ placedOwners: new Set([10]) }, { msqc }))[0].text).toContain("units on the map belong to it");
-    const owned = preflight(input({ list: [trig([10], [flagAction({ cell: heal.flag })])] }, { msqc }));
-    expect(owned).toMatchObject([{ level: "warn", trigger: 0 }]);
-    expect(preflight(input({ placedUnitIds: new Set([58]) }, { msqc }))[0].text).toContain("unit 58");
-    const creates = preflight(input({ list: [trig([0], [flagAction({ cell: heal.flag }), { ...emptyAction(), type: ActionType.CreateUnit, unitId: 58, player: 0, location: 2, target: 1 }])] }, { msqc }));
-    expect(creates).toMatchObject([{ level: "error", trigger: 0 }]);
-    const locs = slots(); locs[1] = { empty: false, named: true }; locs[62] = { empty: false, named: false };
-    expect(preflight(input({ locations: locs }, { msqc }))[0].text).toContain("location slot (63)");
-    const mouse = slots(); mouse[1] = { empty: false, named: true }; mouse[52] = { empty: true, named: true };
-    expect(preflight(input({ locations: mouse }, { msqc }))[0].text).toContain("slot 53 is in use");
-  });
   it("checks the rows' locations, chat messages, and rows nothing carries", () => {
     const gone = preflight(input({}, { builds: [{ ...heal, location: 7 }] }));
     expect(gone).toMatchObject([{ level: "error", trigger: 0 }]);
-    const order = preflight(input({}, { builds: [{ ...heal, do: { order: "move", location: 2, scratch: 9 } }] }));
-    expect(order[0].text).toContain("scratch location");
+    const order = preflight(input({}, { builds: [{ ...heal, do: { order: "move", location: 9, scratch: 9 } }] }));
+    expect(order[0].text).toContain("target location");
     const chat = preflight(input({}, { builds: [heal, { id: "c", kind: "chat", message: "a=b", value: 2 }, { id: "d", kind: "chat", message: "-x", value: 3 }, { id: "e", kind: "chat", message: "-X", value: 4 }] }));
     expect(chat.map((p) => p.level)).toEqual(["error", "warn"]);
     const orphan = preflight(input({ list: [trig([0], [])] }));
     expect(orphan).toMatchObject([{ level: "info" }]);
   });
-  it("checks the map-wide options and that the eudplib plugin is there", () => {
-    const locs = slots(); locs[1] = { empty: false, named: true }; locs[4] = { empty: false, named: false };
-    expect(preflight(input({ locations: locs, options: { ...DEFAULT_OPTIONS, camera: { location: 5, name: "x", inertia: 5, maxspeed: 48 } } }))[0].text).toContain("by name");
+  it("says what the rendering could not take, at the row's trigger, and what it took in part", () => {
+    const out = preflight(input({ rendered: { unsupported: [{ id: "b1", why: "this pass's verb is not in the language yet" }, { id: null, why: "the camera following a location is not in the language yet" }], notes: [{ id: "b1", note: "the ground weapon's cooldown is held; the air weapon's and the spells' are not yet" }] } }));
+    expect(out).toEqual([
+      { level: "error", text: "Not built: this pass's verb is not in the language yet.", trigger: 0 },
+      { level: "error", text: "Not built: the camera following a location is not in the language yet." },
+      { level: "warn", text: "Built in part: the ground weapon's cooldown is held; the air weapon's and the spells' are not yet.", trigger: 0 },
+    ]);
+  });
+  it("checks the map-wide options and that TrigScript is there", () => {
+    const locs = slots(); locs[1] = { empty: false, named: true };
+    expect(preflight(input({ locations: locs, options: { ...DEFAULT_OPTIONS, camera: { location: 5, name: "x", inertia: 5, maxspeed: 48 } } }))[0].text).toContain("no longer has");
     expect(preflight(input({ options: { ...DEFAULT_OPTIONS, bgm: { path: "staredit\\wav\\a.wav", length: 3 } }, soundPresent: () => false }))[0].text).toContain("a.wav");
-    const gone = preflight(input({ runtime: null }));
+    const gone = preflight(input({ trigscript: false }));
     expect(gone).toMatchObject([{ level: "error" }]);
-    expect(gone[0].text).toContain("eudplib plugin");
-    expect(preflight(input({}))).toEqual([]);
+    expect(gone[0].text).toContain("TrigScript plugin");
   });
 });
