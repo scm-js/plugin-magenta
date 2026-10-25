@@ -355,6 +355,8 @@ const MAPS: ProbeMap[] = [
       place(ZERGLING, 0, 14.5, 16.5);
       place(SCV, 0, 10.5, 16.5);
       place(DROPSHIP, 0, 17.5, 18.5);
+      // A Command Center, so that the SCV may build the Barracks the I and N keys read and finish.
+      place(COMMAND_CENTER, 0, 12, 21);
       for (let i = 0; i < 4; i++) place(ZERGLING, 1, 36.5 + i, 12.5);
       for (let i = 0; i < 2; i++) place(HYDRALISK, 1, 36.5 + i, 16.5);
       place(SIEGE_TANK, 1, 41.5, 16.5);
@@ -408,11 +410,11 @@ const MAPS: ProbeMap[] = [
           eud("cunit.hp", { index: 0 }, 10), eud("cunit.hp", { index: 1699 }, 20), eud("cunit.hp", { index: 1698 }, 30), eud("cunit.hp", { index: 1697 }, 40),
           eud("player.techResearched", { player: 0, tech: 11 }, 1),
           addMinerals(P1, 400),
-          h.text("Probe 6, units (TrigScript build). Q order enemy zerglings to the Beacon. W marines' rank +5 (select one and read its rank). E spell timers, and a defensive matrix on your zergling. R toggle hold fire. T resources at the Mine. J your zergling gets the speed upgrade and runs to the Mine, K loses it and runs home."),
-          h.text("Y marines become hallucinations (blue, double damage, gone after a while), H real again. Build a Barracks with the SCV, then I reads its build time left and N finishes it in a second. O kill the weakest marine by location, L inside the pick, P heal the marine nearest the Beacon. Load a marine into the Dropship: a scan says so."),
+          h.text("Probe 6, units (TrigScript build). Q order enemy zerglings to the Beacon. W marines' rank set to 5 (select one and read its rank). E spell timers, and a defensive matrix on your zergling. R toggle hold fire. T resources at the Mine. J your zergling gets the speed upgrade and runs to the Mine, K loses it and runs home."),
+          h.text("Y marines become hallucinations (blue, double damage, gone after a while), H real again. Build a Barracks with the SCV (there is a Command Center), then I reads its build time left and N finishes it in a second. O kill the weakest marine by location, L inside the pick, P heal the marine nearest the Beacon. Load a marine into the Dropship: a scan says so."),
         ]),
         ...onKey(h, "Q", "every enemy zergling: the game's Order to the Beacon. Expect: they walk there.", [flag(F.orderQ)]),
-        ...onKey(h, "W", "marines: rank +5. Expect: a selected marine's rank reads five steps up (Private → Master Sergeant or so).", [flag(F.rank)]),
+        ...onKey(h, "W", "marines: rank set to 5. Expect: a selected marine's rank reads five steps up from Private, and stays there on another press.", [flag(F.rank)]),
         ...onKey(h, "E", "timers: marines stim 240, enemy zerglings plague 250 (watch their HP fall), hydralisks ensnare, the tank lockdown while it is ordered to the Beacon (it should not move), your zergling a defensive matrix of 250 points (attack it: the matrix should take the hits).", [flag(F.timers), orderAll(SIEGE_TANK, P2, BEACON)]),
         h.trigger([P1], [keyPressed("R"), switchIs(39, false), switchIs(1, false)], [h.comment("R: hold fire on"), setSwitch(39, true), setSwitch(1, true), h.text("[R] hold fire ON: marines' cooldowns are held at 250 every cycle. Expect: they cannot shoot."), preserve()]),
         h.trigger([P1], [keyPressed("R"), switchIs(39, false), switchIs(1, true)], [h.comment("R: hold fire off"), setSwitch(39, true), setSwitch(1, false), h.text("[R] hold fire OFF."), preserve()]),
@@ -449,7 +451,7 @@ Each line: what you did, what happened. "->" is where the answer goes.
 
 Start: are the four marines at 10/20/30/40 HP, and do you have 400 minerals? ->
 Q: do the enemy zerglings walk to the Beacon? ->
-W: select a marine after W — what rank does its panel show (was Private)? ->
+W: select a marine after W — what rank does its panel show (was Private)? A second press should leave it there (the row sets rank 5). ->
 E: marines stimmed (fast, red tint)? enemy zerglings losing HP (plague)? hydralisks slowed (ensnare)? ->
 E: the tank, ordered to the Beacon — did it stay put (lockdown)? ->
 E: your zergling — a matrix bubble? attack it with a marine: did the matrix take the hits (HP unchanged for a while)? ->
