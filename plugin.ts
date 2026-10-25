@@ -20,6 +20,7 @@ import { liveActions, liveConditions } from "./src/model/records";
 import { actionsText, conditionText } from "./src/ui/describe";
 import { installClaims } from "./src/claims";
 import { Host } from "./src/ui/host";
+import { installContribution } from "./src/ui/contribute";
 import { createPanel } from "./src/ui/panel";
 import { openSettings, registerPreferencesPage } from "./src/ui/settings";
 import { starters, type StarterSubject } from "./src/model/starters";
@@ -58,6 +59,8 @@ export function activate(api: PluginApi): () => void {
   api.menu.add("Triggers", { label: msg("Magenta…"), shortcut: "Ctrl+Shift+M", icon: "plugin", after: "Text Trigger Editor…", enabled: () => api.document.isOpen(), command: "open" });
   api.hotkeys.add("Ctrl+Shift+M", { command: "open" });
   claims = installClaims(api, (index) => panel.open({ index }));
+  // The rows that need code in the map go into TrigScript's build on Save, Test Map and export.
+  const contribution = installContribution(api, new Host(api));
 
   /* ── Start a trigger from the map ── */
   /** The placed unit under a map pixel (the nearest whose placement box holds it), and the smallest location around it. */
@@ -99,5 +102,5 @@ export function activate(api: PluginApi): () => void {
     visible: (ctx) => api.document.isOpen() && !!under(ctx).location,
     run: (ctx) => { const s = under(ctx); panel.start(starters({ location: s.location })); },
   });
-  return () => { claims?.dispose(); panel.close(); onData.dispose(); unitItem.dispose(); locationItem.dispose(); setGameLookup(null); setTranslator(null); catalogue.dispose(); };
+  return () => { contribution.dispose(); claims?.dispose(); panel.close(); onData.dispose(); unitItem.dispose(); locationItem.dispose(); setGameLookup(null); setTranslator(null); catalogue.dispose(); };
 }

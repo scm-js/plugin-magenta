@@ -137,6 +137,12 @@ export class Host {
     return !!l && (n === 64 || l.left !== l.right || l.top !== l.bottom);
   }
 
+  /** A location's edges in map pixels, by its 1-based number; null when the map has no such location. */
+  locationBounds(n: number): { left: number; top: number; right: number; bottom: number } | null {
+    const l = this.api.document.scenario()?.locations[n - 1];
+    return l ? { left: l.left, top: l.top, right: l.right, bottom: l.bottom } : null;
+  }
+
   locationRect(n: number): Rect | null {
     const l = this.api.document.scenario()?.locations[n - 1];
     if (!l) return null;

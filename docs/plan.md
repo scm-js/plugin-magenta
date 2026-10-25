@@ -311,6 +311,23 @@ the sidecar that the box's Magenta plugin turns into eudplib code at build time.
 each is one private flag cell, so the trigger stays ordinary. ⋯ ▸ Build EUD map… sends the
 map and saves the built one beside it.
 
+## TrigScript as the library (2026-10-25)
+
+The rows that needed a euddraft build go into TrigScript's build instead. TrigScript 4 lays its
+programs out into the map itself (no eudplib), and holds a service out — `trigscript.build` —
+that another plugin contributes TrigScript source to; on Save, Test Map and an export the
+contributed file is compiled with the map's own script and every program is built into the
+saved map in one pass. Magenta renders its rows as that file (`src/model/trigscript.ts`:
+one program, every frame, a flag check per build row, the inputs and the unit checks written
+for the next frame's triggers), contributes it (`src/ui/contribute.ts`), and requires
+plugin-trigscript rather than plugin-eudplib. The Build dialog is a preflight, with TrigScript's
+own compile of the rendered file. `python/magenta.py` is gone. Not in the language yet, and so
+not built, said in the dialog and the save's notice: hallucinate, the speed upgrade, a defensive
+matrix, build time and rank writes; the has-target, in-transport, moving and build-time reads;
+*move by*; `^…$` chat patterns; the selected unit; the four map-wide options. The rows run one
+frame later than through eudplib's hooks (an input or a check is written at the end of a frame
+for the next frame's triggers), and a map with a build row runs its triggers every frame.
+
 ## Decisions (2026-09-12)
 
 - The panel opens with Ctrl+Shift+M (Ctrl+Shift+H, I, K, L, S, T, W and Z are taken).

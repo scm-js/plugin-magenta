@@ -1,33 +1,16 @@
 /**
- * What the Build dialog checks before a map is built, and how it tells whether
- * the built map is still the map: a *source revision* — a hash over everything the build
- * consumes — kept with the result in the sidecar, so "built from this revision" and
- * "stale" are answers rather than guesses. The checks are pure over plain data the host
- * hands in; each names the trigger it is about so the dialog can jump there.
+ * What the Build dialog checks, and what the save's build will refuse: the rows against the map as it is (a location a
+ * row names must still be there, a chat message must be one the language takes), the rows and options TrigScript's
+ * build cannot render yet (`trigscript.ts`'s `unsupported`), and whether TrigScript is there to build at all. The
+ * checks are pure over plain data the host hands in; each names the trigger it is about so the dialog can jump there.
+ * A build happens on every save (TrigScript's), so there is no "stale" any more: the saved map is the map.
  */
 import { t } from "../i18n";
-import { ActionType, type TriggerRecord } from "../../vendor/triggers";
-import { checkChatMessage, MAGENTA_SPEC_VERSION, usesMsqc, type BuildOptions, type BuildPlugins } from "./builds";
+import type { TriggerRecord } from "../../vendor/triggers";
+import { checkChatMessage, type BuildOptions } from "./builds";
 import { refs } from "./ownership";
-import { fingerprint, liveActions, owners } from "./records";
 import type { Sidecar } from "./sidecar";
-
-/** What the eudplib library plugin runs the build with, or null when it is not there. */
-export interface Runtime {
-  eudplib: string;
-  euddraft: string;
-}
-
-/** The record of the last build, kept in `sidecar.settings.lastBuild`. */
-export interface LastBuild {
-  revision: string;
-  /** ISO time. */
-  at: string;
-  file: string | null;
-  spec: number;
-  eudplib?: string;
-  euddraft?: string;
-}
+import type { Rendered } from "./trigscript";
 
 export interface PreflightProblem {
   level: "error" | "warn" | "info";
@@ -40,81 +23,23 @@ export interface PreflightInput {
   list: readonly TriggerRecord[];
   sidecar: Sidecar;
   options: BuildOptions;
-  /** `PlayerType` per 0-based slot (0 is Inactive). */
-  playerTypes: readonly number[];
-  playerTypeName(slot: number): string;
-  playerName(slot: number): string;
-  unitName(id: number): string;
-  placedUnitIds: ReadonlySet<number>;
-  /** Slots that own at least one placed unit. */
-  placedOwners: ReadonlySet<number>;
   /** Per 0-based location slot: whether it is empty (zero size) and whether it has a name of its own. */
   locations: readonly { empty: boolean; named: boolean }[];
   soundPresent(path: string): boolean;
-  /** The plugin sections the build will send. */
-  plugins: BuildPlugins;
-  /** The eudplib library plugin's versions, null when the plugin is not installed or is off. */
-  runtime: Runtime | null;
+  /** The rows as TrigScript: which it could not render, and which in part. */
+  rendered: Pick<Rendered, "unsupported" | "notes">;
+  /** Whether the TrigScript plugin is running, with its build service. */
+  trigscript: boolean;
 }
 
-const PLAYER_INACTIVE = 0;
-
-const hex = (h: number) => (h >>> 0).toString(16).padStart(8, "0");
-
-/** FNV-1a over a string. */
-function fnv(s: string, h = 0x811c9dc5): number {
-  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
-  return h >>> 0;
-}
-
-/**
- * The source revision: the triggers by content, the sidecar's build-facing parts, and
- * whatever else of the map the host says a build reads (locations, placed units, strings),
- * as strings. The last-build record itself is left out, so recording a build does not
- * move the revision it records.
- */
-export function sourceRevision(list: readonly TriggerRecord[], sidecar: Sidecar, extra: readonly string[] = []): string {
-  const settings: Record<string, unknown> = { ...sidecar.settings };
-  delete settings.lastBuild;
-  let h = 0x811c9dc5;
-  for (const t of list) h = fnv(fingerprint(t), h);
-  h = fnv(JSON.stringify({ builds: sidecar.builds, chat: sidecar.chat, msqc: sidecar.msqc, expansions: sidecar.expansions, settings }), h);
-  let g = 0x811c9dc5;
-  for (const s of extra) g = fnv(s, g);
-  return hex(h) + hex(g);
-}
-
-/** "never" (no record), "fresh" (the record's revision is the map's), or "stale". */
-export function buildFreshness(last: LastBuild | null | undefined, revision: string): "never" | "fresh" | "stale" {
-  if (!last) return "never";
-  return last.revision === revision ? "fresh" : "stale";
-}
-
-/** The problems a build would run into, errors first. */
 export function preflight(input: PreflightInput): PreflightProblem[] {
   const out: PreflightProblem[] = [];
   const { list, sidecar, options } = input;
   const locExists = (n: number) => n === 64 || (n >= 1 && n <= 63 && input.locations[n - 1] !== undefined && !input.locations[n - 1].empty);
-  const free = (slot: number) => { const l = input.locations[slot]; return !!l && l.empty && !l.named; };
-
-  /* ── MSQC's own things ── */
-  const m = sidecar.msqc;
-  if (usesMsqc(m)) {
-    const p = m.qcPlayer;
-    if ((input.playerTypes[p] ?? PLAYER_INACTIVE) !== PLAYER_INACTIVE) out.push({ level: "error", text: t("Synced input needs {player} for itself, and the slot is set to {type}. Make it inactive in Scenario ▸ Players, or free another slot and remove the input rows to let Magenta pick again.", { player: input.playerName(p), type: input.playerTypeName(p) }) });
-    if (input.placedOwners.has(p)) out.push({ level: "error", text: t("Synced input needs {player} for itself, and units on the map belong to it.", { player: input.playerName(p) }) });
-    list.forEach((tr, i) => { if (owners(tr).includes(p)) out.push({ level: "warn", text: t("Synced input owns {player}; this trigger runs for it too.", { player: input.playerName(p) }), trigger: i }); });
-    if (input.placedUnitIds.has(m.qcUnit)) out.push({ level: "error", text: t("Synced input uses the {unit} type for its own command units, and the map has some placed. Remove them, or pick another unit type in the map's settings.", { unit: input.unitName(m.qcUnit) }) });
-    list.forEach((tr, i) => {
-      if (liveActions(tr).some((a) => (a.type === ActionType.CreateUnit || a.type === ActionType.CreateUnitWithProperties) && a.unitId === m.qcUnit)) out.push({ level: "error", text: t("This trigger creates a {unit}, the type synced input keeps for itself.", { unit: input.unitName(m.qcUnit) }), trigger: i });
-    });
-    if (!free(m.qcLoc)) out.push({ level: "error", text: t("Synced input's own location slot ({n}) is no longer empty: a location was made there. Free it, or remove the input rows and add them again to pick another.", { n: m.qcLoc + 1 }) });
-    if (m.mouseBase !== null) {
-      const taken: number[] = [];
-      for (let k = 0; k < 8; k++) if (!free(m.mouseBase - 1 + k)) taken.push(m.mouseBase + k);
-      if (taken.length) out.push({ level: "error", text: t("{n, plural, one {The eight location slots the players' mice use ({from}–{to}) must stay empty; slot {taken} is in use.} other {The eight location slots the players' mice use ({from}–{to}) must stay empty; slots {taken} are in use.}}", { n: taken.length, from: m.mouseBase, to: m.mouseBase + 7, taken: taken.join(", ") }) });
-    }
-  }
+  const triggerOf = (id: string | null): number | undefined => {
+    const b = id === null ? undefined : sidecar.builds.find((x) => x.id === id);
+    return b ? refs(list, b)[0] : undefined;
+  };
 
   /* ── The rows ── */
   const seenChat = new Map<string, number>();
@@ -129,12 +54,11 @@ export function preflight(input: PreflightInput): PreflightProblem[] {
       seenChat.set(key, 1);
       continue;
     }
-    if (!carriers.length) { out.push({ level: "info", text: b.kind === "scan" ? t("A unit check no trigger uses is still in the map's Magenta data; it is sent, and never fires.") : t("A build row no trigger uses is still in the map's Magenta data; it is sent, and never fires.") }); continue; }
+    if (!carriers.length) { out.push({ level: "info", text: b.kind === "scan" ? t("A unit check no trigger uses is still in the map's Magenta data; it is built, and never fires.") : t("A build row no trigger uses is still in the map's Magenta data; it is built, and never runs.") }); continue; }
     if ("location" in b && b.location !== null && !locExists(b.location)) out.push({ level: "error", text: t("A build row names location {n}, which the map no longer has.", { n: b.location }), trigger: at });
     if (b.kind === "foreach" || b.kind === "pick") {
       const d = b.do;
       if (d && "order" in d) {
-        if (!locExists(d.scratch)) out.push({ level: "error", text: t("The order row's scratch location ({n}) is gone; pick the order again to make one.", { n: d.scratch }), trigger: at });
         if (!locExists(d.location)) out.push({ level: "error", text: t("The order row's target location ({n}) is gone.", { n: d.location }), trigger: at });
       }
       if (d && "locate" in d && !locExists(d.locate)) out.push({ level: "error", text: t("The row centres location {n} on the unit, and the map no longer has it.", { n: d.locate }), trigger: at });
@@ -145,22 +69,26 @@ export function preflight(input: PreflightInput): PreflightProblem[] {
     }
   }
 
+  /* ── What TrigScript's build cannot take yet ── */
+  for (const u of input.rendered.unsupported) {
+    const at = triggerOf(u.id);
+    out.push({ level: "error", text: t("Not built: {why}.", { why: u.why }), ...(at !== undefined ? { trigger: at } : {}) });
+  }
+  for (const n of input.rendered.notes) {
+    const at = triggerOf(n.id);
+    out.push({ level: "warn", text: t("Built in part: {note}.", { note: n.note }), ...(at !== undefined ? { trigger: at } : {}) });
+  }
+
   /* ── The map-wide options ── */
   if (options.camera) {
     const l = input.locations[options.camera.location - 1];
     if (!l || l.empty) out.push({ level: "error", text: t("The camera follows location {n}, which the map no longer has.", { n: options.camera.location }) });
-    else if (!l.named) out.push({ level: "error", text: t("The camera finds its location by name, and location {n} has none of its own.", { n: options.camera.location }) });
   }
   if (options.bgm && !input.soundPresent(options.bgm.path)) out.push({ level: "error", text: t("The background music {file} is not in the map archive.", { file: options.bgm.path.split("\\").pop() ?? "" }) });
 
-  /* ── The runtime ── */
-  if (!input.runtime) out.push({ level: "error", text: t("The eudplib plugin is not running: it is the library that builds EUD maps. Install or turn it on under Plugins ▸ Manage Plugins…") });
+  /* ── The builder ── */
+  if (!input.trigscript) out.push({ level: "error", text: t("The TrigScript plugin is not running: it is what builds the rows into the map. Install or turn it on under Plugins ▸ Manage Plugins…") });
 
   const rank = { error: 0, warn: 1, info: 2 };
   return out.sort((a, b) => rank[a.level] - rank[b.level]);
-}
-
-/** A record of a build that just succeeded. */
-export function lastBuildRecord(revision: string, file: string | null, runtime: Runtime | null): LastBuild {
-  return { revision, at: new Date().toISOString(), file, spec: MAGENTA_SPEC_VERSION, ...(runtime ? { eudplib: runtime.eudplib, euddraft: runtime.euddraft } : {}) };
 }

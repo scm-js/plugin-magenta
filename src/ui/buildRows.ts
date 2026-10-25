@@ -438,26 +438,12 @@ export function newChat(host: Host, store: Store, message = "-command", arg: "nu
   return { condition: chatCondition(withArgs, record), builds: [...store.sidecar.builds, record], chat: withArgs, ...(counters ? { counters } : {}) };
 }
 
-/** MSQC with its own location, player and unit settled, and the mouse locations when they are needed. */
-function withMsqc(host: Host, store: Store, needMouse: boolean): Msqc | null {
-  const m: Msqc = store.sidecar.msqc ? { ...store.sidecar.msqc } : { ...DEFAULT_MSQC, keys: {}, clicks: {}, mouseIn: {} };
-  if (!store.sidecar.msqc) {
-    const free = host.freeLocationSlots();
-    if (!free.length) return null;
-    m.qcLoc = free[0];
-  }
-  if (needMouse && m.mouseBase === null) {
-    // Eight slots in a row, low to high, that nothing uses. MSQC's setting is the 1-based location
-    // number of Player 1's mouse (it keeps player p's in base + p), so the number is the first slot's index + 1.
-    const free = new Set(host.freeLocationSlots().filter((i) => i !== m.qcLoc));
-    for (let slot = 0; slot + 8 <= 63; slot++) {
-      let ok = true;
-      for (let p = 0; p < 8; p++) if (!free.has(slot + p)) { ok = false; break; }
-      if (ok) { m.mouseBase = slot + 1; break; }
-    }
-    if (m.mouseBase === null) return null;
-  }
-  return m;
+/**
+ * The synced-input record, started when there is none. (TrigScript's build carries the players' input itself and takes
+ * no location, player or unit type from the map: the `qc*` and `mouseBase` fields stay at their defaults.)
+ */
+function withMsqc(_host: Host, store: Store, _needMouse: boolean): Msqc | null {
+  return store.sidecar.msqc ? { ...store.sidecar.msqc } : { ...DEFAULT_MSQC, keys: {}, clicks: {}, mouseIn: {} };
 }
 
 /** A new input condition: the MSQC bookkeeping and the condition to insert. */
