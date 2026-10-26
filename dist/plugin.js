@@ -5944,8 +5944,10 @@ function renderScript(input) {
       "  while (true) {",
       `    const b = bounds(${location(c2.location)});`,
       "    const tx = (b.left + b.right) / 2, ty = (b.top + b.bottom) / 2;",
-      `    cx += clamp((tx - cx) / ${Math.max(1, c2.inertia)}, -${c2.maxspeed}, ${c2.maxspeed});`,
-      `    cy += clamp((ty - cy) / ${Math.max(1, c2.inertia)}, -${c2.maxspeed}, ${c2.maxspeed});`,
+      "    const dx = tx - cx, dy = ty - cy;",
+      // (The last few pixels in one step: a whole-number division would stall short of the target.)
+      `    cx += dx > -${Math.max(1, c2.inertia)} && dx < ${Math.max(1, c2.inertia)} ? dx : clamp(dx / ${Math.max(1, c2.inertia)}, -${c2.maxspeed}, ${c2.maxspeed});`,
+      `    cy += dy > -${Math.max(1, c2.inertia)} && dy < ${Math.max(1, c2.inertia)} ? dy : clamp(dy / ${Math.max(1, c2.inertia)}, -${c2.maxspeed}, ${c2.maxspeed});`,
       "    centerLocation(VIEW, cx, cy, 32, 32);",
       "    centerView(VIEW);",
       "    sleep(frames(1));",
