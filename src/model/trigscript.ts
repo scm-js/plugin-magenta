@@ -333,8 +333,10 @@ export function renderScript(input: RenderInput): Rendered {
       "  while (true) {",
       `    const b = bounds(${location(c.location)});`,
       "    const tx = (b.left + b.right) / 2, ty = (b.top + b.bottom) / 2;",
-      `    cx += clamp((tx - cx) / ${Math.max(1, c.inertia)}, -${c.maxspeed}, ${c.maxspeed});`,
-      `    cy += clamp((ty - cy) / ${Math.max(1, c.inertia)}, -${c.maxspeed}, ${c.maxspeed});`,
+      "    const dx = tx - cx, dy = ty - cy;",
+      // (The last few pixels in one step: a whole-number division would stall short of the target.)
+      `    cx += dx > -${Math.max(1, c.inertia)} && dx < ${Math.max(1, c.inertia)} ? dx : clamp(dx / ${Math.max(1, c.inertia)}, -${c.maxspeed}, ${c.maxspeed});`,
+      `    cy += dy > -${Math.max(1, c.inertia)} && dy < ${Math.max(1, c.inertia)} ? dy : clamp(dy / ${Math.max(1, c.inertia)}, -${c.maxspeed}, ${c.maxspeed});`,
       "    centerLocation(VIEW, cx, cy, 32, 32);",
       "    centerView(VIEW);",
       "    sleep(frames(1));",
