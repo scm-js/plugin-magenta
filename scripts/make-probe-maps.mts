@@ -783,17 +783,17 @@ Anything odd? ->
         h.trigger([P1], [always()], [
           h.comment("start: marines at 40, 20, 12, 8 HP"),
           eud("cunit.hp", { index: 0 }, 40), eud("cunit.hp", { index: 1699 }, 20), eud("cunit.hp", { index: 1698 }, 12), eud("cunit.hp", { index: 1697 }, 8),
-          h.text("Probe 11, slice 5 (TrigScript build). Marines at 40, 20, 12, 8 HP. 1 takes 15 HP off every marine (dies at 0), 2 gives 10 back (capped at 40), 3 kills a random zergling, 4 kills the unit under your mouse (within 48 px), 5 slides the Beacon 64 px right (pinged), 7 puts it back where it started, 6 reads the Pen's first unit and the first marine's HP %. Middle click: a line."),
+          h.text("Probe 11, slice 5 (TrigScript build). Marines at 40, 20, 12, 8 HP. 1 takes 15 HP off every marine (dies at 0), 2 gives 10 back (capped at 40), 3 kills a random zergling, 4 kills the unit under your mouse (within 48 px), 5 slides the Beacon 64 px right (a Medic appears inside it), 7 puts it back where it started, 6 reads the Pen's first unit and the first marine's HP %. Middle click: a line."),
           h.text("A line comes at once if any marine is below 30% (the 8 HP one is at 20%)."),
         ]),
         ...onKey(h, "1", "every marine: take 15 hit points. Expect: 40→25→10→dead, 20→5→dead, 12 and 8 die at once.", [flag(F.damage)]),
         ...onKey(h, "2", "every marine: give 10 hit points. Expect: up by 10, never past 40.", [flag(F.heal)]),
         ...onKey(h, "3", "a random zergling of yours dies. Expect: a different one each press.", [flag(F.random)]),
         ...onKey(h, "4", "the unit of yours nearest your mouse, within 48 px, dies. Expect: point at a unit and press; pointing at nothing does nothing.", [flag(F.mouse)]),
-        ...onKey(h, "5", "the Beacon location slides 64 px right, then a ping. Expect: the ping moves right each press.", [flag(F.slide), setSwitch(4, true)]),
-        h.trigger([P1], [switchIs(4, true)], [h.comment("next cycle: ping the moved Beacon"), setSwitch(4, false), ping(BEACON), preserve()]),
-        ...onKey(h, "7", "the Beacon location back to its first place, its size kept, then a ping. Expect: the ping is on the beacon again.", [flag(F.place), setSwitch(6, true)]),
-        h.trigger([P1], [switchIs(6, true)], [h.comment("next cycle: ping the replaced Beacon"), setSwitch(6, false), ping(BEACON), preserve()]),
+        ...onKey(h, "5", "the Beacon location slides 64 px right, then a ping and a Medic inside it. Expect: each press puts the Medic two tiles further right.", [flag(F.slide), setSwitch(4, true)]),
+        h.trigger([P1], [switchIs(4, true)], [h.comment("next cycle: ping the moved Beacon, and a Medic inside it"), setSwitch(4, false), ping(BEACON), createUnit(MEDIC, P1, BEACON), preserve()]),
+        ...onKey(h, "7", "the Beacon location back to its first place, its size kept, then a ping and a Medic inside it. Expect: the Medic appears on the beacon again.", [flag(F.place), setSwitch(6, true)]),
+        h.trigger([P1], [switchIs(6, true)], [h.comment("next cycle: ping the replaced Beacon, and a Medic inside it"), setSwitch(6, false), ping(BEACON), createUnit(MEDIC, P1, BEACON), preserve()]),
         ...onKey(h, "6", "read the Pen's first unit's type and owner, and the first marine's HP %; two lines follow.", [flag(F.readType), flag(F.readOwner), flag(F.readPct), setSwitch(5, true)]),
         h.trigger([P1], [switchIs(5, true)], [h.comment("next cycle: tell"), setSwitch(5, false), flag(F.tell), flag(F.tellPct), preserve()]),
         h.once(10, [deathsIs(V.low, 1)], "Scan: a marine is below 30% hit points."),
@@ -811,8 +811,8 @@ Start: marines at 40, 20, 12, 8 HP, and the line "a marine is below 30%" at once
 2: each living marine up by 10, never past 40? ->
 3, three times: a different zergling dies each time? ->
 4 pointing at a zergling: it dies? 4 pointing at the ground away from units: nothing? ->
-5, three times: does the ping move 64 px right each time (two tiles)? ->
-7: does the ping land back on the beacon? then 5 again: does it slide from there? ->
+5, three times: a Medic appears each time, two tiles further right than the last (the first two tiles right of the beacon's centre)? ->
+7: the Medic appears on the beacon again? then 5 again: two tiles right of it? ->
 6: "type id 38 ... owner 1", and "the first marine is at N%" — N? ->
 Middle click: "Middle click" line? ->
 Anything odd? ->

@@ -1,4 +1,4 @@
-Magenta probe 11 — slice 5, built by TrigScript (2026-10-25). Play as Use Map Settings, single player is fine.
+Magenta probe 11 — slice 5, built by TrigScript (2026-10-26). Play as Use Map Settings, single player is fine.
 "->" is where the answer goes.
 
 Start: marines at 40, 20, 12, 8 HP, and the line "a marine is below 30%" at once? ->
@@ -6,8 +6,8 @@ Start: marines at 40, 20, 12, 8 HP, and the line "a marine is below 30%" at once
 2: each living marine up by 10, never past 40? ->
 3, three times: a different zergling dies each time? ->
 4 pointing at a zergling: it dies? 4 pointing at the ground away from units: nothing? ->
-5, three times: does the ping move 64 px right each time (two tiles)? ->
-7: does the ping land back on the beacon? then 5 again: does it slide from there? ->
+5, three times: a Medic appears each time, two tiles further right than the last (the first two tiles right of the beacon's centre)? ->
+7: the Medic appears on the beacon again? then 5 again: two tiles right of it? ->
 6: "type id 38 ... owner 1", and "the first marine is at N%" — N? ->
 Middle click: "Middle click" line? ->
 Anything odd? ->
