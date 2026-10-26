@@ -494,8 +494,9 @@ Anything odd (a crash, "EUD not supported", a line that never came)? ->
         h.trigger([ALL], [deathsIs([CP, CLICK_L], 1, Comparison.AtLeast)], [h.comment("left click"), h.text("Left click."), preserve()]),
         h.trigger([ALL], [deathsIs([CP, CLICK_R], 1, Comparison.AtLeast)], [h.comment("right click"), h.text("Right click."), preserve()]),
         h.trigger([ALL], [deathsIs([CP, CLICK_M], 1, Comparison.AtLeast)], [h.comment("middle click"), h.text("Middle click."), preserve()]),
-        h.trigger([ALL], [deathsIs([CP, OVER_BEACON], 1), switchIs(2, false)], [h.comment("mouse over the beacon"), h.text("Mouse over the beacon."), setSwitch(2, true), preserve()]),
-        h.trigger([ALL], [deathsIs([CP, OVER_BEACON], 0), switchIs(2, true)], [h.comment("mouse off the beacon"), h.text("Mouse off the beacon."), setSwitch(2, false), preserve()]),
+        // (Player 1's, not All Players': a copy of the "off" trigger run for the computer, whose cell is always 0, would clear the switch every frame and the "over" line would repeat.)
+        h.trigger([P1], [deathsIs([0, OVER_BEACON], 1), switchIs(2, false)], [h.comment("mouse over the beacon"), h.text("Mouse over the beacon."), setSwitch(2, true), preserve()]),
+        h.trigger([P1], [deathsIs([0, OVER_BEACON], 0), switchIs(2, true)], [h.comment("mouse off the beacon"), h.text("Mouse off the beacon."), setSwitch(2, false), preserve()]),
         h.trigger([ALL], [deathsIs(CHAT, 2)], [h.comment("chat -give"), addMinerals(CP, 100), h.text("-give: 100 minerals."), preserve()]),
         h.trigger([ALL], [deathsIs(PATTERN, 3)], [h.comment("chat -set N: read the number back"), flag(TELL), preserve()]),
         h.trigger([ALL], [always()], [h.comment("Magenta: run triggers every frame"), everyFrame(), preserve()]),
