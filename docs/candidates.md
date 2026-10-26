@@ -72,7 +72,7 @@ New `field`s for read, scan and pick.
 | Sentence | Field | Confidence | Probe |
 | --- | --- | --- | --- |
 | *A matching unit is attacking / idle / moving / gathering* | `order` (orders.dat id); idle is a set: 156 ComputerAI for a computer's units, 3 PlayerGuard / 23 Nothing for a human's | **read passed** (156 seen); the sentence's id sets still to settle | 6, the 2 s read-out |
-| *A matching unit is under attack* | `underAttack` (attack-notify timer) | **passed** | 6, scan |
+| *A matching unit is under attack* | `underAttack` (the attack-notify timer: the game starts it when it raises its under-attack alert for the unit, a hit out of the player's view; a unit bitten on screen never showed it — TrigScript's build, 2026-10-25. The last-event bytes BWAPI reads are in a dword Remastered ends the game on, so this is the one mark there is) | **passed**, out of view | 6, scan |
 | *A matching unit has a target* | `hasTarget` | **passed** | 6, scan |
 | *A matching unit is burrowed / in a transport* | status flags 0x10 / 0x40 | sure | 6, scan (burrow your zergling) |
 | *A matching unit is moving* | `speed` > 0 | **passed** | 6, scan |

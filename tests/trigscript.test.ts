@@ -138,7 +138,7 @@ describe("the rows as TrigScript", () => {
     expect(s).toContain("// Row f6 left out: this pass's verb is not in the language yet");
     // The camera and the music: a program of each human's own, after the rows'.
     expect(s).toContain('const VIEW = reserveLocation("Magenta: where the camera looks");');
-    expect(s).toContain("cx += clamp((tx - cx) / 5, -48, 48);");
+    expect(s).toContain("cx += dx > -5 && dx < 5 ? dx : clamp(dx / 5, -48, 48);");
     expect(s).toContain("centerLocation(VIEW, cx, cy, 32, 32);\n    centerView(VIEW);");
     expect(s).toContain('}, { owner: [P1, P2], name: "Magenta camera" });');
     expect(s).toContain('playWav("staredit\\\\wav\\\\loop.wav", 12500);\n    sleep(frames(300));');

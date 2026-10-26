@@ -1,0 +1,12 @@
+Magenta probe 7 — input, built by TrigScript (2026-10-25). Play as Player 1; for the chat lines a second person has to be in the game (single player shows no typed line).
+"->" is where the answer goes.
+
+Press W five times, one at a time: does the status line (every second) reach "W presses so far = 5"? ->
+Hold W down for two seconds: does the count go up by one, or keep climbing? ->
+D: "D pressed" each press? ->
+Left, right, middle click on the ground: a line each? (a right click also moves the marine, fine) ->
+Move the mouse over the beacon and off it: "Mouse over the beacon" and "Mouse off the beacon", once each time? ->
+Chat "-give" (in a game with two people): "-give: 100 minerals", and do the minerals go up? ->
+Chat "-set 250": "-set: the number in the message is 250"? Try "-set 7" too. ->
+Did you type while holding a key — did presses while typing count? (they should not) ->
+Anything odd? ->

@@ -1,2 +1,5 @@
 node_modules/
 *.tsbuildinfo
+# The probe maps built by TrigScript, and their rendered source (scripts/make-probe-maps.mts --build --source): made again from the source maps.
+maps/*-ts.scx
+maps/*-ts.ts
