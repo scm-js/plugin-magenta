@@ -11839,8 +11839,8 @@ function activate(api) {
   });
   registerPreferencesPage(api, () => panel.relayout());
   api.commands.register({ id: "settings", title: msg("Magenta Settings"), run: () => openSettings(api) });
-  api.menu.add("Triggers", { label: msg("Magenta\u2026"), shortcut: "Ctrl+Shift+M", icon: "plugin", after: "Text Trigger Editor\u2026", enabled: () => api.document.isOpen(), command: "open" });
-  api.hotkeys.add("Ctrl+Shift+M", { command: "open" });
+  api.menu.add("Triggers", { label: msg("Magenta\u2026"), shortcut: "Ctrl+Shift+G", icon: "plugin", after: "Text Trigger Editor\u2026", enabled: () => api.document.isOpen(), command: "open" });
+  api.hotkeys.add("Ctrl+Shift+G", { command: "open" });
   claims = installClaims(api, (index) => panel.open({ index }));
   const contribution = installContribution(api, new Host(api));
   const under = (ctx) => {
