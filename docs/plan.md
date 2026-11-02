@@ -330,7 +330,7 @@ for the next frame's triggers), and a map with a build row runs its triggers eve
 
 ## Decisions (2026-09-12)
 
-- The panel opens with Ctrl+Shift+M (Ctrl+Shift+H, I, K, L, S, T, W and Z are taken).
+- The panel opens with Ctrl+Shift+G. It used Ctrl+Shift+M until 0.12.1, which Melee Wizard also uses (Ctrl+Shift+A, H, I, K, L, M, P, S, T, W and Z are taken).
 - Magenta is not a default plugin for now; it is installed from the registry.
 - The Classic trigger editor is left alone.
 - eud-book is MIT, so the catalogue transcribes it with attribution in `ATTRIBUTION.md`.

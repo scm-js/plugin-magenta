@@ -1,424 +1,431 @@
 # Magenta
 
-A plugin for [scmJS](https://github.com/scm-js/scm-js), the browser-based StarCraft 1 /
-Brood War map editor. Magenta is a **trigger editor for map makers**: every trigger reads as a
-sentence with its parameters as chips, one search box adds any condition or action, and the map
-is the picker. It carries a catalogue of StarCraft: Remastered **EUD** conditions and actions
-that read and edit like the game's own, and a few things the game has no record for — copying
-one death counter into another, comparing two — done as runs of ordinary triggers it generates
-and keeps up to date.
+Magenta is a trigger editor plugin for [scmJS](https://scmjs.dev/editor/), the StarCraft and
+Brood War map editor that runs in the browser. Each trigger reads as a sentence. Its
+parameters are chips that you click to change, and you can pick units and locations straight
+from the map. One search box adds any condition or action.
 
-Magenta writes only the map's triggers (TRIG) and one member of its own in the archive, so the
-Classic trigger editor, TrigEdit, TrigScript, the AI and Import / Export Triggers all keep
-working on the same records.
+Magenta also has a catalogue of EUD conditions and actions for StarCraft: Remastered. And it
+has a few steps the game has no trigger for, such as copying one death counter into another.
+Magenta builds those from ordinary triggers that it generates and keeps up to date.
+
+Magenta writes only the map's triggers and one file of its own in the map archive. The
+editor's Trigger Editor, the Text Trigger Editor, TrigScript and Import / Export Triggers all
+keep working on the same triggers.
 
 ## Install
 
-In scmJS: **Plugins ▸ Manage Plugins…**, paste
+In scmJS, open **Plugins ▸ Browse Plugins…** and press **Install** next to Magenta. You can
+also open **Plugins ▸ Manage Plugins…**, paste
 
 ```
 https://github.com/scm-js/plugin-magenta
 ```
 
-and press **Add**. To pin a version, add a ref: `github:scm-js/plugin-magenta@v0.1.0`.
+and press **Add**. To pin a version, add a tag: `github:scm-js/plugin-magenta@v0.12.0`.
+
+Magenta needs the [TrigScript plugin](https://github.com/scm-js/plugin-trigscript). It comes
+with the editor, and the editor installs it with Magenta if it is missing.
 
 ## Use
 
-**Triggers ▸ Magenta…**, or `Ctrl+Shift+M`, with a map open. The panel floats beside the map
-and can be resized from its corner; the map stays in reach while it is open.
+Open a map and choose **Triggers ▸ Magenta…** (Ctrl+Shift+G). The panel floats beside the
+map. Drag its corner to resize it.
 
-### The list
+### The trigger list
 
-The left pane is the map's triggers in the order the game runs them. A trigger's title is its
-first Comment action, the convention SCMDraft uses, so a title given here shows in every editor.
-Any further Comment is a note and shows among the actions. A trigger without one shows its
-sentences. Badges say what is special about a row: **EUD** for a
-trigger that reads or writes memory, **+34** for one that Magenta generated triggers for, a
-lock for a run another plugin owns, **!** for a problem.
+The left pane lists the map's triggers in the order the game runs them.
 
-- **Search** filters by anything in the sentences; the ⋯ menu narrows the list to triggers
-  with a problem, or to EUD ones.
-- **New** adds a trigger after the selected one, in its folder. Type its name and press Enter.
-- **Folders** are for you; the game does not see them. ⋯ ▸ New folder… puts the selected
-  trigger in a new one; drag triggers between folders and to reorder; double-click a folder to
-  rename or remove it. The order in the game is the list from top to bottom, folders included.
-- Drag a trigger to move it. `Alt+↑` / `Alt+↓` do the same from the keyboard, `Ctrl+D`
-  duplicates — the copy gets build rows and counter steps of its own, so editing one never
-  changes the other — `Delete` deletes, `Ctrl+/` disables or enables every row of it.
-- `Ctrl+C` copies the selected trigger as text in TrigEdit's syntax; `Ctrl+V` pastes text
-  from SCMDraft or TrigEdit after the selection.
-- The panel floats over the map by default; **⋯ ▸ Dock on the right** (or Magenta's page in
-  Edit ▸ Preferences, under Plugins) puts it in the right dock instead, where the list stacks over the trigger. The
-  divider between the list and the trigger drags; double-click it, or the **☰** button, to
-  hide the list and give the trigger the whole width. Size, dock and list width are remembered.
-- `Ctrl+Z` / `Ctrl+Y` undo and redo inside the panel. Triggers sit outside the editor's own
-  undo, so this history is Magenta's; it is dropped when the panel closes, and when another
-  editor (Classic, TrigEdit, a plugin) changes the triggers — an undo step is the whole list,
-  and undoing over someone else's change would take that change back too.
+A trigger's title is its first Comment action. SCMDraft uses the same convention, so a title
+you give here shows in other editors too. Any further Comment shows as a note among the
+actions. A trigger with no Comment shows its sentences instead.
 
-### A trigger
+Badges on a row:
 
-The right pane is the open trigger: its name, who it runs for, its conditions and its actions,
-each a sentence. Click a chip to change it; every chip opens a small picker with a filter field,
-and arrow keys and Enter work in it.
+- EUD: the trigger reads or writes game memory.
+- +34: Magenta generated 34 helper triggers for it.
+- A lock: another plugin owns these triggers.
+- !: the trigger has a problem.
 
-- A **location** chip flashes the location on the map as you hover its rows, and has **Pick on
-  map**: click a location on the map to choose it. **Show** glides the view there.
-- A **unit** chip has **Pick on map** too: click any unit to take its type.
-- A **player** chip shows each slot's colour and whether it is human, computer or inactive.
-  For Deaths and Set Deaths it also takes a memory address, for EUD by hand.
-- A **text** chip is a small text box with the colour and effect codes as buttons.
-- A **switch** chip renames the switch from its picker.
-- A **death counter** is "deaths of *unit* for *player*" until you name it: press **name…**
-  on the row, and the cell reads by that name in every trigger, as a chip that picks among the
-  named counters or makes a **new** one on a cell nothing else uses.
+In the list:
 
-**Add a condition…** and **Add an action…** are search boxes: type a few letters of what you
-want ("give", "hp", "wait", "key") and press Enter; the list shows the native conditions and
-actions, the EUD catalogue and the counter steps together. Click the empty box to browse all
-of them by category.
+- **Search** filters by any word in the sentences. The ⋯ menu can narrow the list to
+  triggers with a problem, or to EUD triggers.
+- **New** (Ctrl+N) adds a trigger after the selected one, in the same folder. Type its name
+  and press Enter.
+- Folders are only for you; the game does not see them. **⋯ ▸ New folder…** puts the
+  selected trigger in a new folder. Drag triggers between folders or to reorder them.
+  Double-click a folder to rename or remove it. The game runs the list from top to bottom,
+  folders included.
+- Alt+↑ and Alt+↓ move a trigger. Ctrl+D duplicates it, with its own copies of any generated
+  triggers. Delete removes it. Ctrl+/ disables or enables all its rows.
+- Ctrl+C copies the selected trigger as TrigEdit text. Ctrl+V pastes TrigEdit or SCMDraft
+  text after the selection.
+- Ctrl+Z and Ctrl+Y undo and redo inside the panel. This history belongs to Magenta and is
+  separate from the editor's undo. It is cleared when the panel closes, or when another
+  editor or plugin changes the triggers.
 
-The box also takes the arguments. "give 3 zealots to player 2 at beacon" inserts a Give Units
-row with the count, the unit, the player and the location already set; "marine max hp 80"
-the max-HP action for the Marine at 80; "player 1 brings at least 2 marines to beacon" the
-Bring condition filled in. Unit names, the map's location and switch names, weapons, "player
-2" or "p2", the player groups, "at least / at most / exactly", "up by / down by" and numbers
-are all recognised, and what the box recognised shows next to each hit before you press Enter.
+**⋯ ▸ Dock on the right** moves the panel into the right dock, where the list sits above the
+trigger. The same choice is on Magenta's page in **Edit ▸ Preferences…**, under Plugins. Drag
+the divider between the list and the trigger to resize them. Double-click the divider, or
+press **☰**, to hide the list. Magenta remembers the size, the dock and the list width.
 
-**Recipes…** next to New inserts a whole trigger, or a few, to start from: give units at a
-beacon, a countdown that ends the game, respawn a unit, minerals per kill, reinforcements
-every minute, win by holding a location, defeat when nothing is left, a message at the start,
-a key that gives minerals, a unit type's stats. Each comes titled, with its chips on sensible
-defaults (the map's first location, Current Player, a Marine) and a note saying what to change.
+### Editing a trigger
 
-**Start from the map.** Right-click a placed unit on the map and take **New trigger about this
-Marine…**, or right-click inside a location for **New trigger at Beacon…**. The panel opens
-with a short list to start from: when this unit dies, when it is at the location it stands in,
-give it to the player who comes, set its hit points (EUD, by its placed-unit slot); when a
-unit comes to the location, create units there, kill everything there. The one you pick is
-inserted after the selection with the unit, its owner and the location already in the chips.
+The right pane shows the open trigger: its name, the players it runs for, its conditions and
+its actions. Click a chip to change it. Each chip opens a small picker with a filter field,
+and the arrow keys and Enter work in it.
 
-Rows have tools on hover: disable (⊘), move up and down, remove. With a row focused, `Delete`
-removes it, `Alt+↑` / `Alt+↓` move it, `Ctrl+/` disables it, Enter opens its first chip.
+- Location: hovering its rows flashes the location on the map. **Pick on map** lets you click
+  a location. **Show** moves the view to it.
+- Unit: **Pick on map** takes the type of the unit you click.
+- Player: shows each slot's colour and whether it is human, computer or inactive. In Deaths
+  and Set Deaths it also takes a memory address, for writing EUD by hand.
+- Text: a small text box with buttons for the colour and effect codes.
+- Switch: you can rename the switch from the picker.
+- Death counter: reads "deaths of *unit* for *player*" until you name it. Press **name…** on
+  the row, and the counter shows by that name in every trigger. **New counter…** makes a
+  named counter on a cell nothing else uses. **⋯ ▸ Counters…** lists the named counters.
 
-Problems appear under the row they belong to: a trigger that never fires, two conditions that
-contradict each other, a Wait inside a preserved trigger, a location or string the map no
-longer has, a sound that is not in the archive, a memory write Remastered does not allow. On a
-map whose revision is below Remastered (Scenario ▸ Map Revision), every row only Remastered
-runs — an EUD row, a counter step, a build row — gets a dim line saying so, and a **Set revision
-to Remastered** button above the rows marks the map so older clients refuse it instead of
-playing it with those rows doing nothing.
+Rows show tools on hover: disable (⊘), move up, move down and remove. With a row focused,
+Delete removes it, Alt+↑ and Alt+↓ move it, Ctrl+/ disables it, and Enter opens its first
+chip.
+
+### Adding conditions and actions
+
+**Add a condition…** and **Add an action…** are search boxes. Type a few letters ("give",
+"hp", "wait", "key") and press Enter. The results include the game's own conditions and
+actions, the EUD catalogue and the counter steps. Click the empty box to browse everything by
+category.
+
+You can type the arguments too:
+
+- "give 3 zealots to player 2 at beacon" adds Give Units with all four values set.
+- "marine max hp 80" adds the max hit points action for the Marine, set to 80.
+- "player 1 brings at least 2 marines to beacon" adds a filled-in Bring condition.
+
+The box knows unit names, the map's location and switch names, weapons, players ("player 2"
+or "p2"), player groups, "at least / at most / exactly", "up by / down by" and numbers. Each
+result shows what was recognised before you press Enter.
+
+**Recipes…**, next to **New**, inserts one or more ready-made triggers:
+
+- Give units at a beacon
+- Countdown that ends the game
+- Respawn a unit when it dies
+- Minerals for each kill
+- Reinforcements every minute
+- Win by holding a location
+- Defeat when nothing is left
+- Message at the start
+- A key gives minerals
+- Change a unit type's stats
+
+Each recipe has a title, default values (the map's first location, Current Player, a Marine)
+and a note saying what to change.
+
+You can also start from the map. Right-click a placed unit and choose **New trigger about
+this Marine…**, or right-click inside a location and choose **New trigger at Beacon…** (with
+the name of the unit or location you clicked). Magenta then offers a few starting points:
+
+- For a unit: when it dies, when it is at its location, give it to the player who arrives,
+  or set its hit points (EUD).
+- For a location: when a unit arrives, create units there, or kill everything there.
+
+The new trigger goes after the selection, with the unit, its owner and the location filled
+in.
+
+### Problems
+
+Problems show under the row they belong to. For example:
+
+- a trigger that can never fire
+- two conditions that contradict each other
+- a Wait inside a preserved trigger
+- a location or string the map no longer has
+- a sound that is not in the archive
+- a memory write that Remastered does not allow
+
+EUD rows, counter steps and build rows only work in StarCraft: Remastered. If the map's
+revision is older (**Scenario ▸ Map Revision…**), each of these rows gets a dim note. The
+**Set revision to Remastered** button above the rows marks the map as a Remastered map. Older
+versions of the game then refuse it. Without that, they would play it with those rows doing
+nothing.
 
 ### In plain words
 
-Under the rows, **In plain words** folds out to a short paragraph on the open trigger: who
-runs it, when it fires, what it does, whether it fires once or keeps firing, on which clock,
-and how long its Waits hold the owner's other triggers. Below that is what the trigger shares
-with the rest of the list: each switch, counter, location and the countdown timer it touches,
-with the triggers that set or read the same thing. Click a name to go to that trigger. A run
-Magenta generated counts as the trigger that asked for it.
+**In plain words**, under the rows, opens a short description of the trigger. It says who
+runs it, when it fires and what it does. It also says whether it repeats, how often it runs,
+and how long its Waits hold up the owner's other triggers.
+
+Below that, each switch, counter and location the trigger uses is listed with the other
+triggers that set or read it. Click a name to go to that trigger.
 
 ### Dry run
 
-**⋯ ▸ Dry run…** opens a second panel that runs the triggers here, without the game. It
-starts from the map as it is — the placed units, the locations, the player slots and forces —
-and runs the list the way the game does: every player in order, each player's triggers in
-list order, once and then done unless preserved. **Step** runs one cycle, **Run 10** ten,
-**Run on** until someone wins or loses or nothing has happened for a while.
+**⋯ ▸ Dry run…** opens a second panel that runs the triggers without the game. It starts from
+the map as it is, with its placed units, locations, player slots and forces. It runs the
+triggers as the game does: each player in turn, each player's triggers in list order, and a
+trigger only once unless it is preserved.
+
+**Step** runs one cycle and **Run 10** runs ten. **Run on** runs until someone wins or loses,
+or nothing has happened for 50 cycles. **Reset** starts over from the map as it is now; editing
+a trigger stops the run until you reset.
 
 The panel shows:
 
-- **The selected trigger**, with a verdict on each condition and the value the run saw
-  ("has 0"), for the owner picked at the top. This is the answer to "why did it not fire".
-- **Cannot tell**: the conditions the run could not decide — a key press, a chat command, a
-  build row's answer, a memory read of the game's own state. Tick one to pretend it holds.
-- **State**: the switches that are set, the counters and memory cells with their values, the
-  countdown timer, each player's minerals and gas and how many units they have. Click a value
-  to change it; **Put units** adds units of a type for a player at a location, which is how
-  to bring a unit to a beacon without the game.
-- **Log**: what fired, the text that was displayed, who won or lost, and where the run had to
-  skip something (an AI script, an order, a build row).
+- The selected trigger, with a verdict on each condition and the value the run saw ("has
+  0"), for the player chosen at the top. Use this to find out why a trigger did not fire.
+- Cannot tell: conditions the run cannot decide, such as a key press, a chat command, a
+  build row's answer or a read of the game's memory. Tick one to pretend it holds.
+- State: the switches that are set, counters and memory cells, the countdown timer, and each
+  player's minerals, gas and unit counts. Click a value to change it. **Put units** adds
+  units of a type for a player at a location. That is how you bring a unit to a beacon in a
+  dry run.
+- Log: what fired, the text shown, who won or lost, and anything the run had to skip.
 
-The run knows switches, death counters and the EUD cells that share their table, the
-countdown timer and elapsed time, resources and scores, units at locations and the actions
-that create, kill, remove, give and move them, Move Location, alliances, victory and defeat,
-and a Wait, which holds the owner's other triggers until it ends. It does not fight, move
-units on its own, or count kills; Modify Unit, Order, sounds, the leader board and the view
-are skipped. A cycle is two seconds, or a frame when the map runs every frame. Resources
-start at 0, as in a Use Map Settings game. Editing a trigger while the panel is open stops the
-run until **Reset**, which starts over from the map as it is now.
+The dry run tracks switches, counters, timers, resources, units at locations, alliances,
+victory and defeat, and Waits. It does not fight, move units on its own or count kills, and it
+skips Modify Unit, orders, sounds, the leaderboard and the view. A cycle is two seconds, or one
+frame when the map runs triggers every frame. Resources start at 0, as in a Use Map Settings game.
 
-### EUD
+### EUD conditions and actions
 
-The catalogue (`src/catalogue/eud.json`) offers conditions and actions the game has no record
-for, each a fixed address in the game's memory that a Deaths condition or Set Deaths action
-reaches through the deaths table. In the panel they look like any other row, with an **EUD**
-tag; hover the tag for the address, the field's width, whether Remastered lets a trigger read
-and write it, and the entry's notes. What is there today:
+The catalogue (`src/catalogue/eud.json`) has conditions and actions the game has no trigger
+for. Each one is a fixed address in the game's memory, which a Deaths condition or a Set
+Deaths action reaches through the deaths table. In the panel they look like other rows, with
+an EUD tag. Hover the tag to see the address, the field's width, whether Remastered allows
+reading and writing it, and any notes.
 
 | Group | Entries |
 | --- | --- |
-| Units | max hit points, max shields, armor, build time, mineral and gas cost, supply used and provided, sight range, target acquisition range, ground and air weapon — per unit type. Since 0.3: the **speed** of a unit type, its **name** from one of the map's strings, its **size** (small, medium, large), what it **looks like** (another type's graphics), and its flags: detector, permanently cloaked, able to cloak or burrow, regenerating, invincible, hero, organic, mechanical, robotic |
-| Weapons | damage, damage bonus per upgrade, cooldown, damage factor, range, minimum range |
-| Upgrades | mineral and gas cost, research time, maximum level — per upgrade |
-| Technologies | mineral and gas cost, research time, energy cost — per technology |
-| Players | minerals, gas, an upgrade's level, whether a technology is researched, the stance toward another player, shared vision. Since 0.3: the player's **colour**, the **supply** provided, used and capped (by race), and as conditions what the player's **slot** holds, their **race**, and whether they have **left** |
-| Game | game speed (a read: writing it does nothing), the trigger timer, the local player, the mouse's position on screen, the screen's position on the map, a keyboard key's state, the frames the game has run, the seconds on the game clock |
-| Placed units | hit points, shields, energy, owner, type, position, invincibility, the hallucination flag, cloak — for the unit in a given slot of the game's unit table. The chip lists the map's units with their slots: the first placed unit takes slot 0 and every later one counts down from 1699, as seen in the game. Start locations take no slot, and a unit of a human player who is not in the game takes none either, so later slots shift when a player is missing |
+| Units | Per unit type: max hit points, max shields, armor, build time, mineral and gas cost, supply used and provided, sight range, target acquisition range, ground and air weapon, speed, size, name (from the map's strings), graphics (another type's look), and flags (detector, permanently cloaked, can cloak, can burrow, regenerates, invincible, hero, organic, mechanical, robotic) |
+| Weapons | Damage, damage bonus per upgrade, cooldown, damage factor, range, minimum range |
+| Upgrades | Mineral and gas cost, research time, maximum level |
+| Technologies | Mineral and gas cost, research time, energy cost |
+| Players | Minerals, gas, an upgrade's level, whether a technology is researched, stance toward another player, shared vision, colour, supply provided, used and capped (by race). As conditions: what the player's slot holds, their race, whether they have left |
+| Game | Game speed (read only), the trigger timer, the local player, the mouse position on screen, the screen's position on the map, a key's state, frames run, seconds on the game clock |
+| Placed units | Hit points, shields, energy, owner, type, position, invincibility, the hallucination flag, cloak |
 
-A few things to know:
+Placed-unit entries work on a slot in the game's unit table. The chip lists the map's units
+with their slots. The first placed unit takes slot 0, and each later one counts down from
+1699. Start locations take no slot. Neither does a unit owned by a human player who is not in
+the game, so later slots shift when a player is missing.
 
-- Any of these makes the map an **EUD map**: only StarCraft: Remastered plays it, and the lobby
-  marks it. The narrow fields (a byte, a word, one bit) use Remastered's masked records, which
-  1.16.1 ignores. Magenta does not change the map's revision for you: a Brood War 1.04 map with
-  EUD rows still opens in 1.16.1, where the rows do nothing. The line under each such row and
-  its **Set revision to Remastered** button are the reminder.
-- Remastered allows a trigger to write only some of the game's memory. An entry it will not
-  let you write is offered as a condition only, and a hand-made write to such an address
-  shows as a problem.
-- The mouse, the keyboard, the screen and the local player are **local to each computer**:
-  a trigger that reads them runs differently on each player's machine, so keep what follows to
-  text, sounds and the view, or it desyncs the game.
-- **Run triggers every frame** (⋯ menu) adds a trigger at the end of the list that sets the
-  trigger timer to 0 each cycle, so the whole list runs every frame instead of every two
-  seconds — what a key or mouse read needs to catch anything. Every Wait and every preserved
-  trigger in the map then runs on that clock.
-- A few entries are **several records in one row**: a unit type's speed is four fields of the
-  game's movement table (the row takes the top speed in pixels a frame and derives the rest),
-  and a player's colour is the unit byte and the minimap byte. The row reads as one and edits
-  as one; in another editor the records show one by one, and the row comes back when they
-  stand together in order. A unit type's speed and looks go through the game data (which
-  movement table a unit type uses), so they are offered once the editor has it.
-- What a unit type is named comes from the map's strings: the chip opens the text box, as a
-  Display Text row's does.
-- Each entry records where its address came from, and `verified` turns on once a map has shown
-  it working in Remastered; an entry no game has shown yet wears a **dashed** EUD tag, and its
-  hover says so. The first runs (2026-09-12) verified the units.dat writes, a weapon's damage,
-  a player's minerals and the placed-unit fields; the probe maps (2026-09-14) the speed, name,
-  looks, flags, colour, supply, upgrade and technology rows. Each address is from Armoha's
-  eud-book (see `ATTRIBUTION.md`).
+Things to know:
 
-A record whose address the catalogue does not know still reads: "memory at 0x…", with the
-numbers as chips. Maps made with other tools open with their EUD triggers translated where the
-catalogue can, and untouched where it cannot.
+- Any EUD row makes the map an EUD map. Only StarCraft: Remastered plays it, and the lobby
+  marks it. Narrow fields (a byte, a word, one bit) use Remastered's masked records, which
+  1.16.1 ignores. Magenta does not change the map's revision for you. A Brood War 1.04 map
+  with EUD rows still opens in 1.16.1, where the rows do nothing.
+- Remastered lets triggers write only some of the game's memory. Entries it will not let you
+  write are offered as conditions only. A hand-made write to such an address shows as a
+  problem.
+- The mouse, the keyboard, the screen position and the local player are different on each
+  player's computer. A trigger that reads them should only show text, play sounds or move
+  the view. Anything else desyncs the game. For input that works in multiplayer, use the
+  [build rows](#rows-that-need-a-build).
+- **⋯ ▸ Run triggers every frame** adds a trigger at the end of the list that resets the
+  trigger timer every cycle. The whole list then runs every frame instead of every two
+  seconds, which key and mouse reads need. Every Wait and preserved trigger in the map also
+  runs on that faster clock.
+- Some entries write several records from one row, such as a unit type's speed (four fields)
+  or a player's colour (two bytes). Other editors show the separate records. Speed and
+  graphics appear once the editor's game data has loaded.
+- An entry is marked `verified` once a test map has shown it working in Remastered. An
+  unverified entry has a dashed EUD tag. The addresses come from Armoha's eud-book (see
+  `ATTRIBUTION.md`).
+
+A memory record the catalogue does not know still shows, as "memory at 0x…" with its numbers
+as chips. Maps made with other tools open with their EUD triggers translated where the
+catalogue knows them and left alone where it does not.
 
 ### Counters
 
-Death counters are the map maker's variables, and the game can only set them, add to them and
-compare them with numbers. Magenta adds three steps and one comparison that work between
-counters, as runs of ordinary triggers it generates:
+Death counters are the map maker's variables. The game can only set them, add to them and
+compare them with fixed numbers. Magenta adds steps that work between two counters. Each is
+made of ordinary triggers that Magenta generates.
 
-- **Copy a counter into another**, **Add a counter to another**, **Subtract a counter from
-  another** — actions. The trigger that carries one gets a private flag action, and a run of
-  generated triggers follows it in the list, one per bit of the counter (a 16-bit run is half
-  the size, for a counter that stays under 65,536). The run fires in the same cycle, right after
-  the trigger, whatever else the trigger does: the trigger's own rows run first, and the
-  triggers after the run see the result.
-- **Compare two counters** — a condition: "A is greater than / at least / equal to / less than
-  / at most B". A run before the trigger works out the two differences every cycle, and the
-  trigger's conditions read the answer. One comparison per trigger.
-- **Run this trigger for each player…** (⋯ menu) makes one copy of the trigger per player you
-  tick, each owned by that player, with a group of your choice (Current Player by default)
-  replaced by the player in every condition and action. The trigger itself becomes the template
-  and stops running.
+- Copy a counter into another, add a counter to another, or subtract a counter from another
+  (actions). The trigger gets a private flag action, and a run of generated triggers follows
+  it in the list, one per bit of the counter. A 16-bit run is half the size, for a counter
+  that stays below 65,536. The run fires in the same cycle, right after the trigger. Triggers
+  after the run see the result.
+- Compare two counters (a condition): A is greater than, at least, equal to, less than or at
+  most B. A run before the trigger works out the answer every cycle. A trigger can have one
+  comparison.
+- **⋯ ▸ Run this trigger for each player…** makes one copy of the trigger for each player you
+  tick. In each copy, a player group you choose (Current Player by default) is replaced by
+  that player. The original becomes a template and stops running.
 
-Played in Remastered on 2026-09-12: the copy and both comparisons landed in the cycle they were asked for.
+The generated triggers are hidden in Magenta's list. The trigger they belong to shows +N
+instead. In the Trigger Editor they are locked, with an **Open Magenta** button that brings
+you back here. In the Text Trigger Editor they are fenced off as Magenta's. Change the step's
+chips and Magenta rebuilds the run. Remove the row and the run goes with it. The runs use
+Remastered's masked reads, so they only work in Remastered.
 
-The generated runs are hidden in Magenta's list — the trigger they belong to shows **+N** — and
-in the Classic editor and TrigEdit they are locked and fenced as Magenta's, with an **Open
-Magenta** button that comes back here. Edit the step's chips and the run is rebuilt; remove the
-row and the run goes with it. The runs use Remastered's masked reads, so they are Remastered-only
-like the catalogue.
+The copy and both comparisons were tested in Remastered on 2026-09-12.
 
-### Rows that need a Build
+### Rows that need a build
 
-Some rows have no record in the game's own trigger set and only work in a map with code
-built into it. Since Magenta 0.12 that code is TrigScript's: the rows are written as a
-TrigScript program when the map is saved and built into the saved file by the
-[TrigScript plugin](https://github.com/scm-js/plugin-trigscript), which Magenta needs (the
-editor installs it with Magenta), the same way TrigScript builds a map's own script. They
-read like any other row, with a **BUILD** tag, and the trigger that carries one shows a
-BUILD badge in the list.
+Some rows have no record in the game's trigger set. They need code built into the map, which
+the TrigScript plugin does when you save. These rows have a BUILD tag, and their trigger shows
+a BUILD badge in the list. In the map, each such row is one private counter cell that the
+trigger sets or reads, so it stays an ordinary trigger in every editor.
 
 Conditions:
 
-- **The chat said `-heal` exactly**: fires in the cycle after a player sends that message,
-  for every player at once. **The chat said `-set` followed by a number** matches `-set 250`
-  and puts the 250 in a counter named *Chat number*, for the trigger's other rows to use.
-  (A pattern of your own, `^…$`, is not in the language yet: such a row is not built, and
-  the Build dialog says so.)
-- **Player 1 pressed A**, **Player 1 clicked the left button** (or the right, or the middle),
-  **Player 1's mouse is over Beacon**: input that works in multiplayer. Each player's keys,
-  clicks and mouse are carried between the computers by the build itself, so every client
-  agrees on them in the same cycle; the plain EUD reads in the catalogue are local to one
-  computer and cannot do that. With *Current Player* as the player, one trigger serves
-  everyone. Typing in chat does not count as key presses. F2 to F6 are keys the game keeps
-  to itself and reports no press of.
-- **Any Marine owned by Player 1 at Beacon has hit points below 20**: a check over every
-  unit of a kind, every cycle; also shields, energy, kills, x or y, the order id, resources
-  and weapon cooldown, below, above or exactly; **hit points %**, **shields %** and
-  **energy %** against the type's maximum ("below 30%"), the unit type id and owner; and
-  **Any Marine owned by Player 1 is under attack**, *is burrowed*, *is targeting
-  something*, *is in a transport* or *is moving*, or is not; and the remaining build time
-  of a building going up.
+- Chat. "The chat said `-heal`" fires in the cycle after a player sends exactly that
+  message, for every player at once. "The chat said `-set` followed by a number" matches
+  `-set 250` and puts 250 in a counter named *Chat number*. Patterns of your own (`^…$`)
+  are not supported yet; the Build dialog reports them.
+- Input. A player pressed a key, clicked the left, right or middle mouse button, or has the
+  mouse over a location. The build sends every player's input to every computer, so this
+  works in multiplayer, unlike the EUD reads. With Current Player as the player, one trigger
+  serves everyone. Typing in chat does not count as key presses. The game reports no presses
+  of F2 to F6.
+- Unit checks. "Any Marine owned by Player 1 at Beacon has hit points below 20", checked
+  every cycle. The check can also use:
+  - shields, energy, kills, x, y, order, resources or weapon cooldown
+  - hit points, shields or energy as a percentage of the maximum
+  - unit type or owner
+  - under attack, burrowed, targeting something, in a transport or moving (or not)
+  - the remaining build time of a building
 
 Actions:
 
-- **Show `Score: {Score} points` to everyone**: text with counters' values in it. Write
-  `{Counter name}` where a value goes.
-- **Set A to A times B / divided by / modulo / a random number below N**: the counter
-  maths the game cannot do, in one row.
-- **For each Marine owned by Player 1 at Beacon: set hit points to 100**: a pass over every
-  unit of a kind; also set shields, energy or kills, kill, remove, make invincible or
-  vulnerable, **give to a player** with the colour, selection and control groups following
-  (which the owner byte in the catalogue does not), and **center a location on it**, so the
-  trigger's other actions can act on that unit through the location. Any unit, anyone and
-  anywhere are the wide settings. **Order to move / patrol / attack-move to** a location,
-  **apply a spell effect** — stim, ensnare, plague, lockdown, stasis, maelstrom or irradiate —
-  for so many seconds (the effect without the spell's overlay graphic), **hold fire** (the
-  weapon and spell cooldowns rewritten each cycle, so put it in a trigger that runs every
-  frame), **set the resources** of mineral fields and geysers, **take 20 hit points** or
-  **give 20 hit points** (also shields and energy) — damage and healing that stop at 0 and
-  at the type's maximum, and a unit whose hit points reach 0 dies; a damage zone or a
-  healing aura is one such row in a trigger that fires every cycle. **Hallucinate** it (or
-  make it real again), give it **the speed upgrade** without the research, a **defensive
-  matrix** for so many seconds, set **the remaining build time** of a building going up or
-  **the rank** shown on its panel. (Walking through anything, a code patch of euddraft's,
-  is not in the language: such a row is not built, and the Build dialog says so.)
-- **Take the Marine owned by Player 1 with the least hit points: kill it, center Pick on it,
-  value into Weakest**: the one unit with the least or greatest of a stat, the **nearest
-  to** a location, **at random** (a different one each time the trigger fires) or the
-  nearest to **a player's mouse** within so many pixels — the unit under the cursor, which
-  with a synced click makes click-to-act gameplay. It does the pass verb you choose to that
-  unit, centres a location on it for the trigger's other actions, and puts the value (the
-  distance, for the nearest) in a counter — each of those optional.
-- **Set A to the number of Marines owned by Player 1 at Beacon**: a count into a counter.
-- **Set A to the hit points of the first Marine owned by Player 1 at Beacon**: a read
-  into a counter; also shields, energy, kills, x, y, the order id, resources, weapon
-  cooldown, and the yes-or-no fields as 1 or 0.
-- **Move Beacon to 640, 320 keeping its size**: a location placed by numbers, in map
-  pixels (32 per tile), with a new width and height if you give one; **Move Beacon by 64,
-  0** shifts it from where it is. The size kept, the mouse-over condition and the nearest
-  pick all read the location where it is at that moment, so a location another row moved
-  is followed.
+- Text with values. "Show `Score: {Score} points` to everyone". Write `{Counter name}` for a
+  counter's value, `{Player 1}` for a player's name, and `{Player 1's colour}` to switch to
+  that player's colour.
+- Counter maths. Set A to A times B, A divided by B, A modulo B, or a random number below N.
+- For each unit. "For each Marine owned by Player 1 at Beacon: set hit points to 100". Any
+  unit, any player and anywhere are allowed too. The verbs:
+  - set hit points, shields, energy or kills
+  - take or give hit points, shields or energy (a unit at 0 hit points dies)
+  - kill, remove, make invincible or vulnerable, give to a player
+  - center a location on it, for the trigger's other actions to use
+  - order it to move, patrol or attack-move to a location
+  - a spell effect for some seconds: stim, ensnare, plague, lockdown, stasis, maelstrom,
+    irradiate or defensive matrix
+  - hold fire (put it in a trigger that runs every frame)
+  - hallucinate, or make real again; give the speed upgrade without research
+  - set the resources of mineral fields and geysers, a building's remaining build time, or
+    the rank shown on the unit's panel
+- Pick one unit. "Take the Marine owned by Player 1 with the least hit points". The pick can
+  be the least or greatest of a stat, the nearest to a location, a random unit, or the unit
+  nearest a player's mouse within some pixels. You can then do any of the verbs above to it,
+  center a location on it, and put the value (or the distance) in a counter. Each part is
+  optional.
+- Count. "Set A to the number of Marines owned by Player 1 at Beacon".
+- Read. "Set A to the hit points of the first Marine owned by Player 1 at Beacon". Also
+  shields, energy, kills, x, y, order, resources, weapon cooldown, and yes-or-no fields as 1
+  or 0.
+- Move a location. "Move Beacon to 640, 320 keeping its size" places it in map pixels (32 per
+  tile), with an optional new width and height. "Move Beacon by 64, 0" shifts it from where it
+  is. Rows that read a location use it where it is at that moment.
 
-Text with counters in it also takes `{Player 1}` for a player's name and `{Player 1's
-colour}` to switch to that player's colour, and the colour and effect buttons in the text
-box insert the game's own codes.
+The Build dialog also has two map-wide options: a camera that glides after a location (with
+an inertia and a max speed, like euddraft's cammove), and a sound looped as background music.
+Rows and options that were euddraft code patches (walking through units, air units passing
+through each other, lifting the sprite and image limits) cannot be built. The Build dialog
+reports them.
 
-The Build dialog's map-wide things: **the camera following a location** glides after it
-for every human, a step of the way each frame (the distance divided by the inertia, capped
-at the max speed, as euddraft's cammove did), and **a sound looped as background music**
-plays the sound again each time its length has passed — each a small program of its own
-beside the rows'. Air units passing through one another and lifting the sprite and image
-limits were code patches of euddraft's with no counterpart in TrigScript's build; a map
-that ticks one is not built until it is unticked, and the dialog says so.
+#### Building
 
-In the map these are one private counter cell each: the trigger sets it (an action) or reads
-it (a condition), so it stays an ordinary trigger everywhere. **Save** builds the code behind
-the rows into the saved file, with the map's own TrigScript script if it has one, in under a
-second and with nothing downloaded; Test Map and an export build the same way. A **Build**
-button in the panel's head says how many triggers carry such a row; it and **⋯ ▸ Build…**
-open a dialog that lists what would go wrong, each with a **Show** link to the trigger: a
-row's locations must still exist, a chat message must be one the language takes, a row must
-be one the language has, and the TrigScript plugin must be installed and on — and, when it
-is, TrigScript compiles the rows against the map there and then, so a save holds no
-surprise. A save whose build fails still writes the map, without the code; the notice says
-why. Only StarCraft: Remastered plays a built map. Keep the source map: the built one is
-what players get, the way a compiled program is, and while the editor opens it, the rows
-behind its triggers are gone into the code.
+**Save** builds the code into the saved file, along with the map's own TrigScript script if
+it has one. It takes under a second and downloads nothing. Test Map and exports build the
+same way.
 
-An action row does its work once every trigger has had its turn, in the cycle its trigger
-fired — so a row below it in the same trigger still sees the map as it was, and a trigger in
-the next cycle sees the result. A row that moves a location (Move a location, a pick's box,
-a pass's *center a location on it*) followed by a native row on that location gets a warning
-saying so. Two such rows in one trigger, or in two triggers, run in the order the list shows
-them. A chat command, an input and a check are written at the end of a cycle for the next
-cycle's triggers: a message, a press or a click fires once, in the cycle after it happened,
-and a check reads the units as they stood at the end of the cycle before. A key press or a
-click read the local way — the catalogue's *Keyboard key state*, the mouse, the local
-player — is each computer's own; a trigger that reads one and changes the game for everyone
-gets a warning, since the computers can disagree and the game drops out of sync. The synced
-rows are the ones to use; they take nothing from the map. A key press arrives once per
-press, the way Remastered reports it. A map with a build row in it runs its triggers every
-frame, whether or not *Run triggers every frame* is ticked. The code behind the rows is
-written by Magenta itself (`src/model/trigscript.ts` in this repository) in the TrigScript
-language, and nothing you write in a row is code.
+The **Build** button at the top of the panel shows how many triggers have build rows. It, and
+**⋯ ▸ Build…**, open a dialog that lists anything that would fail, each with a **Show** link to
+the trigger. It checks that:
+
+- the row's locations still exist
+- chat messages and rows are ones TrigScript supports
+- the TrigScript plugin is installed and on
+
+When TrigScript is on, it also compiles the rows against the map right away.
+
+If the build fails during a save, the map is still saved without the code, and a notice says
+why. Only StarCraft: Remastered plays a built map. Keep your source map, because the built
+one is for players. If you open a built map in the editor, the rows behind its triggers are
+gone into the code.
+
+Magenta writes the code in the TrigScript language (`src/model/trigscript.ts`). Nothing you
+type into a row runs as code.
+
+#### Timing
+
+- An action row takes effect after every trigger has had its turn in that cycle. A row below
+  it in the same trigger still sees the map as it was. If a native row uses a location that a
+  build row above it moved, Magenta warns you.
+- Chat, input and unit checks are recorded at the end of a cycle. A message, key press or
+  click fires once, in the next cycle. A check sees the units as they were at the end of the
+  cycle before.
+- A trigger that reads local input (the catalogue's keyboard and mouse reads) and changes the
+  game for everyone gets a warning, because the game can go out of sync.
+- A map with any build row runs its triggers every frame.
 
 ### What Magenta keeps with the map
 
-Folders, counter names, the record of each generated run and of each build row live in one
-member of the map archive, `magenta\magenta.json`. Every trigger is in TRIG as the game
-reads it, so the map plays without the member — but a build row's sentence is only in the
-member: without it the trigger keeps a bare counter action, and a Build has nothing to add
-for it. Names and folders and the ability to rebuild the runs go with it too. Save leaves the
-member in unless you tick the plugin members out in the Save dialog. A member Magenta cannot
-read — written by a newer Magenta, or damaged — is not written over: the panel says so at
-the top, keeps the triggers read-only, and offers to drop the data and start over.
+Magenta stores folders, counter names, generated runs and build rows in one file in the map
+archive, `magenta\magenta.json`. Every trigger is also in the map's trigger section (TRIG),
+so the map plays without that file.
+
+A build row's sentence is only in Magenta's file, though. Without the file, the trigger keeps
+a bare counter action and the build has nothing to add for it. Names, folders and rebuilding
+the runs are lost too.
+
+Save keeps the file unless you untick it under Other files in the archive in the Save
+dialog. If Magenta cannot read the file (it was written by a newer Magenta, or it is
+damaged), it does not overwrite it. The panel says so, keeps the triggers read-only and
+offers to drop the data and start over.
 
 ## Test maps
 
-`maps/` holds four small maps that check the EUD and counter work in StarCraft: Remastered;
-`npm run maps` (which needs a sibling `scm-js` checkout, and its extracted jungle tileset for
-proper terrain) writes them again. Play each as **Use Map Settings**; the lobby marks them as
-EUD maps. Each says on screen what to look for. All four were played on 2026-09-12; the catalogue's `verified` flags and notes carry what they showed.
+`maps/` has four small maps that test the EUD rows and counter steps in StarCraft: Remastered.
+Play each as Use Map Settings. Each says on screen what to look for. All four were played on
+2026-09-12. `npm run maps` writes them again; it needs a sibling `scm-js` checkout with its
+jungle tileset extracted.
 
 | Map | What it checks |
 | --- | --- |
-| `magenta-eud-1-units-dat.scx` | Whole-dword writes (Marine max HP, Player 1's minerals), word writes (Zealot shields), a masked byte at an odd address (Ghost armor), and on the beacon a weapon's damage and cooldown. |
-| `magenta-eud-2-bits-placed-units.scx` | The unit table by slot (the first placed marine gets 5 HP and invincibility, then Player 2 on the beacon), one bit of a dword (vision), a tech byte (Stim Packs), and a read of the slot's unit type. |
-| `magenta-eud-3-reads.scx` | Triggers every frame; reads of the local player, the game speed, the mouse crossing the middle of the screen, and the A key's states. |
-| `magenta-aplus-counters.scx` | A comparison (A > B) at start, a copy of A into B on the beacon, then B = 1234 and A = B: the generated runs, 153 triggers in all. |
+| `magenta-eud-1-units-dat.scx` | Whole-dword, word and masked-byte writes to unit and weapon data, and a player's minerals |
+| `magenta-eud-2-bits-placed-units.scx` | Placed units by slot, one bit of a dword (vision), a technology byte, a read of a slot's unit type |
+| `magenta-eud-3-reads.scx` | Triggers every frame; reads of the local player, the game speed, the mouse and a key |
+| `magenta-aplus-counters.scx` | A counter comparison and copies: the generated runs, 153 triggers in all |
 
-Seven more, the **probe maps**, test the candidates in `docs/candidates.md` — one key per
-candidate, and each map says on screen what to press and what to look for. `npx tsx
-scripts/make-probe-maps.mts` writes them. Maps 6, 7, 11 and 12 carry build rows, kept in the
-map's Magenta member as the editor keeps them, so opening one in the editor and saving builds
-it; `--build` builds them here too, through TrigScript's compiler and its own build (a
-`plugin-trigscript` checkout beside this repository, or `TRIGSCRIPT_DIR`), into `-ts.scx`
-copies with an answer sheet each, and `--copy <folder>` puts those where you play. Until 0.12
-the build was eudplib's (`-eud.scx` copies, played 2026-09-14 and 15); map 10, presentation,
-is gone with the two rows it probed, which failed in Remastered.
-
-| Map | What it probes |
-| --- | --- |
-| `magenta-probe-5-tables.scx` | Fixed-address writes and reads, no build: flingy speed, upgrade and tech costs, units.dat flags, the unit's name from the map's strings, player colour (two routes), supply, game speed, the frame counter, slot types. |
-| `magenta-probe-6-units.scx` | The per-unit verbs and reads: the game's Order, the rank, spell timers and a defensive matrix, hold fire, resource amounts, the speed upgrade, hallucination, the remaining build time read and written, the weakest and nearest unit, and scans for attacking, under attack, target, burrowed, moving, in a transport. |
-| `magenta-probe-7-input.scx` | Key presses, the three mouse buttons, the mouse over a location, chat commands plain and with a number in them — the build's own synced input. |
-| `magenta-probe-8-catalogue.scx` | The 0.3 entries as the catalogue itself writes them (speed as four records, colour as two, the name from a string, the looks through units.dat, the flags, supply by race, upgrade and technology costs), the reads probe 5 left unreported (the frame counter, the clock, slot type and race), and the entries no map had touched: sight range, weapon range and cooldown, build time, gas, an upgrade's level, alliance, a placed unit's energy, shields, position and cloak, the screen. |
-| `magenta-probe-9-rest.scx` | What 8 left unverified: size class by a vulture's shots, the flags with an effect and the rest read back, unit costs and supply, sight, weapon swaps, a weapon's cooldown, factor, bonus and minimum range, vision and alliance both ways, the hallucination flag, and the slot, race, supply-used, cloak, position and screen reads. |
-| `magenta-probe-11-slice5.scx` | Damage and healing with a floor and a cap, a random pick, the unit under the mouse, a location slid by an offset and put back by numbers (its size read where it is), the type, owner and percent reads, the middle button. |
-| `magenta-probe-12-options.scx` | The map-wide options: the camera gliding after a location that two keys slide about, and a two-second tone looped as background music. |
-
-What a run of these settles, in the catalogue: the `verified` flag on each entry that worked,
-which way round the vision bit goes (map 2 with two players), and what the key states 1 and 2
-mean (map 3; settled: 1 on the press, 0 otherwise). The slot rule is settled: the first created unit is slot 0, later ones count down from 1699,
-and start locations and removed units take no slot (map 2 is the probe that showed it).
+Seven probe maps (`magenta-probe-*.scx`) test the candidates in `docs/candidates.md`, one
+key per candidate; each says on screen what to press and what to look for. `npx tsx
+scripts/make-probe-maps.mts` writes them. Maps 6, 7, 11 and 12 have build rows, so opening one
+in the editor and saving builds it. `--build` builds them here instead, through a
+`plugin-trigscript` checkout beside this repository (or `TRIGSCRIPT_DIR`), and `--copy
+<folder>` copies the built maps to where you play.
 
 ## For other plugins
 
-- `magenta.open` (`{ index?: number }`) opens the panel on a trigger; the Classic editor's
+- `magenta.open` (`{ index?: number }`) opens the panel on a trigger. The Trigger Editor's
   **Open Magenta** button on a generated row calls it.
-- `magenta.describe` (a `TriggerRecord`) answers its conditions and actions as sentences, the
-  catalogue's included.
+- `magenta.describe` (a `TriggerRecord`) returns its conditions and actions as sentences,
+  including the catalogue's.
 
 ## Development
 
 ```sh
 npm install
-npm test            # vitest: the sentences, the catalogue, lowering and recognition, the counters, the checks, the expansions in a simulator
+npm test            # vitest: sentences, catalogue, lowering and recognition, counters, checks, the simulator
 npm run typecheck
 npm run build       # dist/plugin.js, the bundle the editor loads
 ```
 
-`src/model/` is the pure half and has the tests: sentences and templates, the EUD arithmetic
-and the catalogue, counters, checks, the sidecar, the expansions and a small simulator that
-proves them. `src/ui/` is the panel, plain DOM in the editor's own widget classes. `vendor/`
-is copied from the editor (the record layout, the definitions table, the unit names) so the
-tests run without it; the editor is the source of truth.
+`src/model/` holds the logic and the tests cover it: sentences and templates, the EUD
+arithmetic and catalogue, counters, checks, the stored data, the generated runs and a small
+simulator that tests them. `src/ui/` is the panel, plain DOM using the editor's widget
+classes. `vendor/` is copied from the editor (the record layout, the definitions table, the
+unit names) so the tests run without it. The editor is the source of truth.
 
-To develop against a local editor, serve this folder over http with CORS and add
-`http://localhost:3131/` as the plugin's address in Plugins ▸ Manage Plugins…; `npm run dev`
+To develop against a local editor, run `node scripts/serve.mjs . 3131` to serve this folder
+with CORS. Then add `http://localhost:3131/` in **Plugins ▸ Manage Plugins…**. `npm run dev`
 rebuilds the bundle as you edit.
 
 ## License
