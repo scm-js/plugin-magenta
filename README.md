@@ -29,7 +29,7 @@ with the editor, and the editor installs it with Magenta if it is missing.
 
 ## Use
 
-Open a map and choose **Triggers ▸ Magenta…** (Ctrl+Shift+M). The panel floats beside the
+Open a map and choose **Triggers ▸ Magenta…** (Ctrl+Shift+G). The panel floats beside the
 map. Drag its corner to resize it.
 
 ### The trigger list

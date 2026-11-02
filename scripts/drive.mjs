@@ -20,7 +20,7 @@ const b64 = readFileSync(map).toString("base64");
 const dt = await page.evaluateHandle(({ b64, name }) => { const bin = atob(b64); const arr = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i); const dt = new DataTransfer(); dt.items.add(new File([arr], name)); return dt; }, { b64, name: map.split("/").pop() });
 await page.dispatchEvent(".app", "drop", { dataTransfer: dt });
 await page.waitForTimeout(3000);
-await page.keyboard.press("Control+Shift+M");
+await page.keyboard.press("Control+Shift+G");
 await page.waitForTimeout(1200);
 for (const step of steps) {
   const [verb, ...rest] = step.split(":");

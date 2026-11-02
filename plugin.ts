@@ -2,7 +2,7 @@
  * Magenta — a trigger editor for map makers, a plugin for the scmJS map editor
  * (https://github.com/scm-js/scm-js).
  *
- * Triggers ▸ Magenta… (Ctrl+Shift+M) opens a panel beside the map: every trigger as a
+ * Triggers ▸ Magenta… (Ctrl+Shift+G) opens a panel beside the map: every trigger as a
  * sentence with its parameters as chips, one search box that adds any condition or
  * action, the map as the picker, and a catalogue of Remastered EUD conditions and
  * actions that read and edit like the game's own (`src/catalogue/eud.json`).
@@ -56,8 +56,8 @@ export function activate(api: PluginApi): () => void {
   registerPreferencesPage(api, () => panel.relayout());
   api.commands.register({ id: "settings", title: msg("Magenta Settings"), run: () => openSettings(api) });
   // Menu labels and command titles go over in English; the editor shows them through this plugin's catalogue.
-  api.menu.add("Triggers", { label: msg("Magenta…"), shortcut: "Ctrl+Shift+M", icon: "plugin", after: "Text Trigger Editor…", enabled: () => api.document.isOpen(), command: "open" });
-  api.hotkeys.add("Ctrl+Shift+M", { command: "open" });
+  api.menu.add("Triggers", { label: msg("Magenta…"), shortcut: "Ctrl+Shift+G", icon: "plugin", after: "Text Trigger Editor…", enabled: () => api.document.isOpen(), command: "open" });
+  api.hotkeys.add("Ctrl+Shift+G", { command: "open" });
   claims = installClaims(api, (index) => panel.open({ index }));
   // The rows that need code in the map go into TrigScript's build on Save, Test Map and export.
   const contribution = installContribution(api, new Host(api));
