@@ -19,3 +19,23 @@ export interface Namer {
   /** A named death counter for a (player, unit) cell, when the map names one. */
   counter?(player: number, unit: number): string | null;
 }
+
+/**
+ * Unit ids. The game has 228 unit types (0–227); 228 is "None" and 229–232 are the trigger
+ * classes (Any unit, Men, Buildings, Factories). A mod's data set with more types numbers
+ * the rest from 233, so a value past 232 is a unit of the mod's, never a class.
+ */
+export const GAME_UNIT_TYPES = 228;
+export const isUnitClass = (id: number): boolean => id >= GAME_UNIT_TYPES && id <= 232;
+
+/**
+ * A unit picker's two lists: the classes (when asked for) and the unit types, each in the
+ * order given. `max` stops the types at the game's own tables where a feature is tied to
+ * them (the EUD catalogue's unit fields are 1.16.1's arrays of 228); without it every type
+ * the data set has is offered.
+ */
+export function unitChoices<T extends { value: number }>(units: readonly T[], options: { classes?: boolean; max?: number } = {}): { classes: T[]; units: T[] } {
+  const classes = options.classes === false ? [] : units.filter((u) => isUnitClass(u.value));
+  const max = options.max ?? Infinity;
+  return { classes, units: units.filter((u) => !isUnitClass(u.value) && u.value < max) };
+}

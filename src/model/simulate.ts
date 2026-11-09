@@ -16,6 +16,7 @@
  */
 import { ActionType, AllianceStatus, Comparison, ConditionType, PlayerGroup, ResourceType, ScoreType, SetModifier, SwitchAction, SwitchState, TriggerFlag, UnitClass, type ActionRecord, type ConditionRecord, type TriggerRecord } from "../../vendor/triggers";
 import { MASK_MARKER, isEud } from "./eud";
+import { isUnitClass } from "./names";
 import { t } from "../i18n";
 import { liveActions, liveConditions, isActionDisabled, isConditionDisabled } from "./records";
 
@@ -151,7 +152,8 @@ export function runsFor(t: TriggerRecord, player: number, world: SimWorld): bool
 /* ── Units and locations ── */
 
 function matchesUnit(world: SimWorld, unitId: number, wanted: number): boolean {
-  if (wanted < UnitClass.Any) return unitId === wanted;
+  // The classes are 229–232 only: a mod's types go on from 233 and are units like any other.
+  if (wanted < UnitClass.Any || wanted > UnitClass.Factories) return unitId === wanted;
   if (wanted === UnitClass.Any) return true;
   if (wanted === UnitClass.Men) return !world.isBuilding(unitId);
   return world.isBuilding(unitId);
@@ -349,7 +351,7 @@ function runAction(a: ActionRecord, i: number, current: number, s: SimState, wor
       return {};
     }
     case ActionType.CreateUnit: case ActionType.CreateUnitWithProperties: {
-      if (a.location === 0 || a.unitId >= UnitClass.Any) return {};
+      if (a.location === 0 || isUnitClass(a.unitId)) return {};
       for (const p of slots(a.player)) putUnits(s, world, p, a.unitId, Math.max(1, a.modifier), a.location);
       return {};
     }

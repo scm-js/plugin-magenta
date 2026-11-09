@@ -7,6 +7,7 @@ import type { PluginApi } from "@scm-js/plugin-api";
 import { PLAYER_GROUP_COUNT } from "../../vendor/triggers";
 import { addressOf, epd } from "../model/eud";
 import { KEYS } from "../model/eudSentence";
+import { unitChoices } from "../model/names";
 import type { Host, NamedItem } from "./host";
 import { openPopover, type PopoverHandle } from "./popover";
 
@@ -166,18 +167,18 @@ export function pickPlayer(api: PluginApi, host: Host, anchor: HTMLElement, curr
   return pickChoice(api, anchor, items, onPick, { current, actions, width: 240 });
 }
 
-export function pickUnitType(api: PluginApi, host: Host, anchor: HTMLElement, current: number, onPick: (value: number) => void, options: { classes?: boolean } = {}): PopoverHandle {
-  const units = host.units();
+/**
+ * The unit picker: the classes (228–232) unless `classes` is false, then every unit type the data set has — a mod's
+ * past 232 too — or, with `max`, the types below it (an EUD field of the game's own 228-wide tables).
+ */
+export function pickUnitType(api: PluginApi, host: Host, anchor: HTMLElement, current: number, onPick: (value: number) => void, options: { classes?: boolean; max?: number } = {}): PopoverHandle {
+  const { classes, units } = unitChoices(host.units(), options);
   const items: ChoiceOption[] = [];
-  if (options.classes !== false) {
-    items.push({ value: -1, label: api.i18n.t("Classes"), group: true });
-    for (const u of units) if (u.value >= 228) items.push(u);
-  }
-  items.push({ value: -2, label: api.i18n.t("Units"), group: true });
-  for (const u of units) if (u.value < 228) items.push(u);
+  if (classes.length) items.push({ value: -1, label: api.i18n.t("Classes"), group: true }, ...classes);
+  items.push({ value: -2, label: api.i18n.t("Units"), group: true }, ...units);
   return pickChoice(api, anchor, items, onPick, {
     current, searchable: true, width: 280, placeholder: api.i18n.t("Unit name…"),
-    actions: [{ label: api.i18n.t("Pick on map"), run: (h) => { h.close(); void host.pickUnit(api.i18n.t("Click a unit to take its type")).then((u) => { if (u) onPick(u.unitId); }); } }],
+    actions: [{ label: api.i18n.t("Pick on map"), run: (h) => { h.close(); void host.pickUnit(api.i18n.t("Click a unit to take its type")).then((u) => { if (u && u.unitId < (options.max ?? Infinity)) onPick(u.unitId); }); } }],
   });
 }
 

@@ -366,6 +366,36 @@ type into a row runs as code.
   game for everyone gets a warning, because the game can go out of sync.
 - A map with any build row runs its triggers every frame.
 
+### With a mod
+
+When **Help ▸ Game Data…** draws from a mod's data set, Magenta shows the mod's names in
+sentences, pickers and the search box.
+
+These follow the data set:
+
+- The unit pickers list every unit type the mod has. Ids 228 to 232 are always None and the
+  trigger classes (Any unit, Men, Buildings, Factories), so a mod's own types start at 233.
+- A build row keeps a mod's unit as that unit: in its chip, in Magenta's file and in the code
+  it hands to TrigScript. TrigScript 4.2.0 builds unit types up to 232 only, so such a row
+  is not built yet; the Build dialog and the save's notice say so.
+- The dry run counts a mod's units as units.
+
+These are tied to the game's own memory layout, and stay as they are:
+
+- The EUD catalogue's addresses are where StarCraft 1.16.1 and Remastered keep their tables,
+  at the game's sizes: 228 unit types, 130 weapons, 61 upgrades and 44 technologies. Its
+  pickers stop there. Build rows read units and players at the game's addresses too.
+- A mod with plugins (GPTP, for example) can move or widen those tables. While a mod's data
+  set is in use, a trigger with EUD or build rows says once that they read the game's own
+  memory layout and are for the game's own data. The Build dialog says the same.
+- Counters stay in the game's death table of 228 unit types for 12 players. **New counter…**
+  takes cells of unit types the game never builds, such as the unused buildings and the
+  beacons. A mod may make one of those a real unit, and its deaths then count into that
+  cell. If yours does, name a counter on a cell you know the mod leaves alone.
+- A Deaths or Set Deaths row with a mod's type past 232 is kept and shown, with a note that
+  whether the game keeps that count is up to the mod. Magenta does not offer to name it as a
+  counter, and never puts one there.
+
 ### What Magenta keeps with the map
 
 Magenta stores folders, counter names, generated runs and build rows in one file in the map

@@ -77,6 +77,8 @@ export function renderEditor(deps: EditorDeps, root: HTMLElement): void {
     magentaRow: (kind, i) => kind === "condition"
       ? !!conditionRowOf(store, liveConditions(trigger)[i]) || (!!cmp && cmp.rows[0] === i)
       : !!hookOf(store, liveActions(trigger)[i]) || !!counterExpansionOf(store, liveActions(trigger)[i]),
+    buildRow: (kind, i) => kind === "condition" ? !!conditionRowOf(store, liveConditions(trigger)[i]) : !!hookOf(store, liveActions(trigger)[i]),
+    modDataSet: host.modDataSet(),
     deferredLocation: (a) => {
       const hook = hookOf(store, a);
       if (!hook) return null;

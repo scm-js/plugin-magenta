@@ -1103,4 +1103,6 @@ export const KO: Record<string, string> = {
   "{why}, and {n, plural, one {# more row} other {# more rows}} the same. The map's Build dialog (⋯ ▸ Build…) lists them.": "{why}, 그리고 같은 행 {n}개 더. 맵의 빌드 대화상자(⋯ ▸ 빌드…)에 나옵니다.",
   "How many triggers carry a row TrigScript builds code for on save; click for the list and the checks": "저장 때 TrigScript가 코드를 빌드하는 행을 가진 트리거 수. 클릭하면 목록과 검사가 나옵니다",
   "Build · {n}": "빌드 · {n}",
+  "EUD and build rows read the game's own memory layout, which a mod with plugins may move, so they may not work with {set}: they are for the game's own data.": "EUD 행과 빌드 행은 게임 자체의 메모리 배치를 읽는데, 플러그인이 있는 모드는 이 배치를 옮길 수 있으므로 {set}에서는 동작하지 않을 수 있습니다. 게임 자체 데이터용입니다.",
+  "The game keeps death counts for 228 unit types; whether a later type's count is kept is up to the mod, and Magenta does not make a counter of it.": "게임은 유닛 종류 228개의 데스 수를 기록합니다. 그 뒤 종류의 데스 수가 기록되는지는 모드에 달려 있으며, Magenta는 그 칸을 카운터로 만들지 않습니다.",
 };

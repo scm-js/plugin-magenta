@@ -9,7 +9,7 @@ import { AI_SCRIPT_CHOICES, aiScriptCode, type ArgKind } from "../../vendor/trig
 import { RACES, type Entry } from "../catalogue";
 import { lowerAction, lowerActions, lowerCondition, recognizeAction, recognizeCondition, entryAddress, type EudRow } from "../model/eud";
 import { describeEud, type EudSegment } from "../model/eudSentence";
-import type { Namer } from "../model/names";
+import { GAME_UNIT_TYPES, type Namer } from "../model/names";
 import { describeAction, describeCondition, type Segment } from "../model/sentences";
 import { isActionDisabled, isConditionDisabled } from "../model/records";
 import type { Problem } from "../model/checks";
@@ -152,7 +152,8 @@ function renderNative<R extends ConditionRecord | ActionRecord>(ctx: RowContext,
   }
   // A plain deaths row on a cell nothing names: offer a name.
   const isDeaths = record.type === (kind === "condition" ? ConditionType.Deaths : ActionType.SetDeaths);
-  if (isDeaths && record.player < 27 && !segments.some((s) => s.kind === "chip" && s.role === "counter")) {
+  // (Not a mod's type past 232: the game's table has no cell for it, and Magenta keeps its counters inside that table.)
+  if (isDeaths && record.player < 27 && record.unitId <= 232 && !segments.some((s) => s.kind === "chip" && s.role === "counter")) {
     const name = api.ui.el("button", { type: "button", className: "mg-chip", title: t("Give this death counter a name, and use it by name everywhere") }, t("name…")) as HTMLButtonElement;
     name.addEventListener("click", () => nameCounter(ctx, record.player, record.unitId));
     into.append(" ", name);
@@ -236,7 +237,7 @@ function renderEud(ctx: RowContext, kind: "condition" | "action", row: EudRow, i
       if (seg.slot === "value") {
         const v = entry.value;
         if (v?.choices) pickChoice(api, chip, v.choices.map((c) => ({ value: c.value, label: translate(c.label) })), (value) => update({ value }), { current: row.value });
-        else if (v?.kind === "unit") pickUnitType(api, host, chip, row.value, (value) => update({ value }), { classes: false });
+        else if (v?.kind === "unit") pickUnitType(api, host, chip, row.value, (value) => update({ value }), { classes: false, max: v.max !== undefined ? v.max + 1 : GAME_UNIT_TYPES });
         else if (v?.kind === "player") pickPlayer(api, host, chip, row.value, (value) => update({ value }), { eud: false });
         else if (v?.kind === "weapon") pickNamed(api, chip, [...host.weapons(), { value: 130, label: t("No weapon") }], row.value, (value) => update({ value }));
         else if (v?.kind === "string") pickText(api, chip, ctx.namer.string(row.value) ?? "", (text) => onText?.(text, (index) => ({ ...row, value: index })), { title: translate(entry.name) });
@@ -246,7 +247,7 @@ function renderEud(ctx: RowContext, kind: "condition" | "action", row: EudRow, i
       const arg = seg.slot.arg;
       const setArg = (value: number) => update({ args: { [arg.name]: value } });
       switch (arg.kind) {
-        case "unit": pickUnitType(api, host, chip, seg.value, setArg, { classes: false }); break;
+        case "unit": pickUnitType(api, host, chip, seg.value, setArg, { classes: false, max: arg.max }); break;
         case "player": pickPlayer(api, host, chip, seg.value, setArg, { eud: false }); break;
         case "weapon": pickNamed(api, chip, host.weapons(), seg.value, setArg); break;
         case "upgrade": pickNamed(api, chip, host.upgrades().filter((u) => u.value < arg.max), seg.value, setArg); break;
