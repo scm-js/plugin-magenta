@@ -67,10 +67,14 @@ export type ForEachDo =
 export type PickNear = number | { mouse: number } | null;
 
 export interface UnitFilter {
+  /** A unit type (a mod's past 232 too), a class (230 Men, 231 Buildings, 232 Factories), or null for any unit. */
   unit: number | null;
   owner: number | null;
   location: number | null;
 }
+
+/** What a filter keeps of a picked unit value: None (228) and Any unit (229) are "any unit"; every other value as it is. */
+export const filterUnit = (picked: number | null): number | null => (picked === null || picked === 228 || picked === 229 ? null : picked);
 
 export type BuildRecord =
   | { id: string; kind: "text"; flag: Cell; parts: TextPart[]; to: number | "all" }

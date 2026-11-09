@@ -4,7 +4,7 @@
  */
 import type { PluginApi, TriggerRecord, Rect } from "@scm-js/plugin-api";
 import { PLAYER_GROUP_COUNT } from "../../vendor/triggers";
-import type { Namer } from "../model/names";
+import { isUnitClass, type Namer } from "../model/names";
 import { addressOf } from "../model/eud";
 import { keyLabel } from "../model/eudSentence";
 import { encodeSidecar, MEMBER, readSidecar, type Sidecar, type SidecarProblem } from "../model/sidecar";
@@ -39,6 +39,21 @@ export class Host {
   /** The map's revision (Scenario ▸ Map Revision), null with no map open. */
   version() {
     return this.api.settings.version();
+  }
+
+  /**
+   * The name of the data set in use when it is a mod's: neither the game's own files nor Remastered's (the same
+   * tables). Null for those, and on an editor that has no data sets.
+   */
+  modDataSet(): string | null {
+    try {
+      const data = this.api.gameData;
+      const profile = data?.source?.()?.profile ?? data?.profile?.();
+      if (!profile || profile.id === "starcraft" || profile.id === "remastered") return null;
+      return profile.name || profile.id;
+    } catch {
+      return null;
+    }
   }
 
   /** Scenario ▸ Map Revision ▸ Remastered 1.21+, with the string table moved to STRx as the dialog does by default. */
@@ -92,7 +107,7 @@ export class Host {
 
   units(): NamedItem[] {
     const names = this.api.triggers.names();
-    return this.api.names.units().map((n) => ({ value: n.value, label: names.unit(n.value), hint: n.value >= 228 ? "" : n.label !== names.unit(n.value) ? n.label : undefined }));
+    return this.api.names.units().map((n) => ({ value: n.value, label: names.unit(n.value), hint: isUnitClass(n.value) ? "" : n.label !== names.unit(n.value) ? n.label : undefined }));
   }
 
   weapons(): NamedItem[] { return this.api.names.weapons(); }

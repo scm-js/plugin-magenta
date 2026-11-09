@@ -10,6 +10,7 @@ import type { TriggerRecord } from "../../vendor/triggers";
 import { checkChatMessage, type BuildOptions } from "./builds";
 import { refs } from "./ownership";
 import type { Sidecar } from "./sidecar";
+import { modMemoryText } from "./checks";
 import type { Rendered } from "./trigscript";
 
 export interface PreflightProblem {
@@ -30,6 +31,8 @@ export interface PreflightInput {
   rendered: Pick<Rendered, "unsupported" | "notes">;
   /** Whether the TrigScript plugin is running, with its build service. */
   trigscript: boolean;
+  /** The name of the data set in use when it is a mod's, else null. */
+  modDataSet?: string | null;
 }
 
 export function preflight(input: PreflightInput): PreflightProblem[] {
@@ -85,6 +88,9 @@ export function preflight(input: PreflightInput): PreflightProblem[] {
     if (!l || l.empty) out.push({ level: "error", text: t("The camera follows location {n}, which the map no longer has.", { n: options.camera.location }) });
   }
   if (options.bgm && !input.soundPresent(options.bgm.path)) out.push({ level: "error", text: t("The background music {file} is not in the map archive.", { file: options.bgm.path.split("\\").pop() ?? "" }) });
+
+  /* ── A mod's data set: the built code reads the game's own memory layout ── */
+  if (input.modDataSet && (sidecar.builds.length > 0 || sidecar.msqc)) out.push({ level: "info", text: modMemoryText(input.modDataSet) });
 
   /* ── The builder ── */
   if (!input.trigscript) out.push({ level: "error", text: t("The TrigScript plugin is not running: it is what builds the rows into the map. Install or turn it on under Plugins ▸ Manage Plugins…") });

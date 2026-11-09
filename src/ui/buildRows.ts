@@ -8,7 +8,7 @@
 import type { PluginApi, ActionRecord, ConditionRecord, TriggerRecord } from "@scm-js/plugin-api";
 import { ActionType, Comparison, ConditionType, PlayerGroup, SetModifier } from "../../vendor/triggers";
 import type { BuildRecord, ChatArgs, ChatCell, ChatRecord, ForEachDo, Msqc, UnitField, UnitFilter } from "../model/builds";
-import { checkChatMessage, DEFAULT_MSQC, HOLD_FIRE_COOLDOWN, isChatPattern, nextChatValue, TIMER_TICKS_PER_SECOND, TIMERS, UNIT_FIELDS } from "../model/builds";
+import { checkChatMessage, DEFAULT_MSQC, filterUnit, HOLD_FIRE_COOLDOWN, isChatPattern, nextChatValue, TIMER_TICKS_PER_SECOND, TIMERS, UNIT_FIELDS } from "../model/builds";
 import type { Cell } from "../model/counters";
 import type { CounterName } from "../model/sidecar";
 import { KEYS } from "../model/eudSentence";
@@ -109,7 +109,7 @@ function filterChips(api: PluginApi, host: Host, store: Store, f: UnitFilter, up
   const t = api.i18n.t;
   const namer = host.namer(store.sidecar);
   const unit = chip(api, f.unit === null ? t("any unit") : namer.unit(f.unit));
-  unit.addEventListener("click", () => pickUnitType(api, host, unit, f.unit ?? 228, (v) => update({ unit: v >= 228 ? null : v }), { classes: true }));
+  unit.addEventListener("click", () => pickUnitType(api, host, unit, f.unit ?? 229, (v) => update({ unit: filterUnit(v) }), { classes: true }));
   const owner = chip(api, f.owner === null ? t("anyone") : namer.player(f.owner), "");
   owner.addEventListener("click", () => pickChoice(api, owner, [{ value: -1, label: t("anyone") }, ...Array.from({ length: 12 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null }))], (v) => update({ owner: v < 0 ? null : v }), { current: f.owner ?? -1 }));
   const loc = chip(api, f.location === null ? t("anywhere") : namer.location(f.location), "");
@@ -479,7 +479,7 @@ export function newScan(host: Host, store: Store, query = "", unit: number | nul
   const pct = /percent|%/i.test(query);
   const field: UnitField = /shield/i.test(query) ? (pct ? "shieldsPct" : "shields") : /energy|mana/i.test(query) ? (pct ? "energyPct" : "energy") : /under attack/i.test(query) ? "underAttack" : /target/i.test(query) ? "hasTarget" : /burrow/i.test(query) ? "burrowed" : /moving/i.test(query) ? "speed" : /attacking|order/i.test(query) ? "order" : /kills/i.test(query) ? "kills" : pct ? "hpPct" : "hp";
   const yesNo = FIELDS[fieldIndex(field)].yesNo;
-  const record: BuildRecord = { id: `s${Date.now().toString(36)}`, kind: "scan", cell, unit, owner: PlayerGroup.Player1, location: null, field, cmp: yesNo ? "=" : /above|over|more/i.test(query) ? ">" : "<", value: yesNo ? 1 : pct ? 30 : 20 };
+  const record: BuildRecord = { id: `s${Date.now().toString(36)}`, kind: "scan", cell, unit: filterUnit(unit), owner: PlayerGroup.Player1, location: null, field, cmp: yesNo ? "=" : /above|over|more/i.test(query) ? ">" : "<", value: yesNo ? 1 : pct ? 30 : 20 };
   return { condition: deathsIs(cell, Comparison.Exactly, 1), builds: [...store.sidecar.builds, record] };
 }
 
@@ -491,7 +491,7 @@ export function newHook(host: Host, store: Store, what: "text" | "math" | "forea
   const a: Cell = named[0] ? [named[0].player, named[0].unit] : freeCell(store, host, [flag]) ?? [0, 181];
   const id = `b${Date.now().toString(36)}`;
   // "damage every zergling at lava": the unit and the location the box recognised go into the filter.
-  const filter: UnitFilter = { unit: named_.unit === undefined ? 0 : named_.unit, owner: PlayerGroup.Player1, location: named_.location ?? null };
+  const filter: UnitFilter = { unit: named_.unit === undefined ? 0 : filterUnit(named_.unit), owner: PlayerGroup.Player1, location: named_.location ?? null };
   const record: BuildRecord = what === "text"
     ? { id, kind: "text", flag, parts: [{ text: "Score: " }, { counter: a }], to: "all" }
     : what === "math"

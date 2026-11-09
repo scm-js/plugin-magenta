@@ -37,7 +37,18 @@ export interface CheckContext {
   versionLabel?: string;
   /** Whether the row at `index` (of the live conditions or actions) is one of Magenta's own — a counter step, a comparison, a build row — which only Remastered runs. */
   magentaRow?(kind: "condition" | "action", index: number): boolean;
+  /** Whether the row at `index` is a build row: code TrigScript builds, which reads the game's units and players where 1.16.1 keeps them. */
+  buildRow?(kind: "condition" | "action", index: number): boolean;
+  /** The name of the data set in use when it is a mod's (not the game's own files), else null. */
+  modDataSet?: string | null;
 }
+
+/**
+ * The one sentence a trigger with EUD or build rows gets while a mod's data set is in use: those rows reach the game's
+ * memory at 1.16.1's addresses and table sizes (228 unit types, 61 upgrades, 44 technologies), which a mod with
+ * plugins may move or widen.
+ */
+export const modMemoryText = (set: string): string => t("EUD and build rows read the game's own memory layout, which a mod with plugins may move, so they may not work with {set}: they are for the game's own data.", { set });
 
 /** Actions that change nothing shared: what a player sees or hears on their own screen, and the trigger's own bookkeeping. */
 const LOCAL_ACTIONS = new Set<number>([ActionType.Comment, ActionType.PreserveTrigger, ActionType.Wait, ActionType.DisplayText, ActionType.PlayWav, ActionType.CenterView, ActionType.MinimapPing, ActionType.TalkingPortrait, ActionType.Transmission, ActionType.MuteUnitSpeech, ActionType.UnmuteUnitSpeech, ActionType.SetMissionObjectives, ActionType.LeaderboardControl, ActionType.LeaderboardControlAt, ActionType.LeaderboardResources, ActionType.LeaderboardKills, ActionType.LeaderboardPoints, ActionType.LeaderboardGoalControl, ActionType.LeaderboardGoalControlAt, ActionType.LeaderboardGoalResources, ActionType.LeaderboardGoalKills, ActionType.LeaderboardGoalPoints, ActionType.LeaderboardComputerPlayers, ActionType.LeaderboardGreed]);
@@ -158,6 +169,21 @@ export function check(trigger: TriggerRecord, ctx: CheckContext = {}): Problem[]
       for (const p of playerSlots(c.player, own)) if (ctx.claimedCells.has(cellKey(p, c.unitId))) { out.push({ level: "warn", text: t("This death counter is used by another plugin's generated triggers."), at }); break; }
     }
   });
+
+  // A mod's data set: the memory these rows read is the game's own layout. Said once for the trigger, not per row.
+  if (ctx.modDataSet) {
+    const memoryCondition = conditions.some((c, index) => !isConditionDisabled(c) && ((c.type === ConditionType.Deaths && isEud(c.player)) || !!ctx.buildRow?.("condition", index)));
+    const memoryAction = actions.some((a, index) => !isActionDisabled(a) && ((a.type === ActionType.SetDeaths && isEud(a.player)) || !!ctx.buildRow?.("action", index)));
+    if (memoryCondition || memoryAction) out.push({ level: "info", text: modMemoryText(ctx.modDataSet) });
+    // Deaths of a mod's type past the game's 228: the game's table has no cell for it; Magenta's counters stay inside that table.
+    const later = (unit: number) => unit > 232;
+    conditions.forEach((c, index) => {
+      if (!isConditionDisabled(c) && c.type === ConditionType.Deaths && !isEud(c.player) && later(c.unitId)) out.push({ level: "info", text: t("The game keeps death counts for 228 unit types; whether a later type's count is kept is up to the mod, and Magenta does not make a counter of it."), at: { kind: "condition", index } });
+    });
+    actions.forEach((a, index) => {
+      if (!isActionDisabled(a) && a.type === ActionType.SetDeaths && !isEud(a.player) && later(a.unitId)) out.push({ level: "info", text: t("The game keeps death counts for 228 unit types; whether a later type's count is kept is up to the mod, and Magenta does not make a counter of it."), at: { kind: "action", index } });
+    });
+  }
 
   // The revision says which clients open the map. A row only Remastered runs, on a map marked for an older
   // client, does nothing there: the EUD records (masked ones 1.16.1 skips, writes it blocks), the counter runs

@@ -70,7 +70,7 @@ export function openBuildDialog(api: PluginApi, host: Host, store: Store, everyF
     const svc = trigscript(api);
     const list = preflight({
       list: store.list, sidecar: store.sidecar, options, locations: host.locationSlots(), soundPresent: (p) => host.soundPresent(p),
-      rendered: r?.rendered ?? { unsupported: [], notes: [] }, trigscript: !!svc,
+      rendered: r?.rendered ?? { unsupported: [], notes: [] }, trigscript: !!svc, modDataSet: host.modDataSet(),
     });
     const show = (problems: PreflightProblem[]) => {
       problemsEl.replaceChildren();

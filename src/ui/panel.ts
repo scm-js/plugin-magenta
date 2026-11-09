@@ -183,6 +183,8 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
     const offLang = api.events.on("language", () => setTimeout(relayout, 0));
     // Scenario ▸ Map Revision changes which rows the revision lines are under.
     const offSettings = api.events.on("settings", render);
+    // Help ▸ Game Data… switches the data set: the unit names and the mod line under EUD rows follow it.
+    const offGameData = api.events.on("gameData", render);
     const resize = new ResizeObserver(() => {
       root.classList.toggle("narrow", root.clientWidth < NARROW);
       root.classList.toggle("stacked", root.clientWidth < STACKED);
@@ -462,6 +464,7 @@ export function createPanel(api: PluginApi, hooks: { afterCommit?: () => void } 
       offFile.dispose();
       offDoc.dispose();
       offSettings.dispose();
+      offGameData.dispose();
       offLang.dispose();
       resize.disconnect();
       closePopover();
