@@ -5080,6 +5080,15 @@ function installClaims(api, open) {
   };
 }
 
+// src/model/names.ts
+var GAME_UNIT_TYPES = 228;
+var isUnitClass = (id) => id >= GAME_UNIT_TYPES && id <= 232;
+function unitChoices(units2, options = {}) {
+  const classes = options.classes === false ? [] : units2.filter((u) => isUnitClass(u.value));
+  const max = options.max ?? Infinity;
+  return { classes, units: units2.filter((u) => !isUnitClass(u.value) && u.value < max) };
+}
+
 // src/model/slots.ts
 var UNIT_SLOTS = 1700;
 var START_LOCATION = 214;
@@ -5186,6 +5195,20 @@ var Host = class {
   version() {
     return this.api.settings.version();
   }
+  /**
+   * The name of the data set in use when it is a mod's: neither the game's own files nor Remastered's (the same
+   * tables). Null for those, and on an editor that has no data sets.
+   */
+  modDataSet() {
+    try {
+      const data = this.api.gameData;
+      const profile = data?.source?.()?.profile ?? data?.profile?.();
+      if (!profile || profile.id === "starcraft" || profile.id === "remastered") return null;
+      return profile.name || profile.id;
+    } catch {
+      return null;
+    }
+  }
   /** Scenario ▸ Map Revision ▸ Remastered 1.21+, with the string table moved to STRx as the dialog does by default. */
   setRemastered() {
     this.api.document.update(this.api.i18n.t("Map revision"), (tx) => {
@@ -5233,7 +5256,7 @@ var Host = class {
   }
   units() {
     const names = this.api.triggers.names();
-    return this.api.names.units().map((n) => ({ value: n.value, label: names.unit(n.value), hint: n.value >= 228 ? "" : n.label !== names.unit(n.value) ? n.label : void 0 }));
+    return this.api.names.units().map((n) => ({ value: n.value, label: names.unit(n.value), hint: isUnitClass(n.value) ? "" : n.label !== names.unit(n.value) ? n.label : void 0 }));
   }
   weapons() {
     return this.api.names.weapons();
@@ -5511,6 +5534,7 @@ var TIMERS = [
 ];
 var TIMER_TICKS_PER_SECOND = 3;
 var HOLD_FIRE_COOLDOWN = 250;
+var filterUnit = (picked) => picked === null || picked === 228 || picked === 229 ? null : picked;
 var isChatPattern = (c2) => c2.arg === "number" || c2.message.startsWith("^") && c2.message.endsWith("$");
 var DEFAULT_OPTIONS = { camera: null, bgm: null, noAirCollision: false, unlimiter: false };
 var DEFAULT_MSQC = { qcUnit: 58, qcLoc: 62, qcPlayer: 10, keys: {}, clicks: {}, mouseBase: null, mouseIn: {}, select: null };
@@ -6553,14 +6577,10 @@ function pickPlayer(api, host, anchor, current3, onPick, options = {}) {
   return pickChoice(api, anchor, items, onPick, { current: current3, actions, width: 240 });
 }
 function pickUnitType(api, host, anchor, current3, onPick, options = {}) {
-  const units2 = host.units();
+  const { classes, units: units2 } = unitChoices(host.units(), options);
   const items = [];
-  if (options.classes !== false) {
-    items.push({ value: -1, label: api.i18n.t("Classes"), group: true });
-    for (const u of units2) if (u.value >= 228) items.push(u);
-  }
-  items.push({ value: -2, label: api.i18n.t("Units"), group: true });
-  for (const u of units2) if (u.value < 228) items.push(u);
+  if (classes.length) items.push({ value: -1, label: api.i18n.t("Classes"), group: true }, ...classes);
+  items.push({ value: -2, label: api.i18n.t("Units"), group: true }, ...units2);
   return pickChoice(api, anchor, items, onPick, {
     current: current3,
     searchable: true,
@@ -6569,7 +6589,7 @@ function pickUnitType(api, host, anchor, current3, onPick, options = {}) {
     actions: [{ label: api.i18n.t("Pick on map"), run: (h) => {
       h.close();
       void host.pickUnit(api.i18n.t("Click a unit to take its type")).then((u) => {
-        if (u) onPick(u.unitId);
+        if (u && u.unitId < (options.max ?? Infinity)) onPick(u.unitId);
       });
     } }]
   });
@@ -6873,7 +6893,7 @@ function filterChips(api, host, store, f, update) {
   const t2 = api.i18n.t;
   const namer = host.namer(store.sidecar);
   const unit = chip2(api, f.unit === null ? t2("any unit") : namer.unit(f.unit));
-  unit.addEventListener("click", () => pickUnitType(api, host, unit, f.unit ?? 228, (v) => update({ unit: v >= 228 ? null : v }), { classes: true }));
+  unit.addEventListener("click", () => pickUnitType(api, host, unit, f.unit ?? 229, (v) => update({ unit: filterUnit(v) }), { classes: true }));
   const owner = chip2(api, f.owner === null ? t2("anyone") : namer.player(f.owner), "");
   owner.addEventListener("click", () => pickChoice(api, owner, [{ value: -1, label: t2("anyone") }, ...Array.from({ length: 12 }, (_, i) => ({ value: i, label: namer.player(i), color: namer.playerColor?.(i) ?? null }))], (v) => update({ owner: v < 0 ? null : v }), { current: f.owner ?? -1 }));
   const loc = chip2(api, f.location === null ? t2("anywhere") : namer.location(f.location), "");
@@ -7267,7 +7287,7 @@ function newScan(host, store, query = "", unit = 0) {
   const pct = /percent|%/i.test(query);
   const field2 = /shield/i.test(query) ? pct ? "shieldsPct" : "shields" : /energy|mana/i.test(query) ? pct ? "energyPct" : "energy" : /under attack/i.test(query) ? "underAttack" : /target/i.test(query) ? "hasTarget" : /burrow/i.test(query) ? "burrowed" : /moving/i.test(query) ? "speed" : /attacking|order/i.test(query) ? "order" : /kills/i.test(query) ? "kills" : pct ? "hpPct" : "hp";
   const yesNo = FIELDS[fieldIndex(field2)].yesNo;
-  const record = { id: `s${Date.now().toString(36)}`, kind: "scan", cell: cell2, unit, owner: PlayerGroup.Player1, location: null, field: field2, cmp: yesNo ? "=" : /above|over|more/i.test(query) ? ">" : "<", value: yesNo ? 1 : pct ? 30 : 20 };
+  const record = { id: `s${Date.now().toString(36)}`, kind: "scan", cell: cell2, unit: filterUnit(unit), owner: PlayerGroup.Player1, location: null, field: field2, cmp: yesNo ? "=" : /above|over|more/i.test(query) ? ">" : "<", value: yesNo ? 1 : pct ? 30 : 20 };
   return { condition: deathsIs2(cell2, Comparison.Exactly, 1), builds: [...store.sidecar.builds, record] };
 }
 function newHook(host, store, what, query = "", named_ = {}) {
@@ -7276,7 +7296,7 @@ function newHook(host, store, what, query = "", named_ = {}) {
   const named = store.sidecar.counters;
   const a2 = named[0] ? [named[0].player, named[0].unit] : freeCell(store, host, [flag]) ?? [0, 181];
   const id = `b${Date.now().toString(36)}`;
-  const filter = { unit: named_.unit === void 0 ? 0 : named_.unit, owner: PlayerGroup.Player1, location: named_.location ?? null };
+  const filter = { unit: named_.unit === void 0 ? 0 : filterUnit(named_.unit), owner: PlayerGroup.Player1, location: named_.location ?? null };
   const record = what === "text" ? { id, kind: "text", flag, parts: [{ text: "Score: " }, { counter: a2 }], to: "all" } : what === "math" ? { id, kind: "math", flag, op: /random/i.test(query) ? "rand" : /divid/i.test(query) ? "div" : /modul|remainder/i.test(query) ? "mod" : "mul", a: a2, b: /random/i.test(query) ? 100 : 2, to: a2 } : what === "count" ? { id, kind: "count", flag, ...filter, to: a2 } : what === "read" ? { id, kind: "read", flag, ...filter, field: "hp", to: a2 } : what === "setloc" ? { id, kind: "setloc", flag, location: host.locations().find((l) => l.value !== 64)?.value ?? 1, x: 0, y: 0, width: null, height: null, .../\bby\b|shift|offset|slide|scroll/i.test(query) ? { relative: true, x: 32 } : {} } : what === "pick" ? { id, kind: "pick", flag, ...filter, by: /random|lottery|any one/i.test(query) ? "random" : /near|clos|mouse|under/i.test(query) ? "nearest" : /strong|most|great|high/i.test(query) ? "max" : "min", field: /kill/i.test(query) ? "kills" : "hp", near: /near|clos|mouse|under/i.test(query) ? host.locations().find((l) => l.value !== 64)?.value ?? 1 : null, locate: null, to: null, do: /kill/i.test(query) ? { kill: true } : null } : { id, kind: "foreach", flag, ...filter, do: /give to|owner/i.test(query) ? { give: 1 } : /kill/i.test(query) ? { kill: true } : /damage|hurt|take|drain/i.test(query) ? { adjust: /shield/i.test(query) ? "shields" : /energy|mana/i.test(query) ? "energy" : "hp", delta: -20 } : /heal|restore|regen/i.test(query) ? { adjust: /shield/i.test(query) ? "shields" : /energy|mana/i.test(query) ? "energy" : "hp", delta: 20 } : { set: "hp", value: 100 } };
   return { action: flagAction({ cell: flag }), builds: [...store.sidecar.builds, record] };
 }
@@ -7284,205 +7304,8 @@ function needsBuild(store, trigger4) {
   return trigger4.actions.some((a2) => a2.type === ActionType.SetDeaths && a2.modifier === SetModifier.SetTo && hookOf(store, a2) !== null) || trigger4.conditions.some((c2) => conditionRowOf(store, c2) !== null);
 }
 
-// src/model/preflight.ts
-function preflight(input) {
-  const out = [];
-  const { list, sidecar, options } = input;
-  const locExists = (n) => n === 64 || n >= 1 && n <= 63 && input.locations[n - 1] !== void 0 && !input.locations[n - 1].empty;
-  const triggerOf = (id) => {
-    const b = id === null ? void 0 : sidecar.builds.find((x) => x.id === id);
-    return b ? refs(list, b)[0] : void 0;
-  };
-  const seenChat = /* @__PURE__ */ new Map();
-  for (const b of sidecar.builds) {
-    const carriers = refs(list, b);
-    const at = carriers[0];
-    if (b.kind === "chat") {
-      const bad = checkChatMessage(b.message);
-      if (bad) out.push({ level: "error", text: t('The chat command "{message}": {problem}', { message: b.message, problem: bad }) });
-      const key = b.message.toLowerCase();
-      if (seenChat.has(key)) out.push({ level: "warn", text: t('Two chat commands say "{message}"; the second never fires on its own.', { message: b.message }) });
-      seenChat.set(key, 1);
-      continue;
-    }
-    if (!carriers.length) {
-      out.push({ level: "info", text: b.kind === "scan" ? t("A unit check no trigger uses is still in the map's Magenta data; it is built, and never fires.") : t("A build row no trigger uses is still in the map's Magenta data; it is built, and never runs.") });
-      continue;
-    }
-    if ("location" in b && b.location !== null && !locExists(b.location)) out.push({ level: "error", text: t("A build row names location {n}, which the map no longer has.", { n: b.location }), trigger: at });
-    if (b.kind === "foreach" || b.kind === "pick") {
-      const d = b.do;
-      if (d && "order" in d) {
-        if (!locExists(d.location)) out.push({ level: "error", text: t("The order row's target location ({n}) is gone.", { n: d.location }), trigger: at });
-      }
-      if (d && "locate" in d && !locExists(d.locate)) out.push({ level: "error", text: t("The row centres location {n} on the unit, and the map no longer has it.", { n: d.locate }), trigger: at });
-    }
-    if (b.kind === "pick") {
-      if (b.locate !== null && !locExists(b.locate)) out.push({ level: "error", text: t("The pick row centres location {n} on the unit, and the map no longer has it.", { n: b.locate }), trigger: at });
-      if (typeof b.near === "number" && !locExists(b.near)) out.push({ level: "error", text: t("The pick row measures from location {n}, which the map no longer has.", { n: b.near }), trigger: at });
-    }
-  }
-  for (const u of input.rendered.unsupported) {
-    const at = triggerOf(u.id);
-    out.push({ level: "error", text: t("Not built: {why}.", { why: u.why }), ...at !== void 0 ? { trigger: at } : {} });
-  }
-  for (const n of input.rendered.notes) {
-    const at = triggerOf(n.id);
-    out.push({ level: "warn", text: t("Built in part: {note}.", { note: n.note }), ...at !== void 0 ? { trigger: at } : {} });
-  }
-  if (options.camera) {
-    const l = input.locations[options.camera.location - 1];
-    if (!l || l.empty) out.push({ level: "error", text: t("The camera follows location {n}, which the map no longer has.", { n: options.camera.location }) });
-  }
-  if (options.bgm && !input.soundPresent(options.bgm.path)) out.push({ level: "error", text: t("The background music {file} is not in the map archive.", { file: options.bgm.path.split("\\").pop() ?? "" }) });
-  if (!input.trigscript) out.push({ level: "error", text: t("The TrigScript plugin is not running: it is what builds the rows into the map. Install or turn it on under Plugins \u25B8 Manage Plugins\u2026") });
-  const rank = { error: 0, warn: 1, info: 2 };
-  return out.sort((a2, b) => rank[a2.level] - rank[b.level]);
-}
-
-// src/ui/build.ts
-function buildStatus(store) {
-  return { triggers: store.list.filter((t2) => needsBuild(store, t2)).length };
-}
-function openBuildDialog(api, host, store, everyFrame) {
-  const t2 = api.i18n.t;
-  const el = api.ui.el;
-  const w = api.ui.widgets;
-  const options = { ...DEFAULT_OPTIONS, ...store.sidecar.settings.build };
-  const saveOptions = () => store.updateSidecar(t2("Build options"), { settings: { ...store.sidecar.settings, build: options } });
-  const locations = host.locations().filter((l) => l.value !== 64);
-  const cameraOn = w.checkbox(t2("The camera follows a location, for everyone"), { value: !!options.camera });
-  const cameraLoc = w.select(locations.map((l) => ({ value: l.value, label: l.label })), { value: options.camera?.location ?? locations[0]?.value ?? 0 });
-  const inertia = w.number({ value: options.camera?.inertia ?? 5, min: 1, max: 60 });
-  const maxspeed = w.number({ value: options.camera?.maxspeed ?? 48, min: 1, max: 999 });
-  const readCamera = () => {
-    const loc = locations.find((l) => l.value === Number(cameraLoc.value));
-    options.camera = cameraOn.input.checked && loc ? { location: loc.value, name: loc.label, inertia: Number(inertia.value) || 5, maxspeed: Number(maxspeed.value) || 48 } : null;
-  };
-  const sounds = host.sounds().filter((s) => s.value !== 0);
-  const bgmOn = w.checkbox(t2("Loop a sound as background music"), { value: !!options.bgm });
-  const bgmPath = w.select(sounds.map((s) => ({ value: s.value, label: s.label })), { value: sounds.find((s) => api.names.string(s.value) === options.bgm?.path)?.value ?? sounds[0]?.value ?? 0 });
-  const bgmLen = w.number({ value: options.bgm?.length ?? 60, min: 1, max: 3600, step: 0.5 });
-  const readBgm = () => {
-    if (!bgmOn.input.checked || !sounds.length) {
-      options.bgm = null;
-      return;
-    }
-    const path = api.names.string(Number(bgmPath.value)) ?? "";
-    options.bgm = { path, length: Number(bgmLen.value) || 60 };
-  };
-  const noAir = w.checkbox(t2("Air units pass through one another"), { value: options.noAirCollision });
-  const unlimiter = w.checkbox(t2("Lift the sprite and image limits"), { value: options.unlimiter });
-  const readAll = () => {
-    readCamera();
-    readBgm();
-    options.noAirCollision = noAir.input.checked;
-    options.unlimiter = unlimiter.input.checked;
-  };
-  const status = w.statusLine();
-  const summaryEl = el("ul", {});
-  const problemsEl = el("ul", { className: "mg-preflight" });
-  const builderLine = el("div", { className: "hint" });
-  let handle = null;
-  const renderSummary = () => {
-    const r = renderForMap(host);
-    summaryEl.replaceChildren(
-      el("li", {}, r?.chats ? t2("{n, plural, one {# chat command} other {# chat commands}}", { n: r.chats }) : t2("No chat commands")),
-      el("li", {}, r?.rows ? t2("{n, plural, one {# build row} other {# build rows}} (text, maths, unit passes, checks)", { n: r.rows }) : t2("No build rows")),
-      el("li", {}, r?.inputs ? t2("Synced input (keys, clicks, mouse), carried by the build itself") : t2("No synced input")),
-      el("li", {}, everyFrame || r && r.rows + r.chats + r.inputs > 0 ? t2("Triggers run every frame") : t2("Triggers run every two seconds"))
-    );
-  };
-  const renderProblems = async () => {
-    readAll();
-    saveOptions();
-    const r = renderForMap(host);
-    const svc = trigscript(api);
-    const list = preflight({
-      list: store.list,
-      sidecar: store.sidecar,
-      options,
-      locations: host.locationSlots(),
-      soundPresent: (p) => host.soundPresent(p),
-      rendered: r?.rendered ?? { unsupported: [], notes: [] },
-      trigscript: !!svc
-    });
-    const show = (problems) => {
-      problemsEl.replaceChildren();
-      problemsEl.hidden = !problems.length;
-      for (const p of problems) {
-        const li = el("li", { className: p.level }, p.text);
-        if (p.trigger !== void 0) {
-          const i = p.trigger;
-          li.append(el("button", { type: "button", className: "mg-sim-link", onclick: () => {
-            store.select(i);
-            handle?.close();
-          } }, t2("Show")));
-        }
-        problemsEl.append(li);
-      }
-    };
-    show(list);
-    if (svc && r && !r.rendered.unsupported.length && r.rows + r.chats + r.inputs > 0) {
-      try {
-        const checked = await svc.check({ [ENTRY]: r.rendered.source }, [ENTRY]);
-        const more = checked.problems.map((p) => ({ level: "error", text: t2("The rendered rows do not build: {message} ({file}, line {line}). This is Magenta's to fix: say so.", { message: p.message, file: p.file, line: p.line }) }));
-        if (more.length) show([...more, ...list]);
-        else if (!list.some((p) => p.level === "error")) status.set(t2("Checked by TrigScript: the rows build. They go into the map on the next save."), "ok");
-      } catch (err) {
-        show([{ level: "warn", text: t2("TrigScript could not check the rows: {why}", { why: String(err.message ?? err) }) }, ...list]);
-      }
-    }
-    return list;
-  };
-  const renderBuilder = () => {
-    const svc = trigscript(api);
-    builderLine.textContent = svc ? t2("Built into the saved map by TrigScript {version} when the map is saved, tested or exported: nothing to press, nothing downloaded, and the map is built in under a second.", { version: svc.versions.plugin }) : t2("The TrigScript plugin builds the rows into the saved map; it is not running.");
-  };
-  const watching = api.services.watch(TRIGSCRIPT_BUILD_SERVICE, () => {
-    renderBuilder();
-    void renderProblems();
-  });
-  for (const box of [cameraOn, bgmOn, noAir, unlimiter]) box.input.addEventListener("change", () => void renderProblems());
-  cameraLoc.addEventListener("change", () => void renderProblems());
-  bgmPath.addEventListener("change", () => void renderProblems());
-  handle = api.ui.dialog({
-    title: t2("Build"),
-    size: "md",
-    mount(body) {
-      renderSummary();
-      renderBuilder();
-      void renderProblems();
-      body.append(
-        w.hint(t2("The rows below have no record in the game's own trigger set: TrigScript builds the code for them into the map as it is saved, as it builds the map's own script. Only StarCraft: Remastered plays a built map; keep the source map, and share the saved one.")),
-        summaryEl,
-        problemsEl,
-        w.group(
-          t2("Map-wide"),
-          w.column(cameraOn, w.form([{ label: t2("Location"), field: cameraLoc }, { label: t2("Inertia"), field: inertia }, { label: t2("Max speed"), field: maxspeed }])),
-          w.column(bgmOn, w.form([{ label: t2("Sound"), field: bgmPath }, { label: t2("Seconds"), field: bgmLen }])),
-          noAir,
-          unlimiter,
-          w.hint(t2("The camera and the music are built as a program of each human's own. The other two were code patches of euddraft's, which TrigScript's build does not have: a map that ticks one is not built until it is unticked."))
-        ),
-        builderLine,
-        status
-      );
-      return () => watching.dispose();
-    },
-    buttons: [{ label: t2("Close") }]
-  });
-}
-
-// src/ui/layout.ts
-var KEY = "layout";
-var DEFAULT_LAYOUT = { dock: "float", width: 820, height: 560, list: 240, listStacked: 160, listHidden: false };
-var layout = (api) => ({ ...DEFAULT_LAYOUT, ...api.storage.get(KEY, {}) });
-var setLayout = (api, patch) => {
-  api.storage.set(KEY, { ...layout(api), ...patch });
-};
-
 // src/model/checks.ts
+var modMemoryText = (set) => t("EUD and build rows read the game's own memory layout, which a mod with plugins may move, so they may not work with {set}: they are for the game's own data.", { set });
 var LOCAL_ACTIONS = /* @__PURE__ */ new Set([ActionType.Comment, ActionType.PreserveTrigger, ActionType.Wait, ActionType.DisplayText, ActionType.PlayWav, ActionType.CenterView, ActionType.MinimapPing, ActionType.TalkingPortrait, ActionType.Transmission, ActionType.MuteUnitSpeech, ActionType.UnmuteUnitSpeech, ActionType.SetMissionObjectives, ActionType.LeaderboardControl, ActionType.LeaderboardControlAt, ActionType.LeaderboardResources, ActionType.LeaderboardKills, ActionType.LeaderboardPoints, ActionType.LeaderboardGoalControl, ActionType.LeaderboardGoalControlAt, ActionType.LeaderboardGoalResources, ActionType.LeaderboardGoalKills, ActionType.LeaderboardGoalPoints, ActionType.LeaderboardComputerPlayers, ActionType.LeaderboardGreed]);
 var LOCATION_ANYWHERE = 64;
 var REMASTERED_VER = 206;
@@ -7594,6 +7417,18 @@ function check(trigger4, ctx = {}) {
       }
     }
   });
+  if (ctx.modDataSet) {
+    const memoryCondition = conditions.some((c2, index) => !isConditionDisabled(c2) && (c2.type === ConditionType.Deaths && isEud(c2.player) || !!ctx.buildRow?.("condition", index)));
+    const memoryAction = actions.some((a2, index) => !isActionDisabled(a2) && (a2.type === ActionType.SetDeaths && isEud(a2.player) || !!ctx.buildRow?.("action", index)));
+    if (memoryCondition || memoryAction) out.push({ level: "info", text: modMemoryText(ctx.modDataSet) });
+    const later = (unit) => unit > 232;
+    conditions.forEach((c2, index) => {
+      if (!isConditionDisabled(c2) && c2.type === ConditionType.Deaths && !isEud(c2.player) && later(c2.unitId)) out.push({ level: "info", text: t("The game keeps death counts for 228 unit types; whether a later type's count is kept is up to the mod, and Magenta does not make a counter of it."), at: { kind: "condition", index } });
+    });
+    actions.forEach((a2, index) => {
+      if (!isActionDisabled(a2) && a2.type === ActionType.SetDeaths && !isEud(a2.player) && later(a2.unitId)) out.push({ level: "info", text: t("The game keeps death counts for 228 unit types; whether a later type's count is kept is up to the mod, and Magenta does not make a counter of it."), at: { kind: "action", index } });
+    });
+  }
   if (ctx.fileVersion !== void 0 && ctx.fileVersion < REMASTERED_VER) {
     const text = t("Only StarCraft: Remastered runs this row; the map is marked {revision}, a revision 1.16.1 also plays.", { revision: ctx.versionLabel ?? `VER ${ctx.fileVersion}` });
     conditions.forEach((c2, index) => {
@@ -7607,6 +7442,206 @@ function check(trigger4, ctx = {}) {
   }
   return out;
 }
+
+// src/model/preflight.ts
+function preflight(input) {
+  const out = [];
+  const { list, sidecar, options } = input;
+  const locExists = (n) => n === 64 || n >= 1 && n <= 63 && input.locations[n - 1] !== void 0 && !input.locations[n - 1].empty;
+  const triggerOf = (id) => {
+    const b = id === null ? void 0 : sidecar.builds.find((x) => x.id === id);
+    return b ? refs(list, b)[0] : void 0;
+  };
+  const seenChat = /* @__PURE__ */ new Map();
+  for (const b of sidecar.builds) {
+    const carriers = refs(list, b);
+    const at = carriers[0];
+    if (b.kind === "chat") {
+      const bad = checkChatMessage(b.message);
+      if (bad) out.push({ level: "error", text: t('The chat command "{message}": {problem}', { message: b.message, problem: bad }) });
+      const key = b.message.toLowerCase();
+      if (seenChat.has(key)) out.push({ level: "warn", text: t('Two chat commands say "{message}"; the second never fires on its own.', { message: b.message }) });
+      seenChat.set(key, 1);
+      continue;
+    }
+    if (!carriers.length) {
+      out.push({ level: "info", text: b.kind === "scan" ? t("A unit check no trigger uses is still in the map's Magenta data; it is built, and never fires.") : t("A build row no trigger uses is still in the map's Magenta data; it is built, and never runs.") });
+      continue;
+    }
+    if ("location" in b && b.location !== null && !locExists(b.location)) out.push({ level: "error", text: t("A build row names location {n}, which the map no longer has.", { n: b.location }), trigger: at });
+    if (b.kind === "foreach" || b.kind === "pick") {
+      const d = b.do;
+      if (d && "order" in d) {
+        if (!locExists(d.location)) out.push({ level: "error", text: t("The order row's target location ({n}) is gone.", { n: d.location }), trigger: at });
+      }
+      if (d && "locate" in d && !locExists(d.locate)) out.push({ level: "error", text: t("The row centres location {n} on the unit, and the map no longer has it.", { n: d.locate }), trigger: at });
+    }
+    if (b.kind === "pick") {
+      if (b.locate !== null && !locExists(b.locate)) out.push({ level: "error", text: t("The pick row centres location {n} on the unit, and the map no longer has it.", { n: b.locate }), trigger: at });
+      if (typeof b.near === "number" && !locExists(b.near)) out.push({ level: "error", text: t("The pick row measures from location {n}, which the map no longer has.", { n: b.near }), trigger: at });
+    }
+  }
+  for (const u of input.rendered.unsupported) {
+    const at = triggerOf(u.id);
+    out.push({ level: "error", text: t("Not built: {why}.", { why: u.why }), ...at !== void 0 ? { trigger: at } : {} });
+  }
+  for (const n of input.rendered.notes) {
+    const at = triggerOf(n.id);
+    out.push({ level: "warn", text: t("Built in part: {note}.", { note: n.note }), ...at !== void 0 ? { trigger: at } : {} });
+  }
+  if (options.camera) {
+    const l = input.locations[options.camera.location - 1];
+    if (!l || l.empty) out.push({ level: "error", text: t("The camera follows location {n}, which the map no longer has.", { n: options.camera.location }) });
+  }
+  if (options.bgm && !input.soundPresent(options.bgm.path)) out.push({ level: "error", text: t("The background music {file} is not in the map archive.", { file: options.bgm.path.split("\\").pop() ?? "" }) });
+  if (input.modDataSet && (sidecar.builds.length > 0 || sidecar.msqc)) out.push({ level: "info", text: modMemoryText(input.modDataSet) });
+  if (!input.trigscript) out.push({ level: "error", text: t("The TrigScript plugin is not running: it is what builds the rows into the map. Install or turn it on under Plugins \u25B8 Manage Plugins\u2026") });
+  const rank = { error: 0, warn: 1, info: 2 };
+  return out.sort((a2, b) => rank[a2.level] - rank[b.level]);
+}
+
+// src/ui/build.ts
+function buildStatus(store) {
+  return { triggers: store.list.filter((t2) => needsBuild(store, t2)).length };
+}
+function openBuildDialog(api, host, store, everyFrame) {
+  const t2 = api.i18n.t;
+  const el = api.ui.el;
+  const w = api.ui.widgets;
+  const options = { ...DEFAULT_OPTIONS, ...store.sidecar.settings.build };
+  const saveOptions = () => store.updateSidecar(t2("Build options"), { settings: { ...store.sidecar.settings, build: options } });
+  const locations = host.locations().filter((l) => l.value !== 64);
+  const cameraOn = w.checkbox(t2("The camera follows a location, for everyone"), { value: !!options.camera });
+  const cameraLoc = w.select(locations.map((l) => ({ value: l.value, label: l.label })), { value: options.camera?.location ?? locations[0]?.value ?? 0 });
+  const inertia = w.number({ value: options.camera?.inertia ?? 5, min: 1, max: 60 });
+  const maxspeed = w.number({ value: options.camera?.maxspeed ?? 48, min: 1, max: 999 });
+  const readCamera = () => {
+    const loc = locations.find((l) => l.value === Number(cameraLoc.value));
+    options.camera = cameraOn.input.checked && loc ? { location: loc.value, name: loc.label, inertia: Number(inertia.value) || 5, maxspeed: Number(maxspeed.value) || 48 } : null;
+  };
+  const sounds = host.sounds().filter((s) => s.value !== 0);
+  const bgmOn = w.checkbox(t2("Loop a sound as background music"), { value: !!options.bgm });
+  const bgmPath = w.select(sounds.map((s) => ({ value: s.value, label: s.label })), { value: sounds.find((s) => api.names.string(s.value) === options.bgm?.path)?.value ?? sounds[0]?.value ?? 0 });
+  const bgmLen = w.number({ value: options.bgm?.length ?? 60, min: 1, max: 3600, step: 0.5 });
+  const readBgm = () => {
+    if (!bgmOn.input.checked || !sounds.length) {
+      options.bgm = null;
+      return;
+    }
+    const path = api.names.string(Number(bgmPath.value)) ?? "";
+    options.bgm = { path, length: Number(bgmLen.value) || 60 };
+  };
+  const noAir = w.checkbox(t2("Air units pass through one another"), { value: options.noAirCollision });
+  const unlimiter = w.checkbox(t2("Lift the sprite and image limits"), { value: options.unlimiter });
+  const readAll = () => {
+    readCamera();
+    readBgm();
+    options.noAirCollision = noAir.input.checked;
+    options.unlimiter = unlimiter.input.checked;
+  };
+  const status = w.statusLine();
+  const summaryEl = el("ul", {});
+  const problemsEl = el("ul", { className: "mg-preflight" });
+  const builderLine = el("div", { className: "hint" });
+  let handle = null;
+  const renderSummary = () => {
+    const r = renderForMap(host);
+    summaryEl.replaceChildren(
+      el("li", {}, r?.chats ? t2("{n, plural, one {# chat command} other {# chat commands}}", { n: r.chats }) : t2("No chat commands")),
+      el("li", {}, r?.rows ? t2("{n, plural, one {# build row} other {# build rows}} (text, maths, unit passes, checks)", { n: r.rows }) : t2("No build rows")),
+      el("li", {}, r?.inputs ? t2("Synced input (keys, clicks, mouse), carried by the build itself") : t2("No synced input")),
+      el("li", {}, everyFrame || r && r.rows + r.chats + r.inputs > 0 ? t2("Triggers run every frame") : t2("Triggers run every two seconds"))
+    );
+  };
+  const renderProblems = async () => {
+    readAll();
+    saveOptions();
+    const r = renderForMap(host);
+    const svc = trigscript(api);
+    const list = preflight({
+      list: store.list,
+      sidecar: store.sidecar,
+      options,
+      locations: host.locationSlots(),
+      soundPresent: (p) => host.soundPresent(p),
+      rendered: r?.rendered ?? { unsupported: [], notes: [] },
+      trigscript: !!svc,
+      modDataSet: host.modDataSet()
+    });
+    const show = (problems) => {
+      problemsEl.replaceChildren();
+      problemsEl.hidden = !problems.length;
+      for (const p of problems) {
+        const li = el("li", { className: p.level }, p.text);
+        if (p.trigger !== void 0) {
+          const i = p.trigger;
+          li.append(el("button", { type: "button", className: "mg-sim-link", onclick: () => {
+            store.select(i);
+            handle?.close();
+          } }, t2("Show")));
+        }
+        problemsEl.append(li);
+      }
+    };
+    show(list);
+    if (svc && r && !r.rendered.unsupported.length && r.rows + r.chats + r.inputs > 0) {
+      try {
+        const checked = await svc.check({ [ENTRY]: r.rendered.source }, [ENTRY]);
+        const more = checked.problems.map((p) => ({ level: "error", text: t2("The rendered rows do not build: {message} ({file}, line {line}). This is Magenta's to fix: say so.", { message: p.message, file: p.file, line: p.line }) }));
+        if (more.length) show([...more, ...list]);
+        else if (!list.some((p) => p.level === "error")) status.set(t2("Checked by TrigScript: the rows build. They go into the map on the next save."), "ok");
+      } catch (err) {
+        show([{ level: "warn", text: t2("TrigScript could not check the rows: {why}", { why: String(err.message ?? err) }) }, ...list]);
+      }
+    }
+    return list;
+  };
+  const renderBuilder = () => {
+    const svc = trigscript(api);
+    builderLine.textContent = svc ? t2("Built into the saved map by TrigScript {version} when the map is saved, tested or exported: nothing to press, nothing downloaded, and the map is built in under a second.", { version: svc.versions.plugin }) : t2("The TrigScript plugin builds the rows into the saved map; it is not running.");
+  };
+  const watching = api.services.watch(TRIGSCRIPT_BUILD_SERVICE, () => {
+    renderBuilder();
+    void renderProblems();
+  });
+  for (const box of [cameraOn, bgmOn, noAir, unlimiter]) box.input.addEventListener("change", () => void renderProblems());
+  cameraLoc.addEventListener("change", () => void renderProblems());
+  bgmPath.addEventListener("change", () => void renderProblems());
+  handle = api.ui.dialog({
+    title: t2("Build"),
+    size: "md",
+    mount(body) {
+      renderSummary();
+      renderBuilder();
+      void renderProblems();
+      body.append(
+        w.hint(t2("The rows below have no record in the game's own trigger set: TrigScript builds the code for them into the map as it is saved, as it builds the map's own script. Only StarCraft: Remastered plays a built map; keep the source map, and share the saved one.")),
+        summaryEl,
+        problemsEl,
+        w.group(
+          t2("Map-wide"),
+          w.column(cameraOn, w.form([{ label: t2("Location"), field: cameraLoc }, { label: t2("Inertia"), field: inertia }, { label: t2("Max speed"), field: maxspeed }])),
+          w.column(bgmOn, w.form([{ label: t2("Sound"), field: bgmPath }, { label: t2("Seconds"), field: bgmLen }])),
+          noAir,
+          unlimiter,
+          w.hint(t2("The camera and the music are built as a program of each human's own. The other two were code patches of euddraft's, which TrigScript's build does not have: a map that ticks one is not built until it is unticked."))
+        ),
+        builderLine,
+        status
+      );
+      return () => watching.dispose();
+    },
+    buttons: [{ label: t2("Close") }]
+  });
+}
+
+// src/ui/layout.ts
+var KEY = "layout";
+var DEFAULT_LAYOUT = { dock: "float", width: 820, height: 560, list: 240, listStacked: 160, listHidden: false };
+var layout = (api) => ({ ...DEFAULT_LAYOUT, ...api.storage.get(KEY, {}) });
+var setLayout = (api, patch) => {
+  api.storage.set(KEY, { ...layout(api), ...patch });
+};
 
 // src/model/search.ts
 var norm2 = (s) => s.toLowerCase().replace(/[^\p{L}\p{N} ]+/gu, " ").replace(/\s+/g, " ").trim();
@@ -8206,7 +8241,7 @@ function renderNative(ctx, kind, record, segments, into, h) {
     into.append(chip3);
   }
   const isDeaths = record.type === (kind === "condition" ? ConditionType.Deaths : ActionType.SetDeaths);
-  if (isDeaths && record.player < 27 && !segments.some((s) => s.kind === "chip" && s.role === "counter")) {
+  if (isDeaths && record.player < 27 && record.unitId <= 232 && !segments.some((s) => s.kind === "chip" && s.role === "counter")) {
     const name = api.ui.el("button", { type: "button", className: "mg-chip", title: t2("Give this death counter a name, and use it by name everywhere") }, t2("name\u2026"));
     name.addEventListener("click", () => nameCounter(ctx, record.player, record.unitId));
     into.append(" ", name);
@@ -8300,7 +8335,7 @@ function renderEud(ctx, kind, row, into, onChange, onText) {
       if (seg.slot === "value") {
         const v = entry2.value;
         if (v?.choices) pickChoice(api, chip3, v.choices.map((c2) => ({ value: c2.value, label: translate(c2.label) })), (value) => update({ value }), { current: row.value });
-        else if (v?.kind === "unit") pickUnitType(api, host, chip3, row.value, (value) => update({ value }), { classes: false });
+        else if (v?.kind === "unit") pickUnitType(api, host, chip3, row.value, (value) => update({ value }), { classes: false, max: v.max !== void 0 ? v.max + 1 : GAME_UNIT_TYPES });
         else if (v?.kind === "player") pickPlayer(api, host, chip3, row.value, (value) => update({ value }), { eud: false });
         else if (v?.kind === "weapon") pickNamed(api, chip3, [...host.weapons(), { value: 130, label: t2("No weapon") }], row.value, (value) => update({ value }));
         else if (v?.kind === "string") pickText(api, chip3, ctx.namer.string(row.value) ?? "", (text) => onText?.(text, (index) => ({ ...row, value: index })), { title: translate(entry2.name) });
@@ -8311,7 +8346,7 @@ function renderEud(ctx, kind, row, into, onChange, onText) {
       const setArg = (value) => update({ args: { [arg.name]: value } });
       switch (arg.kind) {
         case "unit":
-          pickUnitType(api, host, chip3, seg.value, setArg, { classes: false });
+          pickUnitType(api, host, chip3, seg.value, setArg, { classes: false, max: arg.max });
           break;
         case "player":
           pickPlayer(api, host, chip3, seg.value, setArg, { eud: false });
@@ -8587,6 +8622,8 @@ function renderEditor(deps, root) {
     fileVersion: version?.fileVersion,
     versionLabel: version?.label,
     magentaRow: (kind, i) => kind === "condition" ? !!conditionRowOf(store, liveConditions(trigger4)[i]) || !!cmp && cmp.rows[0] === i : !!hookOf(store, liveActions(trigger4)[i]) || !!counterExpansionOf(store, liveActions(trigger4)[i]),
+    buildRow: (kind, i) => kind === "condition" ? !!conditionRowOf(store, liveConditions(trigger4)[i]) : !!hookOf(store, liveActions(trigger4)[i]),
+    modDataSet: host.modDataSet(),
     deferredLocation: (a2) => {
       const hook = hookOf(store, a2);
       if (!hook) return null;
@@ -9102,7 +9139,7 @@ function runsFor(t2, player2, world) {
   return f >= 0 && !!t2.players[PlayerGroup.Force1 + f];
 }
 function matchesUnit(world, unitId, wanted) {
-  if (wanted < UnitClass.Any) return unitId === wanted;
+  if (wanted < UnitClass.Any || wanted > UnitClass.Factories) return unitId === wanted;
   if (wanted === UnitClass.Any) return true;
   if (wanted === UnitClass.Men) return !world.isBuilding(unitId);
   return world.isBuilding(unitId);
@@ -9330,7 +9367,7 @@ function runAction(a2, i, current3, s, world) {
     }
     case ActionType.CreateUnit:
     case ActionType.CreateUnitWithProperties: {
-      if (a2.location === 0 || a2.unitId >= UnitClass.Any) return {};
+      if (a2.location === 0 || isUnitClass(a2.unitId)) return {};
       for (const p of slots(a2.player)) putUnits(s, world, p, a2.unitId, Math.max(1, a2.modifier), a2.location);
       return {};
     }
@@ -10277,6 +10314,7 @@ function createPanel(api, hooks = {}) {
     });
     const offLang = api.events.on("language", () => setTimeout(relayout, 0));
     const offSettings = api.events.on("settings", render);
+    const offGameData = api.events.on("gameData", render);
     const resize = new ResizeObserver(() => {
       root.classList.toggle("narrow", root.clientWidth < NARROW);
       root.classList.toggle("stacked", root.clientWidth < STACKED);
@@ -10615,6 +10653,7 @@ function createPanel(api, hooks = {}) {
       offFile.dispose();
       offDoc.dispose();
       offSettings.dispose();
+      offGameData.dispose();
       offLang.dispose();
       resize.disconnect();
       closePopover();
@@ -11806,7 +11845,9 @@ var KO = {
   "{why}. The map's Build dialog (\u22EF \u25B8 Build\u2026) lists it.": "{why}. \uB9F5\uC758 \uBE4C\uB4DC \uB300\uD654\uC0C1\uC790(\u22EF \u25B8 \uBE4C\uB4DC\u2026)\uC5D0 \uB098\uC635\uB2C8\uB2E4.",
   "{why}, and {n, plural, one {# more row} other {# more rows}} the same. The map's Build dialog (\u22EF \u25B8 Build\u2026) lists them.": "{why}, \uADF8\uB9AC\uACE0 \uAC19\uC740 \uD589 {n}\uAC1C \uB354. \uB9F5\uC758 \uBE4C\uB4DC \uB300\uD654\uC0C1\uC790(\u22EF \u25B8 \uBE4C\uB4DC\u2026)\uC5D0 \uB098\uC635\uB2C8\uB2E4.",
   "How many triggers carry a row TrigScript builds code for on save; click for the list and the checks": "\uC800\uC7A5 \uB54C TrigScript\uAC00 \uCF54\uB4DC\uB97C \uBE4C\uB4DC\uD558\uB294 \uD589\uC744 \uAC00\uC9C4 \uD2B8\uB9AC\uAC70 \uC218. \uD074\uB9AD\uD558\uBA74 \uBAA9\uB85D\uACFC \uAC80\uC0AC\uAC00 \uB098\uC635\uB2C8\uB2E4",
-  "Build \xB7 {n}": "\uBE4C\uB4DC \xB7 {n}"
+  "Build \xB7 {n}": "\uBE4C\uB4DC \xB7 {n}",
+  "EUD and build rows read the game's own memory layout, which a mod with plugins may move, so they may not work with {set}: they are for the game's own data.": "EUD \uD589\uACFC \uBE4C\uB4DC \uD589\uC740 \uAC8C\uC784 \uC790\uCCB4\uC758 \uBA54\uBAA8\uB9AC \uBC30\uCE58\uB97C \uC77D\uB294\uB370, \uD50C\uB7EC\uADF8\uC778\uC774 \uC788\uB294 \uBAA8\uB4DC\uB294 \uC774 \uBC30\uCE58\uB97C \uC62E\uAE38 \uC218 \uC788\uC73C\uBBC0\uB85C {set}\uC5D0\uC11C\uB294 \uB3D9\uC791\uD558\uC9C0 \uC54A\uC744 \uC218 \uC788\uC2B5\uB2C8\uB2E4. \uAC8C\uC784 \uC790\uCCB4 \uB370\uC774\uD130\uC6A9\uC785\uB2C8\uB2E4.",
+  "The game keeps death counts for 228 unit types; whether a later type's count is kept is up to the mod, and Magenta does not make a counter of it.": "\uAC8C\uC784\uC740 \uC720\uB2DB \uC885\uB958 228\uAC1C\uC758 \uB370\uC2A4 \uC218\uB97C \uAE30\uB85D\uD569\uB2C8\uB2E4. \uADF8 \uB4A4 \uC885\uB958\uC758 \uB370\uC2A4 \uC218\uAC00 \uAE30\uB85D\uB418\uB294\uC9C0\uB294 \uBAA8\uB4DC\uC5D0 \uB2EC\uB824 \uC788\uC73C\uBA70, Magenta\uB294 \uADF8 \uCE78\uC744 \uCE74\uC6B4\uD130\uB85C \uB9CC\uB4E4\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4."
 };
 
 // plugin.ts
